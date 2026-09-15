@@ -48,6 +48,7 @@ public static class BufferedAudioSttPathResolver
             EnableLocalWhisperCpp = source.EnableLocalWhisperCpp,
             EnableAzureSpeech = source.EnableAzureSpeech,
             EnableWhisperServer = enableWhisperServer,
+            EnableStreamingSherpa = source.EnableStreamingSherpa,
             AutoStartWhisperServer = source.AutoStartWhisperServer &&
                                      !IsFalsy(getEnvironmentVariable("OPENJIBO_STT_AUTOSTART_WHISPER_SERVER")),
             FfmpegPath = ResolveExecutable(
@@ -78,6 +79,8 @@ public static class BufferedAudioSttPathResolver
                 source.WhisperServerUrl,
                 ["OPENJIBO_STT_WHISPER_SERVER_URL", "WHISPER_SERVER_URL"],
                 getEnvironmentVariable) ?? "http://127.0.0.1:8090",
+            SherpaModelDirectory = source.SherpaModelDirectory,
+            AutoDownloadSherpaModel = source.AutoDownloadSherpaModel,
             AzureSpeechRegion = source.AzureSpeechRegion,
             AzureSpeechSubscriptionKey = source.AzureSpeechSubscriptionKey,
             AzureSpeechEndpoint = source.AzureSpeechEndpoint,

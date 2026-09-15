@@ -175,6 +175,29 @@ public sealed class LocalWhisperCppBufferedAudioSttStrategyTests
     }
 
     [Fact]
+    public void Resolve_PreservesStreamingSherpaOptions()
+    {
+        var resolved = BufferedAudioSttPathResolver.Resolve(
+            new BufferedAudioSttOptions
+            {
+                EnableStreamingSherpa = true,
+                SherpaModelDirectory = "/models/sherpa-zipformer",
+                AutoDownloadSherpaModel = false,
+                FfmpegPath = "ffmpeg",
+                WhisperCliPath = "/custom/bin/whisper-cli",
+                WhisperModelPath = "/custom/models/ggml-base.en.bin"
+            },
+            _ => null,
+            path => path.StartsWith("/custom/", StringComparison.Ordinal),
+            null,
+            OperatingSystemPlatform.Linux);
+
+        Assert.True(resolved.EnableStreamingSherpa);
+        Assert.Equal("/models/sherpa-zipformer", resolved.SherpaModelDirectory);
+        Assert.False(resolved.AutoDownloadSherpaModel);
+    }
+
+    [Fact]
     public void Resolve_EnablesWhisperServer_WhenLocalWhisperCppAndAutoStartAreOn()
     {
         var resolved = BufferedAudioSttPathResolver.Resolve(
