@@ -2256,6 +2256,33 @@ public sealed class JiboCloudProtocolServiceTests
     }
 
     [Fact]
+    public async Task LoopList_SelfHealsEmptyMemberRoster()
+    {
+        var store = new InMemoryCloudStateStore();
+        var loop = Assert.Single(store.GetLoops());
+        foreach (var member in store.GetLoopMembers(loop.LoopId).ToArray())
+            store.RemoveLoopMember(loop.LoopId, member.Id);
+        Assert.Empty(store.GetLoopMembers(loop.LoopId));
+
+        var service = new JiboCloudProtocolService(store);
+        var result = await service.DispatchAsync(new ProtocolEnvelope
+        {
+            HostName = "api.jibo.com",
+            Method = "POST",
+            ServicePrefix = "Loop_20160324",
+            Operation = "ListLoops"
+        });
+
+        Assert.Equal(200, result.StatusCode);
+        using var payload = JsonDocument.Parse(result.BodyText);
+        var members = payload.RootElement[0].GetProperty("members").EnumerateArray().ToArray();
+        Assert.Contains(members, member => member.GetProperty("type").GetString() == "owner");
+        Assert.Contains(members, member => member.GetProperty("type").GetString() == "robot");
+        Assert.Contains(store.GetLoopMembers(loop.LoopId), member => member.Type == "owner");
+        Assert.Contains(store.GetLoopMembers(loop.LoopId), member => member.Type == "robot");
+    }
+
+    [Fact]
     public async Task LoopAddLoop_CreatesOwnerAndRobotScopedLoop()
     {
         var result = await _service.DispatchAsync(new ProtocolEnvelope

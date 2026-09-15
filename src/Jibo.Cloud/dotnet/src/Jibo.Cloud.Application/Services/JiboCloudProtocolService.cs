@@ -1171,8 +1171,57 @@ public sealed class JiboCloudProtocolService(
         }
 
         return ProtocolDispatchResult.Ok(loops
-            .Select(loop => MapLoopRecord(loop, stateStore.GetLoopMembers(loop.LoopId)))
+            .Select(loop =>
+            {
+                var members = stateStore.GetLoopMembers(loop.LoopId);
+                if (members.Count == 0)
+                {
+                    // Stock LoopManager rejects members:[] as "no loop" and never writes the KB.
+                    // AddLoop normally seeds owner+robot, but snapshot/fallback paths can still
+                    // leave a loop empty — heal here so ListLoops always carries a usable roster.
+                    EnsureSeededLoopMembersForList(loop);
+                    members = stateStore.GetLoopMembers(loop.LoopId);
+                }
+
+                return MapLoopRecord(loop, members);
+            })
             .ToArray());
+    }
+
+    private void EnsureSeededLoopMembersForList(LoopRecord loop)
+    {
+        var account = stateStore.GetAccount();
+        var ownerAccountId = string.IsNullOrWhiteSpace(loop.OwnerAccountId)
+            ? account.AccountId
+            : loop.OwnerAccountId;
+        stateStore.AddLoopMember(
+            loop.LoopId,
+            ownerAccountId,
+            account.Email,
+            account.FirstName,
+            account.LastName,
+            "unknown",
+            null,
+            false,
+            "owner");
+
+        var robotId = !string.IsNullOrWhiteSpace(loop.RobotId)
+            ? loop.RobotId
+            : stateStore.GetRobot().RobotId;
+        if (string.IsNullOrWhiteSpace(robotId))
+            return;
+
+        // Leave FirstName/LastName null so robot-side UserNode.isJibo (!data.firstName) is true.
+        stateStore.AddLoopMember(
+            loop.LoopId,
+            robotId,
+            null,
+            null,
+            null,
+            "unknown",
+            null,
+            false,
+            "robot");
     }
 
     public object MapLoopMember(LoopMemberRecord member)
