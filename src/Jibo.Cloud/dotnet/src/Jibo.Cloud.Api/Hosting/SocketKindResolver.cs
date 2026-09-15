@@ -1,19 +1,15 @@
+using Jibo.Cloud.Domain;
+
 namespace Jibo.Cloud.Api.Hosting;
 
 internal static class SocketKindResolver
 {
-    private const string ApiSocketHost = "api-socket.jibo.com";
-    private const string OpenJiboSocketHost = "open-jibo-socket.openjibo.com";
-    private const string NativeCompatibilitySocketHost = "open-jibo-socket.jibo.pro";
-    private const string NeoHubHost = "neo-hub.jibo.com";
-    private const string OpenJiboNeoHubHost = "neohub.openjibo.com";
-
     private static readonly HashSet<string> OpenJiboHosts = new(StringComparer.OrdinalIgnoreCase)
     {
         "openjibo.com",
         "openjibo.ai",
-        "api.openjibo.com",
-        "api.5x1.com",
+        OpenJiboHostNames.LegacyOpenJiboApi,
+        OpenJiboHostNames.CanonicalApi,
         "localhost"
     };
 
@@ -27,13 +23,13 @@ internal static class SocketKindResolver
 
     internal static string Resolve(string host, PathString path)
     {
-        if (string.Equals(host, ApiSocketHost, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(host, OpenJiboSocketHost, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(host, NativeCompatibilitySocketHost, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(host, OpenJiboHostNames.LegacyJiboApiSocket, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(host, OpenJiboHostNames.LegacyOpenJiboSocket, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(host, OpenJiboHostNames.NativeCompatibilitySocket, StringComparison.OrdinalIgnoreCase))
             return "api-socket";
 
-        if (string.Equals(host, NeoHubHost, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(host, OpenJiboNeoHubHost, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(host, OpenJiboHostNames.LegacyNeoHub, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(host, OpenJiboHostNames.LegacyOpenJiboNeoHub, StringComparison.OrdinalIgnoreCase))
             return path.StartsWithSegments("/v1/proactive") ? "neo-hub-proactive" : "neo-hub-listen";
 
         if (path.StartsWithSegments("/v1/homeassistant"))

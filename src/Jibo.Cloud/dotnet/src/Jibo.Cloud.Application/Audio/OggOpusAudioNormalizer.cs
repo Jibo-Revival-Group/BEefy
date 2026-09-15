@@ -93,6 +93,37 @@ public static class OggOpusAudioNormalizer
         }
     }
 
+    /// <summary>
+    /// Enumerates Opus audio packet payloads (excluding OpusHead/OpusTags) for decoding.
+    /// </summary>
+    public static IEnumerable<byte[]> EnumerateOpusPacketPayloads(IReadOnlyList<byte[]> pages)
+    {
+        if (pages.Count == 0) yield break;
+
+        var pendingPacket = new List<byte>();
+        foreach (var page in pages)
+        {
+            ParsedOggPage[] parsed;
+            try
+            {
+                parsed = ParsePages(page).ToArray();
+            }
+            catch (InvalidOperationException)
+            {
+                continue;
+            }
+
+            foreach (var parsedPage in parsed)
+            {
+                foreach (var packet in ReadCompletedPackets(parsedPage, pendingPacket))
+                {
+                    if (IsOpusMetadata(packet)) continue;
+                    yield return packet;
+                }
+            }
+        }
+    }
+
     private static IEnumerable<ParsedOggPage> ParsePages(byte[] buffer)
     {
         var offset = 0;

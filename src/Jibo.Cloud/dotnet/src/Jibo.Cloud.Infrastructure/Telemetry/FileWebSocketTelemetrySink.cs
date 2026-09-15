@@ -194,6 +194,7 @@ public sealed class FileWebSocketTelemetrySink(
     {
         var directory = GetBaseDirectory();
         Directory.CreateDirectory(directory);
+        CaptureRetention.Enforce(directory, options.Value.RetentionDays, options.Value.MaxDirectoryBytes);
         var filePath = GetDailyEventFilePath(directory);
         var line = JsonSerializer.Serialize(record) + Environment.NewLine;
 

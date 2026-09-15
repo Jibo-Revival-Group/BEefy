@@ -282,6 +282,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IConversationBroker, DemoConversationBroker>();
         services.AddSingleton<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddSingleton<ISttStrategy, SyntheticBufferedAudioSttStrategy>();
+        services.AddSingleton<SherpaModelLocator>();
+        services.AddSingleton<ISttStrategy, StreamingSherpaBufferedAudioSttStrategy>();
         services.AddHttpClient<AzureSpeechBufferedAudioSttStrategy>();
         services.AddSingleton<ISttStrategy>(provider =>
             provider.GetRequiredService<AzureSpeechBufferedAudioSttStrategy>());

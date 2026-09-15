@@ -1093,7 +1093,7 @@ public sealed class HomeAssistantPortalApiTests
 
         var servers = directory.GetProperty("servers");
         Assert.Contains(servers.EnumerateArray(), server =>
-            server.GetProperty("canonicalHost").GetString() == "api.openjibo.com" &&
+            server.GetProperty("canonicalHost").GetString() == "api.5x1.com" &&
             server.GetProperty("isTrustRoot").GetBoolean() &&
             server.GetProperty("requiresHttps").GetBoolean());
     }
@@ -1274,7 +1274,7 @@ public sealed class HomeAssistantPortalApiTests
             "/api/portal/trusted-servers/lifecycle",
             new
             {
-                canonicalHost = "api.openjibo.com",
+                canonicalHost = "api.5x1.com",
                 action = "revoke"
             });
 

@@ -6,6 +6,11 @@ public sealed class BufferedAudioSttOptions
     public bool EnableAzureSpeech { get; set; }
     public bool EnableWhisperServer { get; set; }
     /// <summary>
+    /// When true, prefer in-process streaming Zipformer (sherpa-onnx) over whisper.cpp.
+    /// Model files are auto-downloaded on first use when missing.
+    /// </summary>
+    public bool EnableStreamingSherpa { get; set; }
+    /// <summary>
     /// When true (default), the API process starts a local whisper-server for loopback
     /// WhisperServerUrl values if one is not already listening. Applies to dotnet run,
     /// published binaries, and containers — not Docker-only.
@@ -17,6 +22,12 @@ public sealed class BufferedAudioSttOptions
     /// <summary>Optional path to whisper.cpp whisper-server. Discovered beside whisper-cli when unset.</summary>
     public string? WhisperServerBinPath { get; set; }
     public string? WhisperServerUrl { get; set; } = "http://127.0.0.1:8090";
+    /// <summary>
+    /// Directory containing streaming Zipformer encoder/decoder/joiner ONNX files and tokens.txt.
+    /// When unset, defaults under App_Data/sherpa-models and auto-downloads if needed.
+    /// </summary>
+    public string? SherpaModelDirectory { get; set; }
+    public bool AutoDownloadSherpaModel { get; set; } = true;
     public string? AzureSpeechRegion { get; set; }
     public string? AzureSpeechSubscriptionKey { get; set; }
     public string? AzureSpeechEndpoint { get; set; }

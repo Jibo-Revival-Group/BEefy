@@ -5,8 +5,10 @@ using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Jibo.Cloud.Api.Hosting.Config;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
+using Jibo.Cloud.Domain;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Calendar;
 using Jibo.Cloud.Infrastructure.Persistence;
@@ -29,6 +31,8 @@ internal static class PortalEndpoints
 
     internal static void MapPortalEndpoints(this WebApplication app)
     {
+        app.MapAdminConfigEndpoints();
+
         app.MapGet("/api/onboarding/trusted-servers", (
             HttpRequest request,
             PortalSessionService portalSessionService,
@@ -43,7 +47,7 @@ internal static class PortalEndpoints
             {
                 directoryVersion = "1",
                 hostedHttpsRequired = true,
-                trustedRootHost = "api.5x1.com",
+                trustedRootHost = OpenJiboHostNames.CanonicalApi,
                 allowCustomEntry = true,
                 customEntryMode = "self-hosted",
                 serverTypes = new

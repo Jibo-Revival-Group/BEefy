@@ -47,6 +47,7 @@ public sealed class FileTurnTelemetrySink(
         {
             var directory = GetBaseDirectory();
             Directory.CreateDirectory(directory);
+            CaptureRetention.Enforce(directory, options.Value.RetentionDays, options.Value.MaxDirectoryBytes);
             var filePath = Path.Combine(directory, $"{DateTimeOffset.UtcNow:yyyyMMdd}.events.ndjson");
             var line = JsonSerializer.Serialize(payload, JsonOptions) + Environment.NewLine;
 

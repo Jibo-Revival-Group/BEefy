@@ -24,6 +24,7 @@ public sealed class FileProtocolTelemetrySink(
                 Directory.GetCurrentDirectory(),
                 AppContext.BaseDirectory);
             Directory.CreateDirectory(directory);
+            CaptureRetention.Enforce(directory, options.Value.RetentionDays, options.Value.MaxDirectoryBytes);
             var filePath = Path.Combine(directory, $"{DateTimeOffset.UtcNow:yyyyMMdd}.events.ndjson");
 
             var payload = new

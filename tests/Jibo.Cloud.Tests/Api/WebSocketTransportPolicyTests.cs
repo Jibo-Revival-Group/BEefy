@@ -94,6 +94,31 @@ public sealed class WebSocketTransportPolicyTests
         Assert.Equal(expected, policy.IsAllowed(context.Request));
     }
 
+    [Theory]
+    [InlineData("https", true)]
+    [InlineData("http", false)]
+    [InlineData("https,http", false)]
+    public void IsAllowed_TrustsSingleHttpsForwardingValueInSelfHostedProxiedMode(
+        string forwardedProto,
+        bool expected)
+    {
+        var policy = CreatePolicy("self-hosted-proxied");
+        var context = new DefaultHttpContext();
+        context.Request.Headers["X-Forwarded-Proto"] = forwardedProto;
+
+        Assert.Equal(expected, policy.IsAllowed(context.Request));
+    }
+
+    [Fact]
+    public void IsAllowed_AllowsHttpsSchemeInSelfHostedProxiedModeWithoutForwardedHeader()
+    {
+        var policy = CreatePolicy("self-hosted-proxied");
+        var context = new DefaultHttpContext();
+        context.Request.Scheme = "https";
+
+        Assert.True(policy.IsAllowed(context.Request));
+    }
+
     private static WebSocketTransportPolicy CreatePolicy(
         string? deploymentMode,
         string? containerAppRevision = null,

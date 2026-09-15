@@ -90,7 +90,7 @@ async function renderTools(message = "", tone = "success") {
       <section class="card status-hero">
         <div class="status-hero-top">
           <div><p class="status-kicker">BEefy Admin</p><h1>Onboarding and server tools</h1><p class="status-lede">Protected setup controls for client connectivity and fleet trust.</p></div>
-          <div class="button-row" style="margin-top: 0;"><a class="secondary-button" href="/portal/status">Status</a><a class="secondary-button" href="/portal/admin/harness">Harness</a><a class="secondary-button" href="/portal">Customer portal</a><button class="button danger" id="signOut" type="button">Sign out</button></div>
+          <div class="button-row" style="margin-top: 0;"><a class="secondary-button" href="/portal/status">Status</a><a class="secondary-button" href="/portal/admin/config">Config</a><a class="secondary-button" href="/portal/admin/harness">Harness</a><a class="secondary-button" href="/portal">Customer portal</a><button class="button danger" id="signOut" type="button">Sign out</button></div>
         </div>
       </section>
       <div class="status-grid two">

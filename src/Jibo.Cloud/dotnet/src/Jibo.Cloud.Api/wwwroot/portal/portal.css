@@ -424,8 +424,48 @@ select:focus {
   display: none !important;
 }
 
+.config-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.config-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 1fr);
+  gap: 1rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.config-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.config-meta .muted-row {
+  margin-top: 0.25rem;
+}
+
+.config-control input[type="text"],
+.config-control input:not([type]),
+.config-control input[type="password"],
+.config-control input[data-type] {
+  width: 100%;
+}
+
+.config-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+}
+
 @media (max-width: 820px) {
   .grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .config-row {
     grid-template-columns: 1fr;
   }
 

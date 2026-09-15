@@ -1,20 +1,37 @@
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Jibo.Cloud.Api.Hosting;
+using Jibo.Cloud.Api.Hosting.Config;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Infrastructure.DependencyInjection;
 using Jibo.Cloud.Infrastructure.Telemetry;
+using Microsoft.AspNetCore.HttpOverrides;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using Serilog;
 using Serilog.Events;
 using Serilog.Sinks.SystemConsole.Themes;
 using System.Diagnostics;
+using System.Net;
 using System.Text;
 
 OpenJiboEnvLoader.Load();
 
 var builder = WebApplication.CreateBuilder(args);
+
+var adminConfigOverlayPath = ResolveAdminConfigOverlayPath(builder);
+if (File.Exists(adminConfigOverlayPath))
+    builder.Configuration.AddJsonFile(adminConfigOverlayPath, optional: true, reloadOnChange: false);
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Trust only local reverse proxies (nginx on the same host). Do not clear
+    // KnownProxies/Networks — that would accept forged headers from the internet.
+    options.KnownProxies.Clear();
+    options.KnownProxies.Add(IPAddress.Loopback);
+    options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
 
 ConfigureOperationalMetrics(builder);
 
@@ -52,6 +69,7 @@ builder.Host.UseSerilog((context, _, loggerConfiguration) =>
 });
 
 builder.Services.AddOpenJiboCloud(builder.Configuration);
+builder.Services.AddSingleton<AdminConfigOverlayStore>();
 builder.Services.AddSingleton<HomeAssistantWebSocketHandler>();
 builder.Services.AddSingleton<SingleRobotHttpHubAccessGuard>();
 builder.Services.AddSingleton<WebSocketTransportPolicy>();
@@ -74,6 +92,7 @@ app.Logger.LogInformation(
     protocolAuthDiagnosticsEnabled,
     Environment.GetEnvironmentVariable("CONTAINER_APP_REVISION") ?? "local");
 
+app.UseForwardedHeaders();
 app.UseCors();
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -290,12 +309,13 @@ static void ConfigureOperationalMetrics(WebApplicationBuilder builder)
 
 static void ResetDiagnosticsDirectories(IConfiguration configuration)
 {
+    // ResetOnStartup clears capture/telemetry directories only. Server logs are
+    // retained across restarts so crashes remain diagnosable.
     var paths = new[]
     {
         ResolveConfiguredPath(configuration, "OpenJibo:Telemetry:DirectoryPath", "captures/websocket"),
         ResolveConfiguredPath(configuration, "OpenJibo:ProtocolTelemetry:DirectoryPath", "captures/http"),
-        ResolveConfiguredPath(configuration, "OpenJibo:TurnTelemetry:DirectoryPath", "captures/turn"),
-        ResolveConfiguredPath(configuration, "OpenJibo:Logging:DirectoryPath", "captures/logs")
+        ResolveConfiguredPath(configuration, "OpenJibo:TurnTelemetry:DirectoryPath", "captures/turn")
     };
 
     foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -344,7 +364,18 @@ static LogEventLevel ParseLogEventLevel(string? value)
 {
     return Enum.TryParse<LogEventLevel>(value, true, out var level)
         ? level
-        : LogEventLevel.Debug;
+        : LogEventLevel.Information;
+}
+
+static string ResolveAdminConfigOverlayPath(WebApplicationBuilder builder)
+{
+    var configured = builder.Configuration["OpenJibo:AdminConfig:OverlayPath"];
+    if (string.IsNullOrWhiteSpace(configured))
+        return Path.Combine(builder.Environment.ContentRootPath, "App_Data", "admin-config-overlay.json");
+
+    return Path.IsPathRooted(configured)
+        ? configured
+        : Path.GetFullPath(configured, builder.Environment.ContentRootPath);
 }
 
 public partial class Program;

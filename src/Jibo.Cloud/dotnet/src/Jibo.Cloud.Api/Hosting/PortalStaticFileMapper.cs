@@ -24,6 +24,11 @@ internal static class PortalStaticFileMapper
             () => Serve(portalDirectory, "admin/onboarding/index.html", "text/html; charset=utf-8"));
         app.MapGet("/portal/admin/onboarding/onboarding.js",
             () => Serve(portalDirectory, "admin/onboarding/onboarding.js", "application/javascript; charset=utf-8"));
+        app.MapGet("/portal/admin/config", () => Results.Redirect("/portal/admin/config/index.html"));
+        app.MapGet("/portal/admin/config/index.html",
+            () => Serve(portalDirectory, "admin/config/index.html", "text/html; charset=utf-8"));
+        app.MapGet("/portal/admin/config/config.js",
+            () => Serve(portalDirectory, "admin/config/config.js", "application/javascript; charset=utf-8"));
         app.MapGet("/portal/admin/harness", () => Results.Redirect("/portal/admin/harness/index.html"));
         app.MapGet("/portal/admin/harness/index.html", () => Serve(harnessDirectory, "index.html", "text/html; charset=utf-8"));
         app.MapGet("/portal/lrd", () => Results.Redirect("/portal/lrd/index.html"));

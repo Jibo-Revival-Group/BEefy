@@ -1,0 +1,48 @@
+name: beefy-cloud-ci
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore and test
+        run: |
+          set -euo pipefail
+          # NETSDK1226 workaround for prune-package data gaps on some runners.
+          export DOTNET_EnablePackagePruning=false
+          dotnet test tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj \
+            -p:AllowMissingPrunePackageData=true \
+            --nologo
+        # Postgres integration tests are env-gated and skip when
+        # OPENJIBO_TEST_POSTGRES_CONNECTION_STRING is unset.
+
+  smoke-js:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Test JavaScript harnesses
+        run: node --test ./tests/Jibo.Cloud.JavaScript.Tests/*.test.mjs

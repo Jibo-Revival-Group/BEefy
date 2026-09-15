@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
+using Jibo.Cloud.Domain;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Holidays;
 
@@ -97,16 +98,10 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
             RegistrationSource = RobotRegistrationSources.Bootstrap,
             IsHidden = true,
             ArchivedUtc = DateTimeOffset.UtcNow,
-            HostMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["api.jibo.com"] = "api.5x1.com",
-                ["api.openjibo.com"] = "api.5x1.com",
-                ["api.5x1.com"] = "api.5x1.com",
-                ["api-socket.jibo.com"] = "api.5x1.com",
-                ["open-jibo-socket.openjibo.com"] = "api.5x1.com",
-                ["neo-hub.jibo.com"] = "api.5x1.com",
-                ["neohub.openjibo.com"] = "api.5x1.com"
-            }
+            HostMappings = OpenJiboHostNames.RobotHostMappingKeys.ToDictionary(
+                key => key,
+                _ => OpenJiboHostNames.CanonicalApi,
+                StringComparer.OrdinalIgnoreCase)
         };
 
         _devices[_robot.DeviceId] = _robot;
@@ -3294,13 +3289,13 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
     {
         if (_trustedServers.Any(server =>
                 server.IsTrustRoot &&
-                (server.CanonicalHost.Equals("api.5x1.com", StringComparison.OrdinalIgnoreCase) ||
-                 server.CanonicalHost.Equals("api.openjibo.com", StringComparison.OrdinalIgnoreCase))))
+                (server.CanonicalHost.Equals(OpenJiboHostNames.CanonicalApi, StringComparison.OrdinalIgnoreCase) ||
+                 server.CanonicalHost.Equals(OpenJiboHostNames.LegacyOpenJiboApi, StringComparison.OrdinalIgnoreCase))))
             return;
 
         _trustedServers.Add(new TrustedServerRecord
         {
-            CanonicalHost = "api.5x1.com",
+            CanonicalHost = OpenJiboHostNames.CanonicalApi,
             DisplayName = "BEefy trust root API",
             ServerKind = "managed",
             IsListed = true,

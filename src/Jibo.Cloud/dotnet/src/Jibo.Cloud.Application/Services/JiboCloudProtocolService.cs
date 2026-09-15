@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Jibo.Cloud.Application.Abstractions;
+using Jibo.Cloud.Domain;
 using Jibo.Cloud.Domain.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -882,7 +883,7 @@ public sealed class JiboCloudProtocolService(
             targetMode.Equals("open-jibo-self-hosted", StringComparison.OrdinalIgnoreCase))
             return string.IsNullOrWhiteSpace(hostName) ? string.Empty : hostName.Trim();
 
-        return "api.5x1.com";
+        return OpenJiboHostNames.CanonicalApi;
     }
 
     private static string ResolveOpenJiboTargetMode(string? mode)
@@ -924,16 +925,10 @@ public sealed class JiboCloudProtocolService(
     {
         var resolvedHost = ResolveOpenJiboTargetHost(targetMode, targetHost, hostName);
 
-        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["api.jibo.com"] = resolvedHost,
-            ["api-socket.jibo.com"] = resolvedHost,
-            ["api.openjibo.com"] = resolvedHost,
-            ["open-jibo-socket.openjibo.com"] = resolvedHost,
-            ["neo-hub.jibo.com"] = resolvedHost,
-            ["neohub.openjibo.com"] = resolvedHost,
-            ["api.5x1.com"] = resolvedHost
-        };
+        return OpenJiboHostNames.RobotHostMappingKeys.ToDictionary(
+            key => key,
+            _ => resolvedHost,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private ProtocolDispatchResult HandleLoop(string operation, ProtocolEnvelope envelope)

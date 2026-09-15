@@ -937,6 +937,7 @@ function renderStatusView(summary, previous = previousSummary) {
           </div>
           <div class="button-row" style="margin-top: 0;">
             <a class="secondary-button" href="/portal/admin/onboarding">Onboarding</a>
+            <a class="secondary-button" href="/portal/admin/config">Config</a>
             <a class="secondary-button" href="/portal/admin/harness">Harness</a>
             <a class="secondary-button" href="/portal">Customer portal</a>
             <button class="button secondary" id="refreshButton" type="button">Refresh</button>

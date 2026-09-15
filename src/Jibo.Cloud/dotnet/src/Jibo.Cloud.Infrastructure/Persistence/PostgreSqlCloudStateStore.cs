@@ -1,5 +1,6 @@
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
+using Jibo.Cloud.Domain;
 using Jibo.Cloud.Domain.Models;
 
 namespace Jibo.Cloud.Infrastructure.Persistence;
@@ -174,14 +175,10 @@ public sealed partial class PostgreSqlCloudStateStore : ICloudStateStore
                 DeviceId = "openjibo-bootstrap-default", RobotId = "openjibo-bootstrap-default",
                 FriendlyName = "OpenJibo Dev Robot", RegistrationSource = RobotRegistrationSources.Bootstrap,
                 IsHidden = true, ArchivedUtc = DateTimeOffset.UtcNow,
-                HostMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["api.jibo.com"] = "api.5x1.com", ["api.openjibo.com"] = "api.5x1.com",
-                    ["api.5x1.com"] = "api.5x1.com",
-                    ["api-socket.jibo.com"] = "api.5x1.com",
-                    ["open-jibo-socket.openjibo.com"] = "api.5x1.com",
-                    ["neo-hub.jibo.com"] = "api.5x1.com", ["neohub.openjibo.com"] = "api.5x1.com"
-                }
+                HostMappings = OpenJiboHostNames.RobotHostMappingKeys.ToDictionary(
+                    key => key,
+                    _ => OpenJiboHostNames.CanonicalApi,
+                    StringComparer.OrdinalIgnoreCase)
             };
             Sync(_devices.UpsertAsync(robot, account.AccountId, true));
             if (_robotProfiles is not null)

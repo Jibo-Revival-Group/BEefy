@@ -1,4 +1,8 @@
 <Project>
+  <!-- Avoid NETSDK1226 when prune-package data is missing for net10.0 AspNetCore. -->
+  <PropertyGroup>
+    <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
+  </PropertyGroup>
   <!-- Exclude stale root-owned build artifacts left from prior sudo builds.
        These directories contain old auto-generated .cs files that would
        collide with freshly generated ones and produce CS0579 duplicate-attribute errors. -->
