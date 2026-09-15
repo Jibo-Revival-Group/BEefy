@@ -22,6 +22,10 @@ public sealed class NewsApiOptions
         "business"
     ];
 
+    /// <summary>
+    /// Legacy / unused for successful briefings. Success entries now expire at the
+    /// next UTC half-hour (:00 or :30) via <c>HalfHourAlignedCacheExpiry</c>.
+    /// </summary>
     public int CacheTtlSeconds { get; set; } = 300;
 
     public int FailureCacheTtlSeconds { get; set; } = 45;

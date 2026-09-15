@@ -39,7 +39,9 @@ public sealed class ProviderCachingTests
             new OpenWeatherOptions
             {
                 ApiKey = "test-key",
-                CurrentCacheTtlSeconds = 300,
+                // Success weather entries expire at the next UTC half-hour; these TTL
+                // options no longer control successful payload lifetime.
+                CurrentCacheTtlSeconds = 1,
                 GeocodeCacheTtlSeconds = 300,
                 FailureCacheTtlSeconds = 30
             },
@@ -237,7 +239,8 @@ public sealed class ProviderCachingTests
             new NewsApiOptions
             {
                 ApiKey = "test-key",
-                CacheTtlSeconds = 300,
+                // Success briefings expire at the next UTC half-hour; CacheTtlSeconds is unused.
+                CacheTtlSeconds = 1,
                 FailureCacheTtlSeconds = 30
             },
             NullLogger<NewsApiBriefingProvider>.Instance);

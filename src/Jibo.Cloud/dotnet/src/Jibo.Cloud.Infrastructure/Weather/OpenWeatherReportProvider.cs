@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using Jibo.Cloud.Application.Abstractions;
+using Jibo.Cloud.Infrastructure.Caching;
 using Microsoft.Extensions.Logging;
 
 namespace Jibo.Cloud.Infrastructure.Weather;
@@ -46,15 +47,14 @@ public sealed class OpenWeatherReportProvider(
             var snapshot =
                 await GetOneCallWeatherAsync(location.Value, useCelsius, forecastDayOffset, cancellationToken) ??
                 await GetLegacyWeatherAsync(location.Value, useCelsius, forecastDayOffset, cancellationToken);
-            SetCachedValue(
-                _weatherCache,
-                weatherCacheKey,
-                snapshot,
-                snapshot is null
-                    ? options.FailureCacheTtlSeconds
-                    : forecastDayOffset <= 0
-                        ? options.CurrentCacheTtlSeconds
-                        : options.ForecastCacheTtlSeconds);
+            if (snapshot is null)
+                SetCachedValue(_weatherCache, weatherCacheKey, null, options.FailureCacheTtlSeconds);
+            else
+                SetCachedValue(
+                    _weatherCache,
+                    weatherCacheKey,
+                    snapshot,
+                    HalfHourAlignedCacheExpiry.GetExpiryUtc(DateTimeOffset.UtcNow));
             return snapshot;
         }
         catch (Exception exception)
@@ -500,9 +500,20 @@ public sealed class OpenWeatherReportProvider(
         T value,
         int ttlSeconds)
     {
-        cache[key] = new CacheEntry<T>(
+        SetCachedValue(
+            cache,
+            key,
             value,
             DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, ttlSeconds)));
+    }
+
+    private static void SetCachedValue<T>(
+        ConcurrentDictionary<string, CacheEntry<T>> cache,
+        string key,
+        T value,
+        DateTimeOffset expiresUtc)
+    {
+        cache[key] = new CacheEntry<T>(value, expiresUtc);
     }
 
     private readonly record struct LocationPoint(double Latitude, double Longitude, string? DisplayName);

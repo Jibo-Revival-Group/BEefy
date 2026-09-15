@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Jibo.Cloud.Application.Abstractions;
+using Jibo.Cloud.Infrastructure.Caching;
 using Microsoft.Extensions.Logging;
 
 namespace Jibo.Cloud.Infrastructure.News;
@@ -152,7 +153,11 @@ public sealed class NewsApiBriefingProvider(
                         headlines,
                         "NewsAPI",
                         "success");
-                    SetCachedValue(_briefingCache, cacheKey, snapshot, options.CacheTtlSeconds);
+                    SetCachedValue(
+                        _briefingCache,
+                        cacheKey,
+                        snapshot,
+                        HalfHourAlignedCacheExpiry.GetExpiryUtc(DateTimeOffset.UtcNow));
                     logger.LogInformation(
                         "NewsAPI request succeeded. Categories={Categories} HeadlineCount={HeadlineCount}",
                         string.Join(",", categories),
@@ -310,7 +315,11 @@ public sealed class NewsApiBriefingProvider(
                 headlines,
                 "NewsAPI",
                 "success");
-            SetCachedValue(_briefingCache, cacheKey, populatedSnapshot, options.CacheTtlSeconds);
+            SetCachedValue(
+                _briefingCache,
+                cacheKey,
+                populatedSnapshot,
+                HalfHourAlignedCacheExpiry.GetExpiryUtc(DateTimeOffset.UtcNow));
             logger.LogInformation(
                 "NewsAPI request partially filled headlines. Categories={Categories} HeadlineCount={HeadlineCount} RequestedHeadlineCount={RequestedHeadlineCount}",
                 string.Join(",", categories),
@@ -541,9 +550,20 @@ public sealed class NewsApiBriefingProvider(
         T value,
         int ttlSeconds)
     {
-        cache[key] = new CacheEntry<T>(
+        SetCachedValue(
+            cache,
+            key,
             value,
             DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, ttlSeconds)));
+    }
+
+    private static void SetCachedValue<T>(
+        ConcurrentDictionary<string, CacheEntry<T>> cache,
+        string key,
+        T value,
+        DateTimeOffset expiresUtc)
+    {
+        cache[key] = new CacheEntry<T>(value, expiresUtc);
     }
 
     private sealed record ApiError(string? Code, string? Message);
