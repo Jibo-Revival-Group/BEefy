@@ -30,12 +30,14 @@ public static class ServiceCollectionExtensions
         IConfiguration? configuration = null)
     {
         var sttOptions = new BufferedAudioSttOptions();
+        var listenEndpointingOptions = new ListenEndpointingOptions();
         if (configuration is not null)
         {
             services.Configure<WebSocketTelemetryOptions>(configuration.GetSection("OpenJibo:Telemetry"));
             services.Configure<ProtocolTelemetryOptions>(configuration.GetSection("OpenJibo:ProtocolTelemetry"));
             services.Configure<TurnTelemetryOptions>(configuration.GetSection("OpenJibo:TurnTelemetry"));
             configuration.GetSection("OpenJibo:Stt").Bind(sttOptions);
+            configuration.GetSection("OpenJibo:Listen").Bind(listenEndpointingOptions);
         }
 
         BufferedAudioSttPathResolver.ValidateResolvedDependencies(sttOptions);
@@ -82,6 +84,7 @@ public static class ServiceCollectionExtensions
             llmInstructions);
 
         services.AddSingleton(sttOptions);
+        services.AddSingleton(listenEndpointingOptions);
         services.AddHostedService<WhisperServerHostedService>();
         services.AddSingleton(openWeatherOptions);
         services.AddSingleton(newsApiOptions);
@@ -283,6 +286,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExternalProcessRunner, ExternalProcessRunner>();
         services.AddSingleton<ISttStrategy, SyntheticBufferedAudioSttStrategy>();
         services.AddSingleton<SherpaModelLocator>();
+        services.AddSingleton<SherpaOnlineRecognizerProvider>();
+        services.AddSingleton<IIncrementalSttSessionFactory, SherpaIncrementalSttSessionFactory>();
         services.AddSingleton<ISttStrategy, StreamingSherpaBufferedAudioSttStrategy>();
         services.AddHttpClient<AzureSpeechBufferedAudioSttStrategy>();
         services.AddSingleton<ISttStrategy>(provider =>

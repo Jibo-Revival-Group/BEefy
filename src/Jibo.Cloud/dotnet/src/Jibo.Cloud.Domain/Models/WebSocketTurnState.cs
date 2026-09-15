@@ -48,6 +48,11 @@ public sealed class WebSocketTurnState
     public bool SawContext { get; set; }
     public IReadOnlyList<string> ListenRules { get; set; } = [];
     public IReadOnlyList<string> ListenAsrHints { get; set; } = [];
+    /// <summary>
+    /// Optional live Zipformer session for model-driven end-of-speech.
+    /// Owned by the turn; disposed when buffered audio is reset.
+    /// </summary>
+    public IIncrementalSttSession? IncrementalSttSession { get; set; }
 
     public bool TryBeginFinalization()
     {

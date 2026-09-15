@@ -50,4 +50,8 @@
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
+	<ItemGroup>
+		<InternalsVisibleTo Include="Jibo.Cloud.Tests" />
+	</ItemGroup>
+
 </Project>

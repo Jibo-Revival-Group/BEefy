@@ -18,10 +18,15 @@ public sealed class WebSocketTurnFinalizationService(
     ICloudStateStore? cloudStateStore = null,
     IMediaContentStore? mediaContentStore = null,
     RobotIdentitySuggestionStore? identitySuggestionStore = null,
-    ITransportMetrics? transportMetrics = null
+    ITransportMetrics? transportMetrics = null,
+    ListenEndpointingOptions? listenEndpointingOptions = null,
+    IIncrementalSttSessionFactory? incrementalSttSessionFactory = null
 )
 {
     private readonly ITransportMetrics _metrics = transportMetrics ?? NullTransportMetrics.Instance;
+    private readonly ListenEndpointingOptions _listenEndpointingOptions =
+        listenEndpointingOptions ?? new ListenEndpointingOptions();
+    private readonly IIncrementalSttSessionFactory? _incrementalSttSessionFactory = incrementalSttSessionFactory;
 
     internal const int MaximumBufferedAudioBytes = 4 * 1024 * 1024;
     internal const int MaximumTotalBufferedAudioBytes = 64 * 1024 * 1024;
@@ -409,6 +414,8 @@ public sealed class WebSocketTurnFinalizationService(
             {
                 turnState.FirstAudioReceivedUtc ??= receivedAtUtc;
             }
+
+            FeedIncrementalStt(session);
             await sink.RecordTurnDiagnosticAsync("binary_audio_received", BuildTurnDiagnosticSnapshot(session, envelope,
                 new Dictionary<string, object?>
                 {
@@ -784,6 +791,9 @@ public sealed class WebSocketTurnFinalizationService(
         var turnState = session.TurnState;
         if (!turnState.AwaitingTurnCompletion) return [];
 
+        if (turnState.BufferedAudioFrames.Count > 0)
+            FeedIncrementalStt(session);
+
         if (await TryCloseStalledListenAsNoInputAsync(session, envelope, "socket_idle", cancellationToken) is
             { } stalledListenReplies)
             return stalledListenReplies;
@@ -1072,6 +1082,16 @@ public sealed class WebSocketTurnFinalizationService(
 
     private static void ResetBufferedAudio(CloudSession session)
     {
+        try
+        {
+            session.TurnState.IncrementalSttSession?.Dispose();
+        }
+        catch
+        {
+            // Ignore dispose races during concurrent finalize/reset.
+        }
+
+        session.TurnState.IncrementalSttSession = null;
         AudioBufferBudget.Release(session.SessionId);
         session.TurnState.BufferedAudioBytes = 0;
         session.TurnState.BufferedAudioChunkCount = 0;
@@ -1646,6 +1666,41 @@ public sealed class WebSocketTurnFinalizationService(
                 return [];
             }
 
+            if (ShouldDeferForIncompleteUtterance(finalizedTurn, turnState, messageType,
+                    allowFallbackOnMissingTranscript, out var incompleteUtteranceReason))
+            {
+                turnState.AwaitingTurnCompletion = true;
+                turnState.FinalizeAttemptCount += 1;
+                turnState.DeferredIncompleteAudioBytes = turnState.BufferedAudioBytes;
+                turnState.LastAutoFinalizeAttemptUtc = DateTimeOffset.UtcNow;
+                try
+                {
+                    turnState.IncrementalSttSession?.ResetEndpoint();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                var incompleteTurnAge = turnState.FirstAudioReceivedUtc.HasValue
+                    ? DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value
+                    : TimeSpan.Zero;
+                await sink.RecordTurnDiagnosticAsync("endpoint_deferred_incomplete_utterance",
+                    BuildTurnDiagnosticSnapshot(session, envelope, new Dictionary<string, object?>
+                    {
+                        ["messageType"] = messageType,
+                        ["transcript"] = finalizedTurn.NormalizedTranscript ?? finalizedTurn.RawTranscript,
+                        ["partialTranscript"] = turnState.IncrementalSttSession?.PartialText,
+                        ["reason"] = incompleteUtteranceReason,
+                        ["finalizeAttemptCount"] = turnState.FinalizeAttemptCount,
+                        ["turnAgeMs"] = (int)incompleteTurnAge.TotalMilliseconds,
+                        ["bufferedAudioBytes"] = turnState.BufferedAudioBytes,
+                        ["bufferedAudioChunks"] = turnState.BufferedAudioChunkCount,
+                        ["deferredIncompleteAudioBytes"] = turnState.DeferredIncompleteAudioBytes
+                    }), cancellationToken);
+                return [];
+            }
+
             if (ShouldHandleUnexpectedYesNoAutoFinalizeTranscript(finalizedTurn, turnState, messageType,
                     allowFallbackOnMissingTranscript, out var unexpectedYesNoReason, out var closeYesNoAsNoInput,
                     out var unexpectedYesNoTurnAge))
@@ -2049,7 +2104,91 @@ public sealed class WebSocketTurnFinalizationService(
             content, meta, cancellationToken);
     }
 
-    private static bool ShouldAutoFinalize(CloudSession session)
+    private bool IsModelEndpointingConfigured() =>
+        _listenEndpointingOptions.EnableModelEndpointing &&
+        _incrementalSttSessionFactory is { IsEnabled: true };
+
+    private bool IsModelEndpointingActive(CloudSession session) =>
+        IsModelEndpointingConfigured() &&
+        session.TurnState.IncrementalSttSession is not null;
+
+    private void FeedIncrementalStt(CloudSession session)
+    {
+        if (!IsModelEndpointingConfigured())
+            return;
+
+        var turnState = session.TurnState;
+        if (turnState.BufferedAudioFrames.Count == 0)
+            return;
+
+        try
+        {
+            turnState.IncrementalSttSession ??=
+                _incrementalSttSessionFactory!.TryCreate(turnState.ListenMaxSpeechTimeout);
+            turnState.IncrementalSttSession?.AcceptFrames(turnState.BufferedAudioFrames);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Incremental STT feed failed session={SessionId}", session.SessionId);
+        }
+    }
+
+    /// <summary>
+    /// Evaluates Sherpa IsEndpoint (or a wall-clock gap fallback) plus utterance completeness.
+    /// Returns false when model endpointing is inactive. When incomplete, resets the endpoint latch.
+    /// </summary>
+    private bool TryEvaluateModelEndpoint(
+        CloudSession session,
+        bool reachedHardTimeout,
+        out bool shouldFinalize)
+    {
+        shouldFinalize = false;
+        if (!IsModelEndpointingConfigured())
+            return false;
+
+        var turnState = session.TurnState;
+        var incremental = turnState.IncrementalSttSession;
+        if (incremental is null)
+            return false;
+
+        var trailingSilence = TimeSpan.FromSeconds(
+            Math.Max(0.2, _listenEndpointingOptions.Rule2MinTrailingSilenceSeconds));
+        var gapSinceLastAudio = turnState.LastAudioReceivedUtc.HasValue
+            ? DateTimeOffset.UtcNow - turnState.LastAudioReceivedUtc.Value
+            : TimeSpan.Zero;
+        var acousticEndpoint = incremental.IsEndpoint ||
+                               (turnState.LastAudioReceivedUtc.HasValue && gapSinceLastAudio >= trailingSilence);
+
+        if (!acousticEndpoint && !reachedHardTimeout)
+            return true;
+
+        var completeness = UtteranceCompletenessClassifier.Classify(
+            incremental.PartialText,
+            turnState.ListenRules);
+
+        if (completeness.IsComplete || reachedHardTimeout)
+        {
+            shouldFinalize = true;
+            return true;
+        }
+
+        if (acousticEndpoint)
+        {
+            try
+            {
+                incremental.ResetEndpoint();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to reset incremental endpoint session={SessionId}",
+                    session.SessionId);
+            }
+        }
+
+        return true;
+    }
+
+    private bool ShouldAutoFinalize(CloudSession session)
     {
         var turnState = session.TurnState;
         if (turnState.AutoFinalizeBlockedUntilUtc.HasValue &&
@@ -2072,6 +2211,7 @@ public sealed class WebSocketTurnFinalizationService(
                                    elapsedSinceLastAudio >= silenceWindow;
         var reachedContentSilence = HasContentSilence(turnState, silenceWindow);
         var transcriptHintEarlyFinalize = ShouldEarlyFinalizeFromTranscriptHint(turnState);
+        var modelEndpointing = TryEvaluateModelEndpoint(session, reachedHardTimeout, out var modelSaysFinalize);
 
         // Incomplete-command deferrals must not re-enter finalize on arrival-time
         // silence alone — that re-ran STT on the same truncated buffer every ~450ms.
@@ -2079,8 +2219,15 @@ public sealed class WebSocketTurnFinalizationService(
             turnState.BufferedAudioBytes <= turnState.DeferredIncompleteAudioBytes &&
             !receivedEndOfStream &&
             !reachedHardTimeout &&
+            !(modelEndpointing && modelSaysFinalize) &&
             !reachedContentSilence)
             return false;
+
+        var closeTrigger = receivedEndOfStream || reachedHardTimeout || transcriptHintEarlyFinalize;
+        if (modelEndpointing)
+            closeTrigger = closeTrigger || modelSaysFinalize;
+        else
+            closeTrigger = closeTrigger || reachedSilenceWindow || reachedContentSilence;
 
         return turnState is
                {
@@ -2090,15 +2237,16 @@ public sealed class WebSocketTurnFinalizationService(
                } &&
                pageCounts.AudioBearingPageCount >= AutoFinalizeMinBufferedAudioPages &&
                turnState.LastAudioReceivedUtc.HasValue &&
-               (receivedEndOfStream || reachedHardTimeout ||
-                transcriptHintEarlyFinalize ||
-                reachedSilenceWindow ||
-                reachedContentSilence) &&
+               closeTrigger &&
                turnAge >= AutoFinalizeMinTurnAge;
     }
 
-    private static bool ShouldEarlyFinalizeBufferedAudio(CloudSession session)
+    private bool ShouldEarlyFinalizeBufferedAudio(CloudSession session)
     {
+        // Model endpointing replaces the early-probe ladder; do not run both.
+        if (IsModelEndpointingActive(session))
+            return false;
+
         var turnState = session.TurnState;
         if (turnState.AutoFinalizeBlockedUntilUtc.HasValue &&
             turnState.AutoFinalizeBlockedUntilUtc.Value > DateTimeOffset.UtcNow)
@@ -3852,6 +4000,38 @@ public sealed class WebSocketTurnFinalizationService(
         if (!LooksLikeIncompleteAffinitySet(normalized)) return false;
 
         reason = "affinity_set_incomplete";
+        return true;
+    }
+
+    private bool ShouldDeferForIncompleteUtterance(
+        TurnContext turn,
+        WebSocketTurnState turnState,
+        string messageType,
+        bool allowFallbackOnMissingTranscript,
+        out string reason)
+    {
+        reason = string.Empty;
+        if (!_listenEndpointingOptions.EnableModelEndpointing)
+            return false;
+
+        if (!allowFallbackOnMissingTranscript ||
+            !string.Equals(messageType, "AUTO_FINALIZE", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!turnState.FirstAudioReceivedUtc.HasValue)
+            return false;
+
+        var turnAge = DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value;
+        if (turnAge >= ResolveHardBufferedAudioAge(turnState) ||
+            HasReceivedOggEndOfStream(turnState))
+            return false;
+
+        var transcript = turn.NormalizedTranscript ?? turn.RawTranscript;
+        var completeness = UtteranceCompletenessClassifier.Classify(transcript, turnState.ListenRules);
+        if (completeness.IsComplete)
+            return false;
+
+        reason = completeness.Reason;
         return true;
     }
 
