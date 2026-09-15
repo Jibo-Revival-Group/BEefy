@@ -6,9 +6,9 @@ key_vault_name=""
 registry_name=""
 image_tag="managed"
 location=""
-api_hostname="api.openjibo.com"
-socket_hostname="open-jibo-socket.openjibo.com"
-neohub_hostname="neohub.openjibo.com"
+api_hostname="api.5x1.com"
+socket_hostname="api.5x1.com"
+neohub_hostname="api.5x1.com"
 native_compatibility_api_hostname="open-jibo.jibo.pro"
 native_compatibility_socket_hostname="open-jibo-socket.jibo.pro"
 additional_compatibility_api_hostname="api.jibo.pro"
@@ -46,15 +46,15 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --api-hostname)
-      api_hostname="${2:-api.openjibo.com}"
+      api_hostname="${2:-api.5x1.com}"
       shift 2
       ;;
     --socket-hostname)
-      socket_hostname="${2:-open-jibo-socket.openjibo.com}"
+      socket_hostname="${2:-api.5x1.com}"
       shift 2
       ;;
     --neohub-hostname)
-      neohub_hostname="${2:-neohub.openjibo.com}"
+      neohub_hostname="${2:-api.5x1.com}"
       shift 2
       ;;
     --native-compatibility-api-hostname)

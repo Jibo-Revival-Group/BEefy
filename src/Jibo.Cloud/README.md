@@ -2,7 +2,7 @@
 
 ## Summary
 
-`Jibo.Cloud` is the replacement cloud layer for OpenJibo.
+`Jibo.Cloud` is the replacement cloud layer for BEefy.
 
 Its job is to restore the hosted services that physical Jibo devices still expect, while also becoming the bridge into a modern .NET runtime and future capabilities.
 
@@ -26,7 +26,7 @@ The first milestone is a stable hosted cloud that can support:
 - required HTTPS `X-Amz-Target` operations
 - required WebSocket listen and proactive flows
 - basic media and update metadata handling
-- normalized handoff into OpenJibo runtime contracts
+- normalized handoff into BEefy runtime contracts
 
 ## Hosting Direction
 
@@ -40,10 +40,10 @@ The hosted deployment target is Azure:
 
 Human-facing entry points will live on domains such as:
 
-- `openjibo.com`
+- `api.5x1.com`
 - `openjibo.ai`
 
-Robot traffic may still arrive using legacy hostnames routed to the OpenJibo service. The managed deployment also binds `open-jibo.jibo.pro` and `open-jibo-socket.jibo.pro` for the equal-length native server-library compatibility patch; these route directly to the API and notification socket handlers rather than redirecting signed or WebSocket traffic.
+Robot traffic may still arrive using legacy hostnames routed to the BEefy service. The managed deployment also binds `open-jibo.jibo.pro` and `open-jibo-socket.jibo.pro` for the equal-length native server-library compatibility patch; these route directly to the API and notification socket handlers rather than redirecting signed or WebSocket traffic.
 
 ## Azure Storage Wiring Sample
 
@@ -72,7 +72,7 @@ For a real storage account, swap `UseDevelopmentStorage=true` with your Azure St
 
 For the practical local run guide, including `.NET`, Node, and Playground, start with:
 
-- [Local OpenJibo Cloud Quickstart](../../docs/local-cloud-quickstart.md)
+- [Local BEefy Cloud Quickstart](../../docs/local-cloud-quickstart.md)
 
 To run the API with the Blob-backed sample config in Visual Studio or `dotnet run`, choose the
 `Jibo.Cloud.Api.AzureBlob` launch profile.
@@ -139,13 +139,13 @@ room to add a richer travel-time source later without changing the behavior laye
 The first supported device path is:
 
 ```text
-RCM + controlled DNS/TLS patching + hosted OpenJibo cloud
+RCM + controlled DNS/TLS patching + hosted BEefy cloud
 ```
 
 OTA remains important, but it is a later simplification layer after the hosted cloud is stable on real hardware.
 
 ## Supporting Docs
 
-- [Protocol inventory](C:/Projects/JiboExperiments/OpenJibo/docs/protocol-inventory.md)
-- [Support tiers](C:/Projects/JiboExperiments/OpenJibo/docs/support-tiers.md)
-- [Device bootstrap path](C:/Projects/JiboExperiments/OpenJibo/docs/device-bootstrap.md)
+- [Protocol inventory](../../docs/protocol-inventory.md)
+- [Support tiers](../../docs/support-tiers.md)
+- [Device bootstrap path](../../docs/device-bootstrap.md)

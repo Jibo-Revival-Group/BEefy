@@ -1,7 +1,7 @@
 # Local Jibo Device Runbook
 
 This runbook records the verified local-device setup used to connect a physical
-Jibo to the OpenJibo cloud during development.
+Jibo to the BEefy cloud during development.
 
 It is intentionally practical. The goal is to preserve the exact shape that
 worked on the robot we tested, including the failure modes that mattered.
@@ -11,11 +11,11 @@ worked on the robot we tested, including the failure modes that mattered.
 The working device path is:
 
 ```text
-Mac runs OpenJibo .NET cloud on 443
-Jibo resolves api.jibo.com, api-socket.jibo.com, open-jibo-socket.openjibo.com,
-and neohub.openjibo.com to the Mac
+Mac runs BEefy .NET cloud on 443
+Jibo resolves api.jibo.com, api-socket.jibo.com, api.5x1.com,
+and api.5x1.com to the Mac
 Jibo keeps /var/jibo/credentials.json region as open-jibo
-Jetstream uses api region settings for api.jibo.com and neohub.openjibo.com
+Jetstream uses api region settings for api.jibo.com and api.5x1.com
 Jibo boot script reapplies local hosts, CA, writable key overlay, and TLS patch
 .NET cloud is configured with the robot id Jibo expects in its local KB
 ```
@@ -59,12 +59,10 @@ changing the credentials region to a new region label.
 
 ## Mac Server
 
-The recommended server for current OpenJibo testing is the .NET cloud. From the
+The recommended server for current BEefy testing is the .NET cloud. From the
 repo root:
 
 ```bash
-cd ~/JiboExperiments/OpenJibo
-
 CERT_PEM=src/Jibo.Cloud/node/cert.pem \
 KEY_PEM=src/Jibo.Cloud/node/key.pem \
 OpenJibo__Robot__RobotId=5a0b6398faa0f0001c5d0df1 \
@@ -97,7 +95,7 @@ curl -k https://api.jibo.com/health
 Expected response:
 
 ```json
-{"ok":true,"service":"OpenJibo Cloud Api","version":"1.0.19"}
+{"ok":true,"service":"BEefy Cloud Api","version":"1.0.19"}
 ```
 
 ## Certificate Material
@@ -152,12 +150,12 @@ The working Jetstream region config keeps `api` as the active region:
 "region-settings": {
   "api": {
     "hub_port": 443,
-    "hub_hostname": "neohub.openjibo.com",
+    "hub_hostname": "api.5x1.com",
     "entrypoint_hostname": "api.jibo.com"
   },
   "openjibo-local": {
     "hub_port": 443,
-    "hub_hostname": "neohub.openjibo.com",
+    "hub_hostname": "api.5x1.com",
     "entrypoint_hostname": "api.jibo.com"
   }
 }
@@ -167,8 +165,8 @@ The working Jetstream region config keeps `api` as the active region:
 must not be switched to it on this build.
 
 The notification subsystem config at `/usr/local/etc/jibo-server-service.json`
-should stage `NotificationSubsystem.serverURLSuffix` as `-socket.openjibo.com`
-so the converted robot resolves `open-jibo-socket.openjibo.com` without a robot
+should stage `NotificationSubsystem.serverURLSuffix` as `-socket.api.5x1.com`
+so the converted robot resolves `api.5x1.com` without a robot
 code change.
 
 Also remove `HubClient.override` unless deliberately testing override behavior.
@@ -254,7 +252,7 @@ cat > "$HOSTS_TMP" <<EOF
 127.0.1.1	Ghost-Instance-Onion-Silk
 $MAC_IP	api.jibo.com
 $MAC_IP	api-socket.jibo.com
-$MAC_IP	neohub.openjibo.com
+$MAC_IP	api.5x1.com
 EOF
 chmod 644 "$HOSTS_TMP"
 
@@ -403,8 +401,8 @@ After boot, verify on Jibo:
 cat /var/jibo/credentials.json
 cat /etc/hosts
 curl -k https://api.jibo.com/health
-curl -k https://open-jibo-socket.openjibo.com/
-curl -k https://neohub.openjibo.com/v1/proactive
+curl -k https://api.5x1.com/
+curl -k https://api.5x1.com/v1/proactive
 grep -n 'rejectUnauthorized' /usr/lib/node_modules/@jibo/jibo-server-client/lib/http/node.js
 mount | grep -E 'hosts|ca-certificates|jibo-server-client|/var/jibo/keys'
 ```
@@ -415,9 +413,9 @@ Expected (IP will vary):
 "region":"api"
 <mac-ip> api.jibo.com
 <mac-ip> api-socket.jibo.com
-<mac-ip> open-jibo-socket.openjibo.com
-<mac-ip> neohub.openjibo.com
-{"ok":true,"service":"OpenJibo Cloud Api","version":"1.0.19"}
+<mac-ip> api.5x1.com
+<mac-ip> api.5x1.com
+{"ok":true,"service":"BEefy Cloud Api","version":"1.0.19"}
 rejectUnauthorized: false
 ```
 
@@ -432,7 +430,7 @@ Expected success lines:
 
 ```text
 NotificationSubsystem::connect established connection to server
-HubClient settings: hub_hostname=neohub.openjibo.com, hub_port=443, entrypoint_hostname=api.jibo.com
+HubClient settings: hub_hostname=api.5x1.com, hub_port=443, entrypoint_hostname=api.jibo.com
 P.secure-transfer-service.Service: Successfully completed STS initialization!
 ```
 
@@ -458,8 +456,8 @@ Jibo must resolve these public production names to the local Mac:
 ```text
 api.jibo.com
 api-socket.jibo.com
-open-jibo-socket.openjibo.com
-neohub.openjibo.com
+api.5x1.com
+api.5x1.com
 ```
 
 The hosts patch has to be boot-persistent because Jibo recreates or remounts
@@ -467,11 +465,11 @@ parts of `/etc` and `/var` during startup.
 
 ### TLS
 
-Jibo must trust the local OpenJibo certificate chain for:
+Jibo must trust the local BEefy certificate chain for:
 
 ```text
 https://api.jibo.com/
-https://neohub.openjibo.com/
+https://api.5x1.com/
 ```
 
 Stock server-service opens `wss://api-socket.jibo.com/{token}` on TLS port 443.
@@ -481,10 +479,10 @@ If that handshake fails (`unknown ca`), Portal `LoopUpdated` push stays at
 For physical robots, do not rely on Node/JSC `wsendpoint` rewrites. The C++
 NotificationSubsystem uses HTTPS/WSS on `:443` directly, so the fix is:
 
-- OpenJibo listening on `https://<host>:443`
-- robot trust store includes the OpenJibo CA (with OpenSSL hash links)
+- BEefy listening on `https://<host>:443`
+- robot trust store includes the BEefy CA (with OpenSSL hash links)
 
-The working setup installs the OpenJibo CA and also creates OpenSSL hash
+The working setup installs the BEefy CA and also creates OpenSSL hash
 symlinks under `/etc/ssl/certs`. Appending the CA to
 `/etc/ssl/certs/ca-certificates.crt` alone was not enough on this robot.
 
@@ -497,7 +495,7 @@ curl https://api.jibo.com/health
 Expected, without `-k`:
 
 ```json
-{"ok":true,"service":"OpenJibo Cloud Api","version":"1.0.19"}
+{"ok":true,"service":"BEefy Cloud Api","version":"1.0.19"}
 ```
 
 If this fails with:
@@ -761,9 +759,9 @@ The tested robot mounted `/var` read-only after filesystem errors. Prefer narrow
 overlays for volatile writable paths, such as `/var/jibo/keys`, instead of
 replacing broad Jibo directories.
 
-## Multiple Jibos On One OpenJibo Server
+## Multiple Jibos On One BEefy Server
 
-When more than one physical Jibo points at the same OpenJibo cloud instance, each
+When more than one physical Jibo points at the same BEefy cloud instance, each
 robot must keep isolated websocket turn state. If both wake on "Hey Jibo" at the
 same time while sharing one cloud session, they can both enter listen mode and
 remain stuck in the blue ring until reboot.
@@ -804,7 +802,7 @@ HTTP protocol calls and WebSockets, use that process's port for both settings.
 
 Minimum setup:
 
-1. Point each Jibo at the same OpenJibo host (`api.jibo.com`, `neohub.openjibo.com`,
+1. Point each Jibo at the same BEefy host (`api.jibo.com`, `api.5x1.com`,
    and related hosts rewritten to the server).
 2. Complete `SetupRobot` separately for each robot with a unique friendly id and
    device id. Example ids: `BOJW-KITCHEN-0001`, `BOJW-OFFICE-0002`.

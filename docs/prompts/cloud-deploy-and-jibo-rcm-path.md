@@ -1,10 +1,10 @@
 # Cloud Deploy And Jibo RCM Path Prompt
 
-Prepare OpenJibo for a lightweight v1 cloud deployment and the cleanest practical Jibo configuration path for group testing.
+Prepare BEefy for a lightweight v1 cloud deployment and the cleanest practical Jibo configuration path for group testing.
 
 Current repo context:
 
-- workspace root: `.\OpenJibo`
+- workspace root: `.` (this repository; formerly the nested `OpenJibo/` folder)
 - the current `.NET` cloud is the target runtime
 - the Node server remains a discovery oracle and fallback
 - latest live-test guidance is in:
@@ -16,7 +16,7 @@ Current repo context:
 
 What we need from this workstream:
 
-1. define the smallest, cleanest, easiest-to-repeat deployment path for a v1 hosted OpenJibo cloud
+1. define the smallest, cleanest, easiest-to-repeat deployment path for a v1 hosted BEefy cloud
 2. define the lightest reliable way to configure Jibo devices to use that cloud, with as few manual error-prone steps as possible
 3. produce scripts and docs that make it realistic for additional revival-group testers to get connected quickly
 

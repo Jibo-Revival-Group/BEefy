@@ -2,9 +2,9 @@
 
 ## Goal
 
-Stand up a small public site and web app on `openjibo.com` that makes the project understandable in a few minutes and gives the owner-facing web surface a real home.
+Stand up a small public site and web app on `api.5x1.com` that makes the project understandable in a few minutes and gives the owner-facing web surface a real home.
 
-`jiborevived.com` remains the community-maintained Jibo Revival Group hub and status space. `openjibo.com` is the Open Jibo showcase, account entry surface, and hosted-cloud entry point.
+`jiborevived.com` remains the community-maintained Jibo Revival Group hub and status space. `api.5x1.com` is the BEefy showcase, account entry surface, and hosted-cloud entry point.
 
 ## Current Status (`2026-08-18`)
 
@@ -30,15 +30,15 @@ The public site should make the hosted-cloud path explicit instead of hiding it 
 
 Recommended host split:
 
-- `openjibo.com`: showcase, docs, account entry, and owner-facing overview
-- `auth.openjibo.com`: only if a shared neutral identity authority is intentionally separated; do not assume one commercial provider owns ecosystem identity
-- `cloud.openjibo.com`: Transcendent Software LLC's clearly labeled paid managed service
+- `api.5x1.com`: showcase, docs, account entry, and owner-facing overview
+- `auth.api.5x1.com`: only if a shared neutral identity authority is intentionally separated; do not assume one commercial provider owns ecosystem identity
+- `api.5x1.com`: Transcendent Software LLC's clearly labeled paid managed service
 - other admitted provider domains: their own terms, status, support, privacy, and onboarding surfaces
 
 Recommended onboarding flow:
 
-1. Start from `openjibo.com` or the robot conversion/onboarding entry.
-2. Compare managed OpenJibo Cloud, other community providers, owner-managed hosting, self-hosted hybrid, and self-hosted isolated choices.
+1. Start from `api.5x1.com` or the robot conversion/onboarding entry.
+2. Compare managed BEefy Cloud, other community providers, owner-managed hosting, self-hosted hybrid, and self-hosted isolated choices.
 3. Explicitly select a provider or self-hosted target.
 4. If the target requires signup/payment or other authorization, use a short-lived signed handoff to that provider.
 5. The provider returns a signed success/failure result bound to the onboarding session.
@@ -72,8 +72,8 @@ Route a minimal form by topic: platform/community, compatibility/conversion, pro
 - zero-touch recovery
 - complete parity with the original cloud
 - public production readiness before device validation is repeatable
-- that `neohub.openjibo.com` needs a separate public web presence unless routing evidence proves it
+- that `api.5x1.com` needs a separate public web presence unless routing evidence proves it
 
 ## Initial Repo Asset
 
-A simple static site scaffold lives in [src/OpenJibo.Site](/OpenJibo/src/OpenJibo.Site).
+A simple static site scaffold lives in [src/OpenJibo.Site](../src/OpenJibo.Site).

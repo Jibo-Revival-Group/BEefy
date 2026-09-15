@@ -1,12 +1,12 @@
-# Local OpenJibo Cloud Quickstart
+# Local BEefy Cloud Quickstart
 
 ## Purpose
 
-This guide is for people who want to run OpenJibo locally.
+This guide is for people who want to run BEefy locally.
 
 There are three different local paths:
 
-- `.NET cloud`: the current OpenJibo cloud implementation and the path we are actively shipping.
+- `.NET cloud`: the current BEefy cloud implementation and the path we are actively shipping.
 - `Node cloud`: the legacy protocol oracle and reverse-engineering server. It is still useful and fun to run, but it is not the production direction.
 - `Playground`: a direct local Jibo ASR/TTS demo. It talks to Jibo on local ports and does not replace the cloud.
 
@@ -130,7 +130,7 @@ Use Playground when you want to test the local ASR/TTS client behavior directly.
 
 ## Which One Should I Use?
 
-Use `.NET cloud` if you want the current OpenJibo behavior, release testing, captures, or anything close to the hosted future.
+Use `.NET cloud` if you want the current BEefy behavior, release testing, captures, or anything close to the hosted future.
 
 Use `Node cloud` if you want the original prototype/oracle, protocol discovery, or a quick comparison against older behavior.
 
@@ -148,7 +148,7 @@ If a physical Jibo does not connect, confirm DNS/host routing for:
 
 - `api.jibo.com`
 - `api-socket.jibo.com`
-- `open-jibo-socket.openjibo.com`
-- `neohub.openjibo.com`
+- `api.5x1.com`
+- `api.5x1.com`
 
 Then compare with the live runbook in [live-jibo-test-runbook.md](live-jibo-test-runbook.md).

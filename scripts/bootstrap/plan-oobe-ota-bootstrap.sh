@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-api_hostname="api.openjibo.com"
+api_hostname="api.5x1.com"
 ntp_epoch="2017-06-01T00:00:00Z"
 certificate_mode="external"
 trace_bundle=""
@@ -11,7 +11,7 @@ strict=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --api-hostname)
-      api_hostname="${2:-api.openjibo.com}"
+      api_hostname="${2:-api.5x1.com}"
       shift 2
       ;;
     --ntp-epoch)
@@ -45,7 +45,7 @@ node - "$api_hostname" "$ntp_epoch" "$certificate_mode" "$trace_bundle" "$output
 const fs = require("fs");
 const path = require("path");
 
-const apiHostname = (process.argv[2] || "api.openjibo.com").trim() || "api.openjibo.com";
+const apiHostname = (process.argv[2] || "api.5x1.com").trim() || "api.5x1.com";
 const ntpEpoch = (process.argv[3] || "2017-06-01T00:00:00Z").trim();
 const certificateMode = (process.argv[4] || "external").trim().toLowerCase();
 const traceBundle = (process.argv[5] || "").trim();

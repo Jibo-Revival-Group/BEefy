@@ -3,7 +3,7 @@ set -euo pipefail
 
 demo_root=""
 target_mode="open-jibo"
-api_hostname="api.openjibo.com"
+api_hostname="api.5x1.com"
 hub_hostname=""
 output_directory=""
 apply=false
@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --api-hostname)
-      api_hostname="${2:-api.openjibo.com}"
+      api_hostname="${2:-api.5x1.com}"
       shift 2
       ;;
     --hub-hostname)
@@ -52,7 +52,7 @@ if [[ -z "$demo_root" ]]; then
 fi
 
 if [[ -z "$hub_hostname" && ( "$target_mode" == "open-jibo" || "$target_mode" == "open-jibo-ai" ) ]]; then
-  hub_hostname="neohub.openjibo.com"
+  hub_hostname="api.5x1.com"
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

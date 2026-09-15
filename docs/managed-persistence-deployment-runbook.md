@@ -1,6 +1,6 @@
 # Managed Persistence Deployment Runbook
 
-This is the operator procedure for moving OpenJibo from legacy PostgreSQL snapshots to normalized PostgreSQL tables. For architectural background, see [persistence-architecture.md](persistence-architecture.md).
+This is the operator procedure for moving BEefy from legacy PostgreSQL snapshots to normalized PostgreSQL tables. For architectural background, see [persistence-architecture.md](persistence-architecture.md).
 
 ## Current Decision
 
@@ -76,7 +76,7 @@ Set staging's `OPENJIBO_RESOURCE_GROUP` to the new staging resource group. Never
 The Azure application used by Actions must trust:
 
 ```text
-repo:transcendentsoftware-jd/JiboExperiments:environment:openjibo-staging
+repo:Jibo-Revival-Group/BEefy:environment:openjibo-staging
 ```
 
 Keep the existing `openjibo-managed` production subject. Using the same deployment principal for the first rehearsal allows read access to the production Key Vault; the clone does not write production databases. The principal also needs Key Vault data-plane `get` permission on the production vault and `set` permission (typically the Key Vault Secrets Officer role) on the staging vault. Azure Contributor alone does not grant these secret data-plane permissions.
@@ -89,9 +89,9 @@ The first staging run needs no DNS and smoke-tests Azure's generated hostname.
 
 For robot testing, later create CNAMEs for:
 
-- `staging-api.openjibo.com`
-- `staging-open-jibo-socket.openjibo.com`
-- `staging-neohub.openjibo.com`
+- `staging-api.5x1.com`
+- `staging-api.5x1.com`
+- `staging-api.5x1.com`
 
 Then rerun staging with `bind_staging_hostnames` enabled. Never point production hostnames at staging.
 
@@ -171,7 +171,7 @@ Run the workflow with:
 
 If the production resource group moved to another Azure subscription, `uniqueString(resourceGroup().id)` changes even though the resources moved intact. Supply all six `existing_*_name` inputs together so the workflow reuses the original Log Analytics workspace, Container Registry, Key Vault, Storage Account, PostgreSQL server, and Speech Services account. Recover these exact names from the active Container App configuration or the most recent successful production deployment; never mix old and newly generated foundation names.
 
-A subscription move also changes the Container App `customDomainVerificationId`. Before promotion, keep every production hostname CNAME pointed directly at the generated Container App FQDN and replace each `asuid.<hostname>` TXT value with the current verification ID reported by the production Container App. This applies to the three `openjibo.com` hosts and both native `jibo.pro` compatibility hosts. The production DNS preflight verifies all five CNAME and TXT pairs before the image build or maintenance window begins.
+A subscription move also changes the Container App `customDomainVerificationId`. Before promotion, keep every production hostname CNAME pointed directly at the generated Container App FQDN and replace each `asuid.<hostname>` TXT value with the current verification ID reported by the production Container App. This applies to the three `api.5x1.com` hosts and both native `jibo.pro` compatibility hosts. The production DNS preflight verifies all five CNAME and TXT pairs before the image build or maintenance window begins.
 
 Promotion is refused if the staging gate is missing, belongs to another commit, lacks a passing smoke test, backup confirmation is absent, PITR retention is below seven days, or production hostname DNS is not ready.
 

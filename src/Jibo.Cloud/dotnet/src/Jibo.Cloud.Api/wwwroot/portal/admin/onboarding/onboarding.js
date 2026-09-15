@@ -32,7 +32,7 @@ async function renderLogin(message = "") {
   app.innerHTML = `
     <div class="center-shell">
       <section class="card login-card">
-        <p class="eyebrow">OpenJibo Admin</p>
+        <p class="eyebrow">BEefy Admin</p>
         <h1>Onboarding and server tools</h1>
         <p class="lede">Enter the admin password to manage trusted servers and validate self-hosted setup.</p>
         <label for="password">Admin password</label>
@@ -89,7 +89,7 @@ async function renderTools(message = "", tone = "success") {
     <div class="status-shell">
       <section class="card status-hero">
         <div class="status-hero-top">
-          <div><p class="status-kicker">OpenJibo Admin</p><h1>Onboarding and server tools</h1><p class="status-lede">Protected setup controls for client connectivity and fleet trust.</p></div>
+          <div><p class="status-kicker">BEefy Admin</p><h1>Onboarding and server tools</h1><p class="status-lede">Protected setup controls for client connectivity and fleet trust.</p></div>
           <div class="button-row" style="margin-top: 0;"><a class="secondary-button" href="/portal/status">Status</a><a class="secondary-button" href="/portal/admin/harness">Harness</a><a class="secondary-button" href="/portal">Customer portal</a><button class="button danger" id="signOut" type="button">Sign out</button></div>
         </div>
       </section>
@@ -99,7 +99,7 @@ async function renderTools(message = "", tone = "success") {
           <p class="muted">Hosted servers must use HTTPS. Self-hosted servers are validated separately and never added to this registry.</p>
           <ul class="steps">${serverList(servers)}</ul>
           <div class="inline-form">
-            <label for="serverHost">Server host</label><input id="serverHost" placeholder="api.example.openjibo.com">
+            <label for="serverHost">Server host</label><input id="serverHost" placeholder="api.5x1.com">
             <label for="serverName">Display name</label><input id="serverName" placeholder="Example hosted server">
             <label for="serverKind">Server kind</label><select id="serverKind"><option value="managed">Managed</option><option value="hybrid">Hybrid</option></select>
             <label for="serverReason">Reason</label><input id="serverReason" placeholder="Operator-approved server">

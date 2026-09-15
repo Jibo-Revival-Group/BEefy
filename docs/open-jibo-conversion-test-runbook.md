@@ -6,7 +6,7 @@ Use this checklist for the next robot session after the Linux-first conversion h
 
 Prove the staged conversion flow on the real robot root while verifying the credentials region is rewritten from `api` to `open-jibo` during apply.
 
-In this runbook, `open-jibo` is the staged conversion target label used by the helpers. It is not a robot boot mode. The robot still boots through stock modes like `normal`, `oobe`, and `int-developer`, while the managed production cloud contract stays on `api.openjibo.com`, `open-jibo-socket.openjibo.com`, and `neohub.openjibo.com`.
+In this runbook, `open-jibo` is the staged conversion target label used by the helpers. It is not a robot boot mode. The robot still boots through stock modes like `normal`, `oobe`, and `int-developer`, while the managed production cloud contract stays on `api.5x1.com`, `api.5x1.com`, and `api.5x1.com`.
 
 ## Before You Start
 
@@ -143,7 +143,7 @@ Video sequence:
 3. SSH into the robot, install or update the Open Jibo scripts/skills, and reboot.
 4. Let the Open Jibo conversion skill launch on reboot, switch the startup mode to `open-jibo`, and begin registration through the app or website.
 5. Show managed Azure as the selected server/provider, then show the free/paid model branch and signed onboarding return/event wiring when available.
-6. Complete first Open Jibo startup against `api.openjibo.com` and run one websocket turn.
+6. Complete first Open Jibo startup against `api.5x1.com` and run one websocket turn.
 7. Show the portal identity graph/evidence bundle, including loop, robot, registered device, loop member, and any recognition observation evidence.
 8. Restart the managed cloud container or reconnect to the same PostgreSQL-backed state and show that identity/recognition evidence persists.
 

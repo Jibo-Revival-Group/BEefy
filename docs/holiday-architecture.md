@@ -2,7 +2,7 @@
 
 Pegasus exposed holidays as a loop-scoped list synchronized into `/jibo/holidays`.
 
-In OpenJibo, the holiday path now follows the same broad model:
+In BEefy, the holiday path now follows the same broad model:
 
 - system holidays come from a live holiday source
 - custom holidays are loop-scoped

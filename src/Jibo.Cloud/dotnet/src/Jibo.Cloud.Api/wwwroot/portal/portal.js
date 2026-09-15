@@ -122,7 +122,7 @@ async function renderTrustedServerRegistryPanel() {
         </div>
         <p class="muted">Add an Open Jibo hosted server to the trust registry. The trust root stays special, and the registry lives in persisted cloud state.</p>
         <div class="meta-list compact">
-          <div class="meta-item"><span>Trusted root</span><span>${escapeHtml(directory.trustedRootHost || "api.openjibo.com")}</span></div>
+          <div class="meta-item"><span>Trusted root</span><span>${escapeHtml(directory.trustedRootHost || "api.5x1.com")}</span></div>
           <div class="meta-item"><span>Registry source</span><span>Cloud state</span></div>
         </div>
         <div class="meta-list compact">
@@ -154,7 +154,7 @@ async function renderTrustedServerRegistryPanel() {
         </ul>
         <div class="inline-form">
           <label for="trustedServerHost">Server host</label>
-          <input id="trustedServerHost" type="text" placeholder="api.example.openjibo.com">
+          <input id="trustedServerHost" type="text" placeholder="api.5x1.com">
           <label for="trustedServerName">Display name</label>
           <input id="trustedServerName" type="text" placeholder="Example hosted server">
           <label for="trustedServerKind">Server kind</label>
@@ -513,9 +513,9 @@ async function renderLogin(message = "", isError = false) {
   app.innerHTML = `
     <div class="center-shell">
       <section class="card login-card">
-        <p class="eyebrow">OpenJibo Portal</p>
+        <p class="eyebrow">BEefy Portal</p>
         <h1>Sign in</h1>
-        <p class="lede">Sign in with your OpenJibo account to manage your paired robots.</p>
+        <p class="lede">Sign in with your BEefy account to manage your paired robots.</p>
 
         <label for="accountEmail">Email</label>
         <input id="accountEmail" type="email" autocomplete="email" placeholder="ChunkyLover53@aol.com">
@@ -554,7 +554,7 @@ async function renderCreateAccount(message = "", isError = false) {
   app.innerHTML = `
     <div class="center-shell">
       <section class="card login-card">
-        <p class="eyebrow">OpenJibo Portal</p>
+        <p class="eyebrow">BEefy Portal</p>
         <h1>Create an Account</h1>
         <p class="lede">Use 8 to 32 characters for your password.</p>
 
@@ -592,7 +592,7 @@ async function renderLegacyCodeLogin(message = "", isError = false) {
   app.innerHTML = `
     <div class="center-shell">
       <section class="card login-card">
-        <p class="eyebrow">OpenJibo Portal</p>
+        <p class="eyebrow">BEefy Portal</p>
         <h1>Legacy Code Login</h1>
         <p class="lede">Say <strong>"Hey Jibo, verify me"</strong>, then enter the four-digit code Jibo speaks.</p>
 
@@ -687,7 +687,7 @@ async function renderAccountHome(message = "", isError = false) {
   app.innerHTML = `
     <div class="center-shell">
       <section class="card login-card">
-        <p class="eyebrow">OpenJibo Portal</p>
+        <p class="eyebrow">BEefy Portal</p>
         <h1>Your Jibos</h1>
         <p class="lede">${escapeHtml(account.email)} · Select a robot or pair a new one.</p>
         ${robots.length ? `
@@ -1091,8 +1091,8 @@ function renderHomeAssistantPanel(dashboard) {
         </div>
         <p class="muted">Pair Home Assistant so Jibo can control devices in your home.</p>
         <ol class="steps">
-          <li>Install the OpenJibo integration in Home Assistant.</li>
-          <li>Set the server URL to this OpenJibo server.</li>
+          <li>Install the BEefy integration in Home Assistant.</li>
+          <li>Set the server URL to this BEefy server.</li>
           <li>Copy the pairing code from the Home Assistant notification.</li>
           <li>Enter it below to link this Jibo.</li>
         </ol>
@@ -1172,7 +1172,7 @@ async function renderDashboard(message = "", tone = "success") {
     <div class="shell">
       <header class="dashboard-header">
         <div>
-          <p class="eyebrow">OpenJibo Dashboard</p>
+          <p class="eyebrow">BEefy Dashboard</p>
           <h1>${escapeHtml(dashboard.jiboName || dashboard.jiboFriendlyId || "Your Jibo")}</h1>
           <p class="muted">Manage integrations for this robot.</p>
         </div>

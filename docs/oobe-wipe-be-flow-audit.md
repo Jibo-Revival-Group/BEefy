@@ -3,7 +3,7 @@
 Fecha: 2026-06-12
 
 Este documento resume la auditoria del dump `JiboOS-10.0.18`, la app React Native
-`Jibo_APP` y el servidor `.NET` de `OpenJibo`, con foco en cerrar el flujo
+`Jibo_APP` y el servidor `.NET` de `openjibo`, con foco en cerrar el flujo
 completo de wipe -> OOBE -> servidor -> modo normal.
 
 ## Fuentes revisadas
@@ -16,7 +16,7 @@ completo de wipe -> OOBE -> servidor -> modo normal.
 - SDK runtime: `@be/be/node_modules/jibo/lib/jibo.js`.
 - Cliente cloud legacy: `@jibo/jibo-server-client`.
 - App: `Jibo_APP`.
-- Servidor: `OpenJibo/src/Jibo.Cloud/dotnet`.
+- Servidor: `BEefy/src/Jibo.Cloud/dotnet`.
 
 ## Dump y arranque
 
@@ -30,7 +30,7 @@ ficheros persistentes que importan para este flujo son:
   `api-socket.jibo.com`, and the legacy `neo-hub.jibo.com`.
 
 Importante: en este firmware conviene mantener `region: "api"` y resolver
-DNS/hosts hacia OpenJibo. Cambiar la region a `openjibo-local` hace que
+DNS/hosts hacia BEefy. Cambiar la region a `openjibo-local` hace que
 servicios legacy deriven hosts tipo `openjibo-local.jibo.com`.
 
 ## Wipe
@@ -253,10 +253,10 @@ necesita mas campos en operaciones avanzadas de `Key_*`.
 
 ## Verificacion ejecutada
 
-- `dotnet test OpenJibo/tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj`: 595
+- `dotnet test BEefy/tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj`: 595
   tests passed. Aparecieron warnings `NU1900` por lock/cache de vulnerabilidades
   NuGet, sin fallo de compilacion ni tests.
-- `dotnet test OpenJibo/tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj --filter
+- `dotnet test BEefy/tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj --filter
   LocalWhisperCppBufferedAudioSttStrategyTests`: 14 tests passed.
 - `whisper-cli -m "$HOME/Library/Application Support/openjibo/whisper/ggml-base.en.bin"
   -f /tmp/openjibo-whisper-test.wav -l en`: transcribio una muestra generada en

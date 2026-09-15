@@ -156,13 +156,13 @@ Use the Open Jibo root domain family as the identity anchor, but keep auth deplo
 
 Recommended public shape:
 
-- `auth.openjibo.com`: people, loops, robots, cloud/server registration, token issuance, and trust metadata
-- `api.openjibo.com`: canonical robot-facing hosted API for account, loop, OOBE, media, update, and related cloud protocol traffic
-- `neohub.openjibo.com`: canonical managed host for listen/proactive WebSocket traffic
-- `cloud.openjibo.com`: managed Open Jibo Cloud runtime
-- `members.openjibo.com` or `cloud.openjibo.com`: hosted subscription and plan-management surface for paid cloud access
-- `ai.openjibo.com` or `cloud-ai.openjibo.com`: Open Jibo AI runtime when ready
-- `openjibo.com`: public web app, account entry point, documentation, and owner flows
+- `auth.api.5x1.com`: people, loops, robots, cloud/server registration, token issuance, and trust metadata
+- `api.5x1.com`: canonical robot-facing hosted API for account, loop, OOBE, media, update, and related cloud protocol traffic
+- `api.5x1.com`: canonical managed host for listen/proactive WebSocket traffic
+- `api.5x1.com`: managed Open Jibo Cloud runtime
+- `members.api.5x1.com` or `api.5x1.com`: hosted subscription and plan-management surface for paid cloud access
+- `ai.api.5x1.com` or `cloud-ai.api.5x1.com`: Open Jibo AI runtime when ready
+- `api.5x1.com`: public web app, account entry point, documentation, and owner flows
 
 Auth is broader than user login. It must model:
 
@@ -178,11 +178,11 @@ Decision: use the Open Jibo domain family as the root identity authority, with a
 
 Decision: auth should start as a separate deployable service, not as a module embedded inside the robot cloud container. That avoids a later split when self-hosted, managed, hybrid, and AI modes need to share identity without all running the same robot runtime.
 
-Decision: the first managed API surface should use `api.openjibo.com` as the canonical hostname, with `neohub.openjibo.com` as the canonical listen/proactive host.
+Decision: the first managed API surface should use `api.5x1.com` as the canonical hostname, with `api.5x1.com` as the canonical listen/proactive host.
 
-Decision: `openjibo.com` should be treated as a real product surface, not just a marketing page. The first public site should be able to host account entry, onboarding redirects, and the project overview without requiring a separate domain for the owner-facing web app.
+Decision: `api.5x1.com` should be treated as a real product surface, not just a marketing page. The first public site should be able to host account entry, onboarding redirects, and the project overview without requiring a separate domain for the owner-facing web app.
 
-Decision: the hosted subscription surface should live on a separate `members.openjibo.com` or `cloud.openjibo.com` entry so `openjibo.com` can remain the showcase and account-entry site while billing and plan state stay clearly separated from the robot-facing API.
+Decision: the hosted subscription surface should live on a separate `members.api.5x1.com` or `api.5x1.com` entry so `api.5x1.com` can remain the showcase and account-entry site while billing and plan state stay clearly separated from the robot-facing API.
 
 Decision: the first auth service can live in the same repository and solution as Open Jibo Cloud, but it should be its own project and deployable from day one.
 
@@ -391,9 +391,9 @@ The smoke gate does not need full robot parity. Its job is to prevent obviously 
 
 Custom-domain readiness should be part of that gate once the public hostnames are wired up. At minimum, the deployment should prove:
 
-- the managed API answers correctly behind `api.openjibo.com`
-- the public site answers correctly behind `openjibo.com`
-- any `neohub.openjibo.com` routing decision is either explicit or intentionally collapsed onto the API host
+- the managed API answers correctly behind `api.5x1.com`
+- the public site answers correctly behind `api.5x1.com`
+- any `api.5x1.com` routing decision is either explicit or intentionally collapsed onto the API host
 - the same deployment can still satisfy the robot-facing protocol smoke checks without depending on a hardcoded legacy hostname
 
 Research target: record a new-robot onboarding session and reduce it to the smallest replayable sequence that proves the deployment can onboard, issue tokens, accept sockets, and complete basic operation turns.
@@ -432,7 +432,7 @@ Later pipeline should:
 
 ## `1.0.20` Exit Criteria
 
-Status clarification (`2026-08-18`): the container, migration, and smoke contracts prove the neutral deployment foundation. Provider-specific membership, price, billing, entitlement policy, managed backup promise, support operations, and paid pilot belong to that provider. Transcendent Software's private implementation is represented publicly by [cloud.openjibo.com](https://cloud.openjibo.com).
+Status clarification (`2026-08-18`): the container, migration, and smoke contracts prove the neutral deployment foundation. Provider-specific membership, price, billing, entitlement policy, managed backup promise, support operations, and paid pilot belong to that provider. Transcendent Software's private implementation is represented publicly by [api.5x1.com](https://api.5x1.com).
 
 This track is ready to build when:
 

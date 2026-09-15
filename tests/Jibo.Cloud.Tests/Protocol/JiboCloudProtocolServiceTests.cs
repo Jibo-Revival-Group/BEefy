@@ -824,16 +824,16 @@ public sealed class JiboCloudProtocolServiceTests
         using var payload = JsonDocument.Parse(result.BodyText);
         Assert.False(payload.RootElement.GetProperty("willWriteRobot").GetBoolean());
         Assert.True(payload.RootElement.GetProperty("canPrepareRobot").GetBoolean());
-        Assert.Equal("api.openjibo.com", payload.RootElement.GetProperty("targetHost").GetString());
-        Assert.Equal("api.openjibo.com",
+        Assert.Equal("api.5x1.com", payload.RootElement.GetProperty("targetHost").GetString());
+        Assert.Equal("api.5x1.com",
             payload.RootElement.GetProperty("hostMappings").GetProperty("api.jibo.com").GetString());
-        Assert.Equal("api.openjibo.com",
+        Assert.Equal("api.5x1.com",
             payload.RootElement.GetProperty("hostMappings").GetProperty("api-socket.jibo.com").GetString());
-        Assert.Equal("api.openjibo.com",
+        Assert.Equal("api.5x1.com",
             payload.RootElement.GetProperty("hostMappings").GetProperty("open-jibo-socket.openjibo.com").GetString());
-        Assert.Equal("api.openjibo.com",
+        Assert.Equal("api.5x1.com",
             payload.RootElement.GetProperty("hostMappings").GetProperty("neo-hub.jibo.com").GetString());
-        Assert.Equal("api.openjibo.com",
+        Assert.Equal("api.5x1.com",
             payload.RootElement.GetProperty("hostMappings").GetProperty("neohub.openjibo.com").GetString());
     }
 
@@ -927,9 +927,9 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.Equal("robot-abc", preparePayload.RootElement.GetProperty("deviceId").GetString());
         Assert.Equal("loop-123", preparePayload.RootElement.GetProperty("loopId").GetString());
         Assert.Equal("open-jibo", preparePayload.RootElement.GetProperty("targetMode").GetString());
-        Assert.Equal("api.openjibo.com", preparePayload.RootElement.GetProperty("targetHost").GetString());
+        Assert.Equal("api.5x1.com", preparePayload.RootElement.GetProperty("targetHost").GetString());
         Assert.Equal("rollback-abc", preparePayload.RootElement.GetProperty("rollbackSnapshotId").GetString());
-        Assert.Equal("api.openjibo.com",
+        Assert.Equal("api.5x1.com",
             preparePayload.RootElement.GetProperty("hostMappings").GetProperty("api.jibo.com").GetString());
         Assert.True(preparePayload.RootElement.GetProperty("conversionReadiness").GetProperty("canWriteRobot")
             .GetBoolean());
@@ -950,9 +950,9 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.False(setupPayload.RootElement.GetProperty("serviceMode").GetBoolean());
         Assert.Equal("open-jibo-abc", setupPayload.RootElement.GetProperty("robotId").GetString());
         Assert.Equal("open-jibo", setupPayload.RootElement.GetProperty("targetMode").GetString());
-        Assert.Equal("api.openjibo.com", setupPayload.RootElement.GetProperty("targetHost").GetString());
+        Assert.Equal("api.5x1.com", setupPayload.RootElement.GetProperty("targetHost").GetString());
         Assert.Equal("rollback-abc", setupPayload.RootElement.GetProperty("rollbackSnapshotId").GetString());
-        Assert.Equal("api.openjibo.com",
+        Assert.Equal("api.5x1.com",
             setupPayload.RootElement.GetProperty("hostMappings").GetProperty("api.jibo.com").GetString());
         Assert.True(setupPayload.RootElement.GetProperty("conversionReadiness").GetProperty("canWriteRobot")
             .GetBoolean());
@@ -1029,7 +1029,7 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.Equal("robot-signed-session", onboardingSession.GetProperty("deviceId").GetString());
         Assert.Equal("loop-signed-session", onboardingSession.GetProperty("loopId").GetString());
         Assert.Equal("open-jibo", onboardingSession.GetProperty("targetMode").GetString());
-        Assert.Equal("api.openjibo.com", onboardingSession.GetProperty("targetHost").GetString());
+        Assert.Equal("api.5x1.com", onboardingSession.GetProperty("targetHost").GetString());
         Assert.Equal("rollback-signed-session", onboardingSession.GetProperty("rollbackSnapshotId").GetString());
         Assert.Equal("HMAC-SHA256", onboardingSession.GetProperty("signatureAlgorithm").GetString());
         Assert.False(string.IsNullOrWhiteSpace(onboardingSession.GetProperty("nonce").GetString()));
@@ -1099,17 +1099,17 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.Equal("loop-status", statusPayload.RootElement.GetProperty("loopId").GetString());
         Assert.Equal("open-jibo", statusPayload.RootElement.GetProperty("targetMode").GetString());
         Assert.True(statusPayload.RootElement.GetProperty("expires").GetInt64() > 0);
-        Assert.Equal("api.openjibo.com", statusPayload.RootElement.GetProperty("targetHost").GetString());
+        Assert.Equal("api.5x1.com", statusPayload.RootElement.GetProperty("targetHost").GetString());
         var readiness = statusPayload.RootElement.GetProperty("conversionReadiness");
         Assert.False(readiness.GetProperty("canWriteRobot").GetBoolean());
         Assert.Contains(readiness.GetProperty("blockers").EnumerateArray(),
             blocker => blocker.GetString() == "missing-rollback-snapshot");
         var hostMappings = statusPayload.RootElement.GetProperty("hostMappings");
-        Assert.Equal("api.openjibo.com", hostMappings.GetProperty("api.jibo.com").GetString());
-        Assert.Equal("api.openjibo.com", hostMappings.GetProperty("api-socket.jibo.com").GetString());
-        Assert.Equal("api.openjibo.com", hostMappings.GetProperty("open-jibo-socket.openjibo.com").GetString());
-        Assert.Equal("api.openjibo.com", hostMappings.GetProperty("neo-hub.jibo.com").GetString());
-        Assert.Equal("api.openjibo.com", hostMappings.GetProperty("neohub.openjibo.com").GetString());
+        Assert.Equal("api.5x1.com", hostMappings.GetProperty("api.jibo.com").GetString());
+        Assert.Equal("api.5x1.com", hostMappings.GetProperty("api-socket.jibo.com").GetString());
+        Assert.Equal("api.5x1.com", hostMappings.GetProperty("open-jibo-socket.openjibo.com").GetString());
+        Assert.Equal("api.5x1.com", hostMappings.GetProperty("neo-hub.jibo.com").GetString());
+        Assert.Equal("api.5x1.com", hostMappings.GetProperty("neohub.openjibo.com").GetString());
     }
 
     [Fact]
@@ -1175,7 +1175,7 @@ public sealed class JiboCloudProtocolServiceTests
 
         Assert.Equal(200, status.StatusCode);
         using var statusPayload = JsonDocument.Parse(status.BodyText);
-        Assert.Equal("api.openjibo.com", statusPayload.RootElement.GetProperty("targetHost").GetString());
+        Assert.Equal("api.5x1.com", statusPayload.RootElement.GetProperty("targetHost").GetString());
         var readiness = statusPayload.RootElement.GetProperty("conversionReadiness");
         Assert.False(readiness.GetProperty("canWriteRobot").GetBoolean());
         Assert.Contains(readiness.GetProperty("blockers").EnumerateArray(),
@@ -1762,9 +1762,9 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.Equal("robot-robot-converted", robot.RobotId);
         Assert.Equal("1.9.2", robot.FirmwareVersion);
         Assert.Equal("1.0.20", robot.ApplicationVersion);
-        Assert.Equal("api.openjibo.com", robot.HostMappings["api.jibo.com"]);
-        Assert.Equal("api.openjibo.com", robot.HostMappings["api-socket.jibo.com"]);
-        Assert.Equal("api.openjibo.com", robot.HostMappings["neo-hub.jibo.com"]);
+        Assert.Equal("api.5x1.com", robot.HostMappings["api.jibo.com"]);
+        Assert.Equal("api.5x1.com", robot.HostMappings["api-socket.jibo.com"]);
+        Assert.Equal("api.5x1.com", robot.HostMappings["neo-hub.jibo.com"]);
 
         var snapshot = store.GetIdentityGraph();
         Assert.Contains(snapshot.EvidenceSignals, signal =>
@@ -1888,9 +1888,9 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.Equal("ok", reconnectPayload.RootElement.GetProperty("result").GetString());
         Assert.Equal("open-jibo-reconnect", reconnectPayload.RootElement.GetProperty("robotId").GetString());
         Assert.Equal("open-jibo", reconnectPayload.RootElement.GetProperty("targetMode").GetString());
-        Assert.Equal("api.openjibo.com", reconnectPayload.RootElement.GetProperty("targetHost").GetString());
+        Assert.Equal("api.5x1.com", reconnectPayload.RootElement.GetProperty("targetHost").GetString());
         Assert.Equal("rollback-reconnect", reconnectPayload.RootElement.GetProperty("rollbackSnapshotId").GetString());
-        Assert.Equal("api.openjibo.com",
+        Assert.Equal("api.5x1.com",
             reconnectPayload.RootElement.GetProperty("hostMappings").GetProperty("api.jibo.com").GetString());
         Assert.True(reconnectPayload.RootElement.GetProperty("conversionReadiness").GetProperty("canWriteRobot")
             .GetBoolean());

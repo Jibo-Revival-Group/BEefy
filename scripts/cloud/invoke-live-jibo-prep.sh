@@ -8,11 +8,10 @@ CAPTURE_DIRECTORY="${CAPTURE_DIRECTORY:-${REPO_ROOT}/captures/websocket}"
 EXPECTED_HOSTS=(
   "api.jibo.com"
   "api-socket.jibo.com"
-  "open-jibo-socket.openjibo.com"
-  "neohub.openjibo.com"
+  "api.5x1.com"
 )
 
-echo "OpenJibo live Jibo prep"
+echo "BEefy live Jibo prep"
 echo ""
 
 echo "1. HTTP health check"

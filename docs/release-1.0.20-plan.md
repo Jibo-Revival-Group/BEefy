@@ -11,12 +11,12 @@ The job for `1.0.20` is to tighten the update and backup story, prove the remain
 - Kickoff date: `2026-06-10`
 - Cloud version source of truth: [OpenJiboCloudBuildInfo.cs](../src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Application/Services/OpenJiboCloudBuildInfo.cs)
 - Active release constant: `1.0.20`
-- Managed-service public surface: [cloud.openjibo.com](https://cloud.openjibo.com)
+- Managed-service public surface: [api.5x1.com](https://api.5x1.com)
 - Repository boundary (`2026-08-18`): this release owns the neutral runtime, self-hosting, provider contracts, and shared reliability work; commercial billing, membership, support, and managed-service policy live in the separate OpenJiboCloud repository
 
 ## Release Definition
 
-The compatibility and platform work recorded below defines the neutral `1.0.20` runtime release. It must support managed providers and self-hosting without embedding one operator's billing or commercial policy into the robot-facing runtime. Transcendent Software's paid-service application and plans live in a separate private repository and are represented publicly by [cloud.openjibo.com](https://cloud.openjibo.com).
+The compatibility and platform work recorded below defines the neutral `1.0.20` runtime release. It must support managed providers and self-hosting without embedding one operator's billing or commercial policy into the robot-facing runtime. Transcendent Software's paid-service application and plans live in a separate private repository and are represented publicly by [api.5x1.com](https://api.5x1.com).
 
 Unrelated personality/catalog expansion should move to `1.0.21+` during the launch freeze unless it fixes a supported-cohort regression.
 
@@ -43,7 +43,7 @@ Unrelated personality/catalog expansion should move to `1.0.21+` during the laun
 - grocery list now carries an explicit follow-up listen context in the cloud path, so the remaining work is live/hardware verification rather than inventing a new capture flow
 - closed the grocery follow-up and add-item reliability slice in the server path: focused websocket and interaction tests already cover the follow-up prompt, the dedicated follow-up listen context, and inline grocery/shopping/to-do adds
 - keep the grocery alias on its dedicated listen/capture state so the robot stays active long enough to accept an item phrase
-- bare `twerk` is source-backed in Pegasus/OpenJibo and now has a cloud wire regression, so the remaining issue is the robot-side STT landing on `hello` instead of `twerk`
+- bare `twerk` is source-backed in Pegasus/BEefy and now has a cloud wire regression, so the remaining issue is the robot-side STT landing on `hello` instead of `twerk`
 - keep `sleep` and motion parity under review so the robot does not drift into an idle-looking state when the original skill should stay asleep; the cloud path now persists `sleepState=sleeping` and reports `ASLEEP` for the session, the legacy snapshot already has a real `GlobalCommand.SLEEP` path, wake is still event-driven rather than timer-driven, and the remaining blocker is wiring the explicit wake triggers (`dayStarts`, `headTouch`, `hjHeard`) so the parity path can leave sleep cleanly
 - the regression plan now has an explicit circadian sleep/wake proof loop, so the next live robot pass can classify the second-sleep symptom and wake-trigger behavior as proved, disproved, or needing Pegasus confirmation
 - motion command routing is now in `polish`: cloud tests already cover `sleep`, `wake_up`, `turn around`, `spin around`, `twirl`, and `twerk`, but the live robot still shows the sleep double-launch quirk and the occasional motion no-op that should stay on the review list
@@ -114,8 +114,8 @@ Storage trust planning starts in [storage-trust-consensus-plan.md](storage-trust
 - use PostgreSQL as the first Docker Compose database
 - deploy auth as a separate service under the Open Jibo domain family
 - keep auth in the shared repo/solution initially, but as its own project and deployable
-- make `api.openjibo.com` the canonical robot-facing hosted API, with `neo-hub.openjibo.com` only if we later need a distinct host or route boundary for listen/proactive traffic
-- launch `openjibo.com` as a real public web app and account entry surface for the release, not just a brochure site
+- make `api.5x1.com` the canonical robot-facing hosted API, with `neo-hub.api.5x1.com` only if we later need a distinct host or route boundary for listen/proactive traffic
+- launch `api.5x1.com` as a real public web app and account entry surface for the release, not just a brochure site
 - keep the infrastructure plan flexible enough to map multiple hostnames to the same deployment when that is the simplest safe option
 - publish managed images to Azure Container Registry first
 - gate real-robot deployment with a virtual-Jibo or purpose-built smoke client
@@ -129,9 +129,9 @@ Storage trust planning starts in [storage-trust-consensus-plan.md](storage-trust
 
 - clarify the public-site split for the release:
   - `jiborevived.com` remains the community-maintained Jibo Revival Group hub and status space
-  - `openjibo.com` is the Open Jibo showcase, account entry surface, and hosted-cloud landing page
-  - `auth.openjibo.com` owns authentication, robot/loop registration, and token issuance
-  - `cloud.openjibo.com` or `members.openjibo.com` carries subscription and plan management for hosted access
+  - `api.5x1.com` is the Open Jibo showcase, account entry surface, and hosted-cloud landing page
+  - `auth.api.5x1.com` owns authentication, robot/loop registration, and token issuance
+  - `api.5x1.com` or `members.api.5x1.com` carries subscription and plan management for hosted access
   - onboarding must support signed provider callbacks/returns for signup/payment, success/failure handoff, and cancellation-driven hosted-access revocation
 
 - Progress update (`2026-07-28`):
@@ -154,7 +154,7 @@ Storage trust planning starts in [storage-trust-consensus-plan.md](storage-trust
 - use deny-by-evidence admission and full versioned snapshots as the first sync model
 - sign identity/topology, admission/revocation, issued-identity, provider handoff, and versioned snapshot records before replication
 - use hardware-stable `DeviceId`, cert thumbprint, issued-identity lineage, and build/config hashes only as corroborating signals for clone detection
-- plan the openjibo.com web UI and paid-access surface alongside the free/self-hosted options
+- plan the api.5x1.com web UI and paid-access surface alongside the free/self-hosted options
 - support provider-specific onboarding steps such as signup/payment before returning to robot onboarding
 - support signed provider onboarding events and signed return flows
 - use short-lived signed onboarding session tokens plus provider-signed callbacks/returns with nonce/state binding
@@ -178,7 +178,7 @@ Storage trust planning starts in [storage-trust-consensus-plan.md](storage-trust
 
 - continued the source-backed compact actor/actress preference parity slice by widening `do you enjoy`, `are you into`, and `are you a fan of` forms for Tom Hanks, Hanks, Julie Andrews, and Mary Poppins into the already-imported favorite actor/actress answer sets instead of generic chat. Added focused dialog guardrail coverage so these low-signal celebrity prompts preserve the authored Tom Hanks and Julie Andrews replies while live robot playback remains the proof item for this small slice.
 
-- continued the compact preference-question parity slice by adding `are you a fan of` variants for the recently widened source-backed favorites routes: shapes, favorite words, vegetables, places, superheroes, robots, cars, weather, time-of-day, sun/space presence, food, candy, ice cream, drinks, fruit, dessert, and pets. These now stay on the authored Pegasus/OpenJibo answer sets instead of falling through to generic chat; live robot playback remains the proof item for this small alias slice.
+- continued the compact preference-question parity slice by adding `are you a fan of` variants for the recently widened source-backed favorites routes: shapes, favorite words, vegetables, places, superheroes, robots, cars, weather, time-of-day, sun/space presence, food, candy, ice cream, drinks, fruit, dessert, and pets. These now stay on the authored Pegasus/BEefy answer sets instead of falling through to generic chat; live robot playback remains the proof item for this small alias slice.
 
 - continued the source-backed compact presence/favorites parity slice by widening `do you enjoy` / `are you into` forms for artichokes, being here, superheroes, robots, cars, sunny weather, daytime, sunshine, and astronomy into the already-imported favorite vegetable, place, superhero, robot, car, weather, time-of-day, sun, and space answer sets instead of generic chat. Added focused dialog guardrail coverage so these low-signal preference prompts preserve the authored artichoke, right-here, Optimus Prime, Wally, beetle, sunny-weather, any-time-you-are-here, favorite-star, and astronomy replies while live robot playback remains the proof item for this small slice.
 
@@ -370,12 +370,12 @@ Storage trust planning starts in [storage-trust-consensus-plan.md](storage-trust
 
 - tightened the conversion smoke clients so `VerifyConnection` now sends a robot-reported connection host and fails if the proof does not echo a matching normalized host. This moves the managed/self-hosted gate closer to the physical converted-robot requirement: the cloud must prove both stored DNS mappings and the host the robot says it reached.
 
-- tightened the self-hosted smoke path so Bash and PowerShell smoke clients can carry an explicit conversion target mode/host through `PlanConversion`, `PrepareRobot`, `SetupRobot`, and `VerifyConnection`, defaulting managed runs to `api.openjibo.com` while making self-hosted runs prove their own host mappings.
+- tightened the self-hosted smoke path so Bash and PowerShell smoke clients can carry an explicit conversion target mode/host through `PlanConversion`, `PrepareRobot`, `SetupRobot`, and `VerifyConnection`, defaulting managed runs to `api.5x1.com` while making self-hosted runs prove their own host mappings.
 - expanded the self-hosted deployment contract to require `VerifyConnection`, `targetMode`, and `targetHost` evidence in the shared smoke client so Docker Compose packaging now gates the same robot-to-cloud connection proof as managed Azure smoke.
 
 - tightened the Wi-Fi QR conversion path so a server-backed QR now collects target mode, optional target host, and required rollback snapshot evidence, runs non-writing `OOBE PlanConversion`, and refuses to mint a robot token when readiness is blocked instead of falling back to an unsafe static token.
-- expanded the managed cloud smoke gate to exercise `OOBE PlanConversion` before `PrepareRobot`, asserting that the plan is non-writing, write-safe, and resolves the managed target host to `api.openjibo.com` before the robot setup token is issued.
-- tightened the managed cloud smoke gate so both Bash and PowerShell smoke clients now call robot-facing `OOBE VerifyConnection` after `SetupRobot` and fail if the prepared robot is not connected, complete, mapped to `api.openjibo.com`, or write-safe. This makes the deployment gate prove the exact post-conversion robot-to-cloud connection target instead of stopping at setup/status responses.
+- expanded the managed cloud smoke gate to exercise `OOBE PlanConversion` before `PrepareRobot`, asserting that the plan is non-writing, write-safe, and resolves the managed target host to `api.5x1.com` before the robot setup token is issued.
+- tightened the managed cloud smoke gate so both Bash and PowerShell smoke clients now call robot-facing `OOBE VerifyConnection` after `SetupRobot` and fail if the prepared robot is not connected, complete, mapped to `api.5x1.com`, or write-safe. This makes the deployment gate prove the exact post-conversion robot-to-cloud connection target instead of stopping at setup/status responses.
 - added a robot-facing OOBE `VerifyConnection` / `ConnectionProof` operation for the conversion-video path: after `SetupRobot`, a prepared token can now return connected/complete state, cloud version, robot/device/loop ids, target mode/host, rollback snapshot, host mappings, baseline evidence, and conversion readiness in one proof payload.
 - added signed onboarding-session evidence to the OOBE conversion plan/prepare/status/setup responses: each prepared token now carries a nonce, provider-return state, canonical target host, expiry, signature payload, and HMAC-SHA256 signature so account/provider onboarding can be bound to the exact robot conversion target before the robot writes identity.
 - added a planning-only OOBE OTA bootstrap manifest helper so the static-DNS/NTP/HTTPS update lane can be reviewed without repository-bundled historical certificate material; strict mode now keeps certificate provenance and missing trace captures as explicit blockers before any physical robot attempt.
@@ -494,7 +494,7 @@ The current neutral `1.0.20` order is:
 4. stabilize provider-neutral identity, trusted-provider, onboarding handoff/return, export, and recovery contracts
 5. keep Docker Compose/self-hosted operation independent of any commercial service
 6. define the JiboAutoMod conversion-profile boundary for managed, community-hosted, owner-managed, hybrid, isolated, and developer targets
-7. publish the neutral OpenJibo.com hosting-choice, community, source, documentation, and contact information architecture
+7. publish the neutral api.5x1.com hosting-choice, community, source, documentation, and contact information architecture
 8. publish the runtime release candidate after clean migration, deployment, rollback, load, and live-device evidence
 
 Commercial membership, billing, entitlement, managed backup policy, funds transparency, and paid-pilot work are downstream consumers implemented in Transcendent Software's separate private application repository.

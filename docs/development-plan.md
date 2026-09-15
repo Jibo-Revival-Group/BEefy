@@ -2,15 +2,15 @@
 
 ## Summary
 
-This document is the current working plan for the OpenJibo hosted cloud.
+This document is the current working plan for the BEefy hosted cloud.
 
 The production lane is the `.NET` cloud in `src/Jibo.Cloud/dotnet`. The Node server remains the protocol oracle, capture harness, and fast reverse-engineering lab, but it is no longer the long-term hosted architecture.
 
-Day-to-day feature sequencing lives in [feature-backlog.md](feature-backlog.md). Live closeout checks live in [regression-test-plan.md](regression-test-plan.md). The neutral `1.0.20` runtime shape is detailed in [release-1.0.20-plan.md](release-1.0.20-plan.md), Transcendent Software's private paid-service implementation is represented publicly by [cloud.openjibo.com](https://cloud.openjibo.com), and the legacy-to-current architecture map is tracked in [system-diagram-alignment.md](system-diagram-alignment.md), while this file keeps the broader evidence and architecture context.
+Day-to-day feature sequencing lives in [feature-backlog.md](feature-backlog.md). Live closeout checks live in [regression-test-plan.md](regression-test-plan.md). The neutral `1.0.20` runtime shape is detailed in [release-1.0.20-plan.md](release-1.0.20-plan.md), Transcendent Software's private paid-service implementation is represented publicly by [api.5x1.com](https://api.5x1.com), and the legacy-to-current architecture map is tracked in [system-diagram-alignment.md](system-diagram-alignment.md), while this file keeps the broader evidence and architecture context.
 
 ## Current Release Snapshot
 
-- Current OpenJibo Cloud release constant: `1.0.20`
+- Current BEefy Cloud release constant: `1.0.20`
 - Source of truth: [OpenJiboCloudBuildInfo.cs](../src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Application/Services/OpenJiboCloudBuildInfo.cs)
 - Spoken diagnostic: `Cloud version 1 dot 0 dot 20.`
 - HTTP diagnostic: `/health` returns the same version
@@ -64,7 +64,7 @@ Current API and protocol scope:
 
 - HTTP `X-Amz-Target` dispatch through `JiboCloudProtocolService`
 - `/health` diagnostics
-- WebSocket acceptance for `api-socket.jibo.com`, `open-jibo-socket.openjibo.com`, `neohub.openjibo.com` listen, and `neohub.openjibo.com/v1/proactive`
+- WebSocket acceptance for `api-socket.jibo.com`, `api.5x1.com`, `api.5x1.com` listen, and `api.5x1.com/v1/proactive`
 - token/session issuance for account, hub, and robot startup flows
 - starter account, notification, loop, media, key, person, backup, robot, update, and upload/log handling
 - media lookup through `/media/{path}`
@@ -95,7 +95,7 @@ Current websocket scope:
   - `glsm_phase_transition` turn diagnostics
   - websocket turn events with `glsmPhase` snapshots
   - stale pending-listen recovery for long-open no-context/no-audio listens before processing a new hotphrase listen
-- unknown inbound websocket types dropped silently instead of echoing stock-OS-unknown OpenJibo events
+- unknown inbound websocket types dropped silently instead of echoing stock-OS-unknown BEefy events
 - file telemetry and fixture export for HTTP, websocket, and turn captures
 
 Current state and persistence scope:
@@ -146,7 +146,7 @@ The following behavior is present in source and covered by focused tests:
 
 Use these sources as evidence, not as code to copy blindly:
 
-- OpenJibo Node oracle: [open-jibo-link.js](../src/Jibo.Cloud/node/open-jibo-link.js)
+- BEefy Node oracle: [open-jibo-link.js](../src/Jibo.Cloud/node/open-jibo-link.js)
 - Current hosted `.NET` cloud: [src/Jibo.Cloud/dotnet](../src/Jibo.Cloud/dotnet)
 - Live captures and robot logs: `.\artifact-output`
 - User-provided original source snapshot: `..\jibo` when extracted locally
@@ -185,7 +185,7 @@ Before calling `1.0.18` complete, prove or explicitly defer these:
 - Treat basic news as live-proven by `jibo test 23`; defer provider-backed or category-expanded news unless it is chosen as an optional feature slice.
 - Regression test the added stop and volume slices after the Test 26 fixes: `stop that`, `never mind`, `turn it up`, `turn it down`, `set volume to six`, `set volume to 6`, and `show volume controls`.
 - Recheck constrained yes/no prompts for update/backup/share/gallery/alarm replacement without leaking global rules.
-- Recheck that stock OS no longer logs OpenJibo-only websocket events such as synthetic pending/context/ack packets from the current build.
+- Recheck that stock OS no longer logs openjibo-only websocket events such as synthetic pending/context/ack packets from the current build.
 - Recheck backup/update behavior with explicit attention to robot-local `jibo.scheduler.backupStatus`, the local `@be/idle` nighttime OTA helper, CPU/load, log/upload activity, and whether the deployed cloud is involved at all.
 - Parity target for OTA:
   - robot-local `backupStatus` should stay boolean and drive the update menu's `backup` branch
@@ -203,7 +203,7 @@ These are not blockers for calling `1.0.18` complete unless the live test shows 
 - state persistence is local JSON, not Azure SQL / Blob Storage
 - update, backup, and restore are now end-to-end proven at the persistence-rehydration level, and the `jibo test 22` / Test 26 / Test 27 / Test 28 sluggishness appears tied to robot-local backup status/load, startup reconnect state, or previously unsuppressed end-of-skill surprises; Test 31 also captured a legacy `Backup_20170222.List` startup query, which reinforces that the local backup/status path is real even before a user asks for backup
 - Tests 27 and 28 showed backup/surprise behavior without corresponding `Backup_*` HTTP traffic; Test 28 isolated the unsuppressed `@be/surprises` lifecycle handoff after Nimbus
-- deployed-build verification needs to prove that synthetic OpenJibo websocket events are gone from the hosted artifact, not just from source
+- deployed-build verification needs to prove that synthetic BEefy websocket events are gone from the hosted artifact, not just from source
 - news content is synthetic; `jibo test 23` proved the path but not live provider-backed headlines
 - alarm replacement yes/no, alarm voice delete/menu agreement, empty-gallery voice `yes`, and long blue-ring cleanup still need successful live proof after the Test 30 source fixes
 - weather, calendar, commute, personal report, identity, memory, and proactivity are still mostly discovery or placeholder content paths

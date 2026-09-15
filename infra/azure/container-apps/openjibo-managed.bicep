@@ -25,13 +25,13 @@ param keyVaultName string
 param imageTag string = 'managed'
 
 @description('Canonical robot-facing hosted API hostname. This should match the hostname written by the robot conversion helpers.')
-param apiHostname string = 'api.openjibo.com'
+param apiHostname string = 'api.5x1.com'
 
-@description('Canonical robot-facing socket hostname for the notification subsystem. This should match the hostname derived by the robot conversion helpers.')
-param socketHostname string = 'open-jibo-socket.openjibo.com'
+@description('Canonical robot-facing socket hostname for the notification subsystem. On 5x1 this terminates on the same API host.')
+param socketHostname string = 'api.5x1.com'
 
-@description('Canonical robot-facing neo-hub hostname for listen and proactive traffic.')
-param neoHubHostname string = 'neohub.openjibo.com'
+@description('Canonical robot-facing neo-hub hostname for listen and proactive traffic. On 5x1 this terminates on the same API host.')
+param neoHubHostname string = 'api.5x1.com'
 
 @description('Compatibility API hostname produced by the native libJiboServerService.so region suffix patch.')
 param nativeCompatibilityApiHostname string = 'open-jibo.jibo.pro'

@@ -4,7 +4,7 @@
 
 This release started the shift from `1.0.18` hardening to visible feature growth and is now being kept as closeout history.
 
-The goal is to keep compatibility work steady while shipping personality and capability slices that make OpenJibo feel less like a placeholder cloud and more like a real assistant platform.
+The goal is to keep compatibility work steady while shipping personality and capability slices that make BEefy feel less like a placeholder cloud and more like a real assistant platform.
 
 For grocery list capability, the 1.0.19 MVP choice is the existing household list engine with grocery as a first-class spoken alias. That keeps the storage model simple now while leaving integration-backed list orchestration for a later pass.
 
@@ -205,11 +205,11 @@ The fifth delivered slice adds provider-backed weather content while preserving 
 
 ## Personality Import Ladder
 
-This is the practical plan for importing legacy Jibo `mims` into OpenJibo without pretending we already have a full Pegasus runtime.
+This is the practical plan for importing legacy Jibo `mims` into BEefy without pretending we already have a full Pegasus runtime.
 
 ### What Is Possible Today
 
-OpenJibo can already host a meaningful subset of legacy personality content because it has:
+BEefy can already host a meaningful subset of legacy personality content because it has:
 
 - a shared catalog for content-driven replies
 - chitchat state-machine routing with route metadata
@@ -279,7 +279,7 @@ Port after the core ladder is stable:
 
 ## System Diagram Alignment Snapshot (`2026-05-06`)
 
-Legacy architecture (`system_diagram.png`) has been mapped to current OpenJibo cloud services so release execution stays anchored to:
+Legacy architecture (`system_diagram.png`) has been mapped to current BEefy cloud services so release execution stays anchored to:
 
 - where we were (Pegasus/Jibo cloud design intent)
 - where we are (current hosted `.NET` modular monolith)
@@ -291,7 +291,7 @@ Reference:
 
 ## Greetings And Presence Planning Snapshot (`2026-05-07`)
 
-Pegasus greeting and presence behavior has now been captured into a source-anchored OpenJibo implementation plan.
+Pegasus greeting and presence behavior has now been captured into a source-anchored BEefy implementation plan.
 
 Reference:
 
@@ -389,8 +389,8 @@ First completed slice in this personal-report parity track:
 11. Binary-safe media storage seam with file and Azure Blob adapters, ready for original/thumbnails follow-up
 12. Accessibility voice parity planning for menu-equivalent flows, starting with backup / restore / update voice coverage and broader critical-path accessibility in a later release
 
-For slice 1, use the new import ladder above to keep the work grounded in what OpenJibo can already render today versus what needs new scaffolding.
-For slices 2-5, use Pegasus phrase lists, MIM IDs, and behavior patterns as the source anchor before broadening into OpenJibo-native improvements.
+For slice 1, use the new import ladder above to keep the work grounded in what BEefy can already render today versus what needs new scaffolding.
+For slices 2-5, use Pegasus phrase lists, MIM IDs, and behavior patterns as the source anchor before broadening into openjibo-native improvements.
 
 ## Definition Of Done
 

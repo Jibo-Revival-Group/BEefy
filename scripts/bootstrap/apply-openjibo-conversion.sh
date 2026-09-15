@@ -7,7 +7,7 @@ echo "apply-openjibo-conversion.sh $SCRIPT_VERSION" >&2
 robot_root=""
 plan_path=""
 target_mode="open-jibo"
-api_hostname="api.openjibo.com"
+api_hostname="api.5x1.com"
 hub_hostname=""
 output_path=""
 strict=false
@@ -27,7 +27,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --api-hostname)
-      api_hostname="${2:-api.openjibo.com}"
+      api_hostname="${2:-api.5x1.com}"
       shift 2
       ;;
     --hub-hostname)
@@ -60,7 +60,7 @@ Physical-robot preflight:
 EOF
 
 if [ -z "$hub_hostname" ] && { [ "$target_mode" = "open-jibo" ] || [ "$target_mode" = "open-jibo-ai" ]; }; then
-  hub_hostname="neohub.openjibo.com"
+  hub_hostname="api.5x1.com"
 fi
 
 tmp_js="$(mktemp "${TMPDIR:-/tmp}/apply-openjibo-conversion.XXXXXX")"
@@ -95,7 +95,7 @@ const SERVER_LIBRARY_VARIANTS = [
 const robotRoot = path.resolve(process.argv[2]);
 const planPath = path.resolve(process.argv[3]);
 const targetMode = process.argv[4];
-const apiEndpointInput = (process.argv[5] || "api.openjibo.com").trim() || "api.openjibo.com";
+const apiEndpointInput = (process.argv[5] || "api.5x1.com").trim() || "api.5x1.com";
 const hubEndpointInput = (process.argv[6] || "").trim() || apiEndpointInput;
 const outputPath = (process.argv[7] || "").trim();
 const strict = String(process.argv[8]).toLowerCase() === "true";
@@ -465,43 +465,43 @@ writeJson(credentialsPath, credentials);
 writeJson(oobeConfigPath, oobe);
 
 const endpointReplacements = [
-  ["{service}.{region}.api.jibo.com", "{service}.{region}.api.openjibo.com"],
-  ["https://api.jibo.com", "https://api.openjibo.com"],
-  ["http://api.jibo.com:8080", "http://api.openjibo.com:8080"],
-  ["https://{region}.jibo.com", "https://api.openjibo.com"],
-  ["http://{region}.jibo.com:8080", "http://api.openjibo.com:8080"],
+  ["{service}.{region}.api.jibo.com", "{service}.{region}.api.5x1.com"],
+  ["https://api.jibo.com", "https://api.5x1.com"],
+  ["http://api.jibo.com:8080", "http://api.5x1.com:8080"],
+  ["https://{region}.jibo.com", "https://api.5x1.com"],
+  ["http://{region}.jibo.com:8080", "http://api.5x1.com:8080"],
   ["wss://{region}-socket.jibo.com", "wss://{region}-socket.openjibo.com"],
   ["ws://{region}-socket.jibo.com:8090", "ws://{region}-socket.openjibo.com:8090"],
 ];
 
 const runtimeJsReplacements = [
-  ['data.region + ".jibo.com"', '"api.openjibo.com"'],
-  ['data.region+".jibo.com"', '"api.openjibo.com"'],
-  ['data.region + ".openjibo.com"', '"api.openjibo.com"'],
-  ['data.region+".openjibo.com"', '"api.openjibo.com"'],
-  ['this._wifiService.options.region + ".jibo.com"', '"api.openjibo.com"'],
-  ['this._wifiService.options.region+".jibo.com"', '"api.openjibo.com"'],
-  ['this._wifiService.options.region + ".openjibo.com"', '"api.openjibo.com"'],
-  ['this._wifiService.options.region+".openjibo.com"', '"api.openjibo.com"'],
-  ['config.region + ".jibo.com"', '"api.openjibo.com"'],
-  ['config.region+".jibo.com"', '"api.openjibo.com"'],
-  ['config.region + ".openjibo.com"', '"api.openjibo.com"'],
-  ['config.region+".openjibo.com"', '"api.openjibo.com"'],
-  ['this.region + ".jibo.com"', '"api.openjibo.com"'],
-  ['this.region+".jibo.com"', '"api.openjibo.com"'],
-  ['this.region + ".openjibo.com"', '"api.openjibo.com"'],
-  ['this.region+".openjibo.com"', '"api.openjibo.com"'],
-  ['options.region + ".jibo.com"', '"api.openjibo.com"'],
-  ['options.region+".jibo.com"', '"api.openjibo.com"'],
-  ['options.region + ".openjibo.com"', '"api.openjibo.com"'],
-  ['options.region+".openjibo.com"', '"api.openjibo.com"'],
-  ['region + ".jibo.com"', '"api.openjibo.com"'],
-  ['region+".jibo.com"', '"api.openjibo.com"'],
-  ['region + ".openjibo.com"', '"api.openjibo.com"'],
-  ['region+".openjibo.com"', '"api.openjibo.com"'],
-  ["API: 'api.jibo.com'", "API: 'api.openjibo.com'"],
+  ['data.region + ".jibo.com"', '"api.5x1.com"'],
+  ['data.region+".jibo.com"', '"api.5x1.com"'],
+  ['data.region + ".openjibo.com"', '"api.5x1.com"'],
+  ['data.region+".openjibo.com"', '"api.5x1.com"'],
+  ['this._wifiService.options.region + ".jibo.com"', '"api.5x1.com"'],
+  ['this._wifiService.options.region+".jibo.com"', '"api.5x1.com"'],
+  ['this._wifiService.options.region + ".openjibo.com"', '"api.5x1.com"'],
+  ['this._wifiService.options.region+".openjibo.com"', '"api.5x1.com"'],
+  ['config.region + ".jibo.com"', '"api.5x1.com"'],
+  ['config.region+".jibo.com"', '"api.5x1.com"'],
+  ['config.region + ".openjibo.com"', '"api.5x1.com"'],
+  ['config.region+".openjibo.com"', '"api.5x1.com"'],
+  ['this.region + ".jibo.com"', '"api.5x1.com"'],
+  ['this.region+".jibo.com"', '"api.5x1.com"'],
+  ['this.region + ".openjibo.com"', '"api.5x1.com"'],
+  ['this.region+".openjibo.com"', '"api.5x1.com"'],
+  ['options.region + ".jibo.com"', '"api.5x1.com"'],
+  ['options.region+".jibo.com"', '"api.5x1.com"'],
+  ['options.region + ".openjibo.com"', '"api.5x1.com"'],
+  ['options.region+".openjibo.com"', '"api.5x1.com"'],
+  ['region + ".jibo.com"', '"api.5x1.com"'],
+  ['region+".jibo.com"', '"api.5x1.com"'],
+  ['region + ".openjibo.com"', '"api.5x1.com"'],
+  ['region+".openjibo.com"', '"api.5x1.com"'],
+  ["API: 'api.jibo.com'", "API: 'api.5x1.com'"],
   [".jibo.com", ".openjibo.com"],
-  ["open-jibo.openjibo.com", "api.openjibo.com"],
+  ["open-jibo.openjibo.com", "api.5x1.com"],
 ];
 
 const runtimeMapReplacements = [
@@ -529,7 +529,7 @@ const runtimeMapReplacements = [
   ['region+\\".jibo.com\\"', '\\"api.openjibo.com\\"'],
   ['region + \\".openjibo.com\\"', '\\"api.openjibo.com\\"'],
   ['region+\\".openjibo.com\\"', '\\"api.openjibo.com\\"'],
-  ["API: 'api.jibo.com'", "API: 'api.openjibo.com'"],
+  ["API: 'api.jibo.com'", "API: 'api.5x1.com'"],
   [".jibo.com", ".openjibo.com"],
 ];
 const runtimeSourceMapReplacements = runtimeJsReplacements.concat(runtimeMapReplacements);

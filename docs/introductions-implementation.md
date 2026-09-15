@@ -1,7 +1,7 @@
 # Introductions Skill Implementation
 
 ## Overview
-The introductions skill (`@be/introductions`) has been added to the OpenJibo .NET server to support the "meet someone new" functionality. This skill allows Jibo to learn user identities through face recognition, voice recognition, and name pronunciation learning.
+The introductions skill (`@be/introductions`) has been added to the BEefy .NET server to support the "meet someone new" functionality. This skill allows Jibo to learn user identities through face recognition, voice recognition, and name pronunciation learning.
 
 ## Skill Characteristics
 The introductions skill is unique because:

@@ -19,7 +19,7 @@ if ([string]::IsNullOrWhiteSpace($TargetHost)) {
     if ($TargetMode -eq "open-jibo-self-hosted") {
         $TargetHost = $baseHost
     } else {
-        $TargetHost = "api.openjibo.com"
+        $TargetHost = "api.5x1.com"
     }
 }
 if ([string]::IsNullOrWhiteSpace($ReportedConnectionHost)) {

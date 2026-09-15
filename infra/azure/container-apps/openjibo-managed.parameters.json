@@ -9,13 +9,13 @@
       "value": "openjibo-cloud"
     },
     "apiHostname": {
-      "value": "api.openjibo.com"
+      "value": "api.5x1.com"
     },
     "socketHostname": {
-      "value": "open-jibo-socket.openjibo.com"
+      "value": "api.5x1.com"
     },
     "neoHubHostname": {
-      "value": "neohub.openjibo.com"
+      "value": "api.5x1.com"
     },
     "nativeCompatibilityApiHostname": {
       "value": "open-jibo.jibo.pro"

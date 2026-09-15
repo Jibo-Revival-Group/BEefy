@@ -4,7 +4,7 @@
 
 Commute is part of personal report parity and household-aware personality.
 
-The original Jibo report-skill had a commute section that could speak about getting to work, leaving soon, or being too early or too late. In OpenJibo, that behavior now starts with a loop-scoped commute profile so we can stay faithful to stock behavior first and add richer routing later.
+The original Jibo report-skill had a commute section that could speak about getting to work, leaving soon, or being too early or too late. In BEefy, that behavior now starts with a loop-scoped commute profile so we can stay faithful to stock behavior first and add richer routing later.
 
 ## Current Shape
 

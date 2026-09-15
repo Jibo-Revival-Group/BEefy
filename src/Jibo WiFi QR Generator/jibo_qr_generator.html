@@ -220,7 +220,7 @@
 	</div>
 
 	<div class="server-section">
-		<p class="section-label">OpenJibo Cloud</p>
+		<p class="section-label">BEefy Cloud</p>
 		<label>Server URL <span style="color:#556;font-weight:400">(optional — leave empty to use static token)</span></label>
 		<input id="serverUrl" type="url" placeholder="http://192.168.1.X:24605"/>
 		<label>Target Mode</label>
@@ -231,7 +231,7 @@
 			<option value="open-jibo-developer">open-jibo-developer — development server</option>
 		</select>
 		<label>Target Host <span style="color:#556;font-weight:400">(required for self-hosted; optional for managed)</span></label>
-		<input id="targetHost" type="text" placeholder="api.openjibo.com or LAN host"/>
+		<input id="targetHost" type="text" placeholder="api.5x1.com or LAN host"/>
 		<label>Rollback Snapshot ID <span style="color:#556;font-weight:400">(required for write-safe conversion)</span></label>
 		<input id="rollbackSnapshotId" type="text" placeholder="snapshot recorded by RCM/conversion helper"/>
 		<div class="hint">When a server URL is supplied, this page asks the cloud for a non-writing conversion plan before preparing the QR token. If readiness is blocked, QR generation stops instead of giving the robot an unsafe token.</div>
@@ -357,7 +357,7 @@
       btn.textContent = 'Connecting to server…';
       try {
         token = await prepareRobot(serverUrl);
-        setBadge('server', '✓ Token from OpenJibo server');
+        setBadge('server', '✓ Token from BEefy server');
       } catch (err) {
         setBadge('error', `⚠ ${err.message || 'Server unreachable'}`);
         btn.textContent = 'Generate QR Codes';

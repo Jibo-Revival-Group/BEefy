@@ -1,6 +1,6 @@
 # Single-Robot HTTP Self-Hosting
 
-OpenJibo normally requires an issued credential on every robot WebSocket:
+BEefy normally requires an issued credential on every robot WebSocket:
 
 - notification/API sockets use a `robot` token from `Notification.NewRobotToken`
 - NeoHub listen and proactive sockets use a `hub` token from `Account.CreateHubToken`

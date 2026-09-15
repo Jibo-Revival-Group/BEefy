@@ -882,7 +882,7 @@ public sealed class JiboCloudProtocolService(
             targetMode.Equals("open-jibo-self-hosted", StringComparison.OrdinalIgnoreCase))
             return string.IsNullOrWhiteSpace(hostName) ? string.Empty : hostName.Trim();
 
-        return "api.openjibo.com";
+        return "api.5x1.com";
     }
 
     private static string ResolveOpenJiboTargetMode(string? mode)
@@ -928,9 +928,11 @@ public sealed class JiboCloudProtocolService(
         {
             ["api.jibo.com"] = resolvedHost,
             ["api-socket.jibo.com"] = resolvedHost,
+            ["api.openjibo.com"] = resolvedHost,
             ["open-jibo-socket.openjibo.com"] = resolvedHost,
             ["neo-hub.jibo.com"] = resolvedHost,
-            ["neohub.openjibo.com"] = resolvedHost
+            ["neohub.openjibo.com"] = resolvedHost,
+            ["api.5x1.com"] = resolvedHost
         };
     }
 

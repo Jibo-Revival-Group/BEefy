@@ -9,20 +9,22 @@ namespace Jibo.Cloud.Tests.WebSockets;
 public sealed class FileWebSocketTelemetrySinkTests : IDisposable
 {
     private readonly string _appBaseDirectory;
-    private readonly string _directoryPath;
+    private readonly string _captureDirectory;
     private readonly string _repoRoot;
 
     public FileWebSocketTelemetrySinkTests()
     {
-        _directoryPath = Path.Combine(Path.GetTempPath(), "OpenJibo.Tests", Guid.NewGuid().ToString("N"));
-        _repoRoot = Path.Combine(_directoryPath, "OpenJibo");
+        // Repo root is flat (OpenJibo.slnx at root); no nested OpenJibo/ directory.
+        _repoRoot = Path.Combine(Path.GetTempPath(), "OpenJibo.Tests", Guid.NewGuid().ToString("N"));
+        _captureDirectory = Path.Combine(_repoRoot, "test-captures");
         _appBaseDirectory = Path.Combine(_repoRoot, "src", "Jibo.Cloud", "dotnet", "src", "Jibo.Cloud.Api", "bin",
             "Debug", "net10.0");
+        Directory.CreateDirectory(_captureDirectory);
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_directoryPath)) Directory.Delete(_directoryPath, true);
+        if (Directory.Exists(_repoRoot)) Directory.Delete(_repoRoot, true);
     }
 
     [Fact]
@@ -58,7 +60,7 @@ public sealed class FileWebSocketTelemetrySinkTests : IDisposable
         ]);
         await sink.RecordConnectionClosedAsync(envelope, session, "test");
 
-        var fixtureDirectory = Path.Combine(_directoryPath, "fixtures");
+        var fixtureDirectory = Path.Combine(_captureDirectory, "fixtures");
         var fixturePath = Directory.GetFiles(fixtureDirectory, "*.flow.json").Single();
         using var document = JsonDocument.Parse(await File.ReadAllTextAsync(fixturePath));
         Assert.Equal("neo-hub.jibo.com",
@@ -67,7 +69,7 @@ public sealed class FileWebSocketTelemetrySinkTests : IDisposable
         Assert.Equal("LISTEN",
             document.RootElement.GetProperty("steps")[0].GetProperty("expectedReplyTypes")[0].GetString());
 
-        var indexPath = Path.Combine(_directoryPath, "capture-index.ndjson");
+        var indexPath = Path.Combine(_captureDirectory, "capture-index.ndjson");
         var indexEntries = await ReadNdjsonAsync(indexPath);
         Assert.Contains(indexEntries, entry => entry.GetProperty("eventType").GetString() == "connection_opened");
         Assert.Contains(indexEntries, entry => entry.GetProperty("eventType").GetString() == "message_in");
@@ -107,7 +109,7 @@ public sealed class FileWebSocketTelemetrySinkTests : IDisposable
         await sink.RecordOutboundAsync(envelope, session, [new WebSocketReply { Text = """{"type":"LISTEN"}""" }]);
         await sink.RecordConnectionClosedAsync(envelope, session, "test");
 
-        var indexPath = Path.Combine(_directoryPath, "capture-index.ndjson");
+        var indexPath = Path.Combine(_captureDirectory, "capture-index.ndjson");
         var indexEntries = await ReadNdjsonAsync(indexPath);
         var fixtureExport = Assert.Single(indexEntries, entry => entry.GetProperty("eventType").GetString() == "fixture_export");
         var details = fixtureExport.GetProperty("details").GetProperty("details");
@@ -149,7 +151,7 @@ public sealed class FileWebSocketTelemetrySinkTests : IDisposable
             ["attempt"] = 1
         });
 
-        var indexPath = Path.Combine(_directoryPath, "capture-index.ndjson");
+        var indexPath = Path.Combine(_captureDirectory, "capture-index.ndjson");
         var indexEntries = await ReadNdjsonAsync(indexPath);
         var entry = Assert.Single(indexEntries,
             item => item.GetProperty("eventType").GetString() == "early_probe_scheduled");
@@ -215,7 +217,7 @@ public sealed class FileWebSocketTelemetrySinkTests : IDisposable
             {
                 Enabled = true,
                 ExportFixtures = true,
-                DirectoryPath = _directoryPath
+                DirectoryPath = _captureDirectory
             }));
     }
 

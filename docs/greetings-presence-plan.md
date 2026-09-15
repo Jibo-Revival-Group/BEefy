@@ -38,15 +38,15 @@ Key behaviors to port:
 - morning/birthday/holiday gates with per-user recency checks
 - optional follow-up response flow after proactive greetings
 
-## Current OpenJibo Baseline
+## Current BEefy Baseline
 
 Current implementation anchor:
 
-- `C:\Projects\JiboExperiments\OpenJibo\src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Application\Services\JiboInteractionService.cs`
-- `C:\Projects\JiboExperiments\OpenJibo\src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Application\Services\ProtocolToTurnContextMapper.cs`
-- `C:\Projects\JiboExperiments\OpenJibo\src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Application\Services\WebSocketTurnFinalizationService.cs`
-- `C:\Projects\JiboExperiments\OpenJibo\src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Application\Services\ChitchatStateMachine.cs`
-- `C:\Projects\JiboExperiments\OpenJibo\src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Infrastructure\Persistence\InMemoryPersonalMemoryStore.cs`
+- `src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Application\Services\JiboInteractionService.cs`
+- `src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Application\Services\ProtocolToTurnContextMapper.cs`
+- `src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Application\Services\WebSocketTurnFinalizationService.cs`
+- `src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Application\Services\ChitchatStateMachine.cs`
+- `src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Infrastructure\Persistence\InMemoryPersonalMemoryStore.cs`
 
 What we already have:
 
@@ -107,7 +107,7 @@ Guardrails:
 - avoid stealing non-greeting domains
 - keep existing date/time and birthday disambiguation intact
 
-### Slice G3: Greeting State-Machine Port (OpenJibo Style)
+### Slice G3: Greeting State-Machine Port (BEefy Style)
 
 Goal:
 

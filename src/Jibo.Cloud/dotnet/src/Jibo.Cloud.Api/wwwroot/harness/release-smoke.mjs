@@ -273,7 +273,7 @@ async function expectRejectedSocket(WebSocketImpl, url, timeoutMs = DEFAULT_TIME
   });
 }
 
-export function createProtocolCaller(baseUrl, hostName = "api.openjibo.com", fetchImpl = globalThis.fetch,
+export function createProtocolCaller(baseUrl, hostName = "api.5x1.com", fetchImpl = globalThis.fetch,
   releaseSmokeSecret = null) {
   return async (service, operation, body) => {
     const headers = {

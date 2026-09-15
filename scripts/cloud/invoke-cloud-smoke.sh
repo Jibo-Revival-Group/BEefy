@@ -20,7 +20,7 @@ print(parsed.netloc or parsed.path)
 PYHOST
 )"
   else
-    target_host="api.openjibo.com"
+    target_host="api.5x1.com"
   fi
 fi
 if [[ -z "$reported_connection_host" ]]; then

@@ -13,6 +13,7 @@ internal static class SocketKindResolver
         "openjibo.com",
         "openjibo.ai",
         "api.openjibo.com",
+        "api.5x1.com",
         "localhost"
     };
 

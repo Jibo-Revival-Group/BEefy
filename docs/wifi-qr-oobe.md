@@ -2,7 +2,7 @@
 
 Jibo's out-of-box setup (OOBE) skill reads one or more QR codes from its
 camera to obtain WiFi credentials and an access token. This doc covers the wire
-format, the two generator tools, and how they interoperate with the OpenJibo
+format, the two generator tools, and how they interoperate with the BEefy
 server.
 
 ## Wire Format
@@ -72,7 +72,7 @@ Standalone single-file HTML tool. No build step.
 Features:
 
 - SSID, password, optional static IP fields
-- Optional server URL to fetch a live token from OpenJibo
+- Optional server URL to fetch a live token from BEefy
 - Chunk size selector
 - Displays all QR codes side by side in a grid
 - Per-code download buttons

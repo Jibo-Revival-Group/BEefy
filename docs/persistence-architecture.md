@@ -8,7 +8,7 @@ legacy import, production promotion, and rollback sequence, follow
 
 ## Goal
 
-Keep OpenJibo's stateful behavior portable while making durable production state database-backed and bounded.
+Keep BEefy's stateful behavior portable while making durable production state database-backed and bounded.
 
 In-memory stores are appropriate for tests, local development, and explicitly bounded active-session state. They are not an acceptable production source of truth for durable cloud or personal-memory data. The `2026-08-16/17` production OOM incident demonstrated that placing a PostgreSQL snapshot adapter behind `InMemoryCloudStateStore` still hydrates and rewrites the entire cloud state in process memory.
 

@@ -19,14 +19,14 @@ Confidence levels:
 | `api.jibo.com` | HTTPS API target for `X-Amz-Target` operations | high | Main request dispatch path in the Node prototype |
 | `open-jibo.jibo.pro` | native Open Jibo token API compatibility target | high | Produced by the equal-length `libJiboServerService.so` suffix patch; routed directly to the managed API |
 | `api-socket.jibo.com` | token-authenticated WebSocket path | medium | Node accepts tokenized connections and intentionally sends no greeting |
-| `open-jibo-socket.openjibo.com` | managed notification socket alias | medium | Managed Open Jibo socket hostname derived from the staged robot suffix |
+| `api.5x1.com` | managed notification socket alias | medium | Managed Open Jibo socket hostname derived from the staged robot suffix |
 | `open-jibo-socket.jibo.pro` | native notification socket compatibility alias | medium | Produced if native code uses its patched built-in socket suffix |
 | `neo-hub.jibo.com` | legacy listen and proactive WebSocket traffic | medium | Historical dashed host kept for compatibility and rollback evidence |
-| `neohub.openjibo.com` | managed listen and proactive WebSocket traffic | medium | Managed Open Jibo hub hostname that mirrors the robot-facing hub config |
+| `api.5x1.com` | managed listen and proactive WebSocket traffic | medium | Managed Open Jibo hub hostname that mirrors the robot-facing hub config |
 
 ## Region Configuration
 
-Current robot findings suggest the preferred OpenJibo bootstrap path is to inject a new region configuration rather than treat host overrides as the only integration seam.
+Current robot findings suggest the preferred BEefy bootstrap path is to inject a new region configuration rather than treat host overrides as the only integration seam.
 
 Confirmed or strongly observed files:
 
@@ -37,7 +37,7 @@ Confirmed or strongly observed files:
 - `/skills/jibo/Jibo/Skills/@be/be/node_modules/language-subtag-registry/data/json/registry.json`
 - `/skills/jibo/Jibo/Skills/oobe-config/config.json`
 
-The first two are the clearest current OpenJibo injection points. The others should remain on the audit list while endpoint and behavior mapping continues.
+The first two are the clearest current BEefy injection points. The others should remain on the audit list while endpoint and behavior mapping continues.
 
 ## HTTP Dispatch Families
 
@@ -61,12 +61,12 @@ Observed from `open-jibo-link.js`:
 | Host/path | Flow | Confidence | Current .NET status |
 | --- | --- | --- | --- |
 | `api-socket.jibo.com/{token}` | token-authenticated socket for API-side signaling | medium | stub endpoint implemented |
-| `open-jibo-socket.openjibo.com/{token}` | managed notification socket alias | medium | routed with the same API-side socket behavior as the stock API socket |
+| `api.5x1.com/{token}` | managed notification socket alias | medium | routed with the same API-side socket behavior as the stock API socket |
 | `open-jibo-socket.jibo.pro/{token}` | native compatibility notification socket alias | medium | routed with the same API-side socket behavior as the stock API socket |
 | `neo-hub.jibo.com/{listen-path}` | legacy listen turn flow with JSON and binary audio traffic | medium | fixture-backed synthetic turn flow implemented for `LISTEN`, `CONTEXT`, `CLIENT_NLU`, `CLIENT_ASR`, `EOS`, and first chat/joke skill responses |
-| `neohub.openjibo.com/{listen-path}` | managed listen turn flow with JSON and binary audio traffic | medium | managed hub alias for the same listen/proactive turn flow |
+| `api.5x1.com/{listen-path}` | managed listen turn flow with JSON and binary audio traffic | medium | managed hub alias for the same listen/proactive turn flow |
 | `neo-hub.jibo.com/v1/proactive` | legacy proactive connection flow | medium | authenticated (or bounded tokenless self-host compatibility) `TRIGGER` + `CONTEXT` transaction implemented; emits `PROACTIVE` match/no-action and optional `SKILL_ACTION` |
-| `neohub.openjibo.com/v1/proactive` | managed proactive connection flow | medium | managed alias for the same proactive transaction |
+| `api.5x1.com/v1/proactive` | managed proactive connection flow | medium | managed alias for the same proactive transaction |
 
 ### Current WebSocket Parity Slice
 
@@ -214,8 +214,8 @@ The first real `.NET` robot run has confirmed only an early startup slice so far
 - `api.jibo.com` startup HTTP requests are reaching the `.NET` cloud
 - `Notification.NewRobotToken` is active in the robot startup sequence
 - `api-socket.jibo.com/{token}` is being accepted live
-- `open-jibo-socket.openjibo.com/{token}` is being accepted by the managed router
-- `neohub.openjibo.com/v1/proactive` is being accepted by the managed router
+- `api.5x1.com/{token}` is being accepted by the managed router
+- `api.5x1.com/v1/proactive` is being accepted by the managed router
 
 The first live run has not yet shown full startup parity with the working Node server. In particular, the successful Node run continues into additional health/log cadence after token issuance and socket acceptance, while the current `.NET` run has not yet reproduced that full progression consistently.
 
@@ -250,4 +250,4 @@ Useful external references for future mapping:
 
 ## Fixture Source
 
-Sanitized fixtures live under [src/Jibo.Cloud/node/fixtures](/OpenJibo/src/Jibo.Cloud/node/fixtures) and should be expanded as real traffic is captured.
+Sanitized fixtures live under [src/Jibo.Cloud/node/fixtures](../src/Jibo.Cloud/node/fixtures) and should be expanded as real traffic is captured.

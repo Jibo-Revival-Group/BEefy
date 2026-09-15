@@ -1089,7 +1089,7 @@ public sealed class HomeAssistantPortalApiTests
         var directory = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(directory.GetProperty("allowCustomEntry").GetBoolean());
         Assert.True(directory.GetProperty("hostedHttpsRequired").GetBoolean());
-        Assert.Equal("api.openjibo.com", directory.GetProperty("trustedRootHost").GetString());
+        Assert.Equal("api.5x1.com", directory.GetProperty("trustedRootHost").GetString());
 
         var servers = directory.GetProperty("servers");
         Assert.Contains(servers.EnumerateArray(), server =>

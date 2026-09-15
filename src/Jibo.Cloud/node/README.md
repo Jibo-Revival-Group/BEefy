@@ -2,7 +2,7 @@
 
 ## Role
 
-This folder contains the protocol oracle for OpenJibo.
+This folder contains the protocol oracle for BEefy.
 
 The Node server is still the best place to:
 
@@ -69,7 +69,7 @@ Use this implementation as the source of truth for replay fixtures.
 
 - capture observed request and response pairs
 - sanitize account ids, emails, tokens, hostnames, and secrets
-- save fixtures under [fixtures](C:/Projects/JiboExperiments/OpenJibo/src/Jibo.Cloud/node/fixtures)
+- save fixtures under [fixtures](fixtures)
 - use those fixtures to drive the .NET compatibility port
 
 ## Real Device Reality
@@ -82,7 +82,7 @@ That means:
 - redirection of legacy Jibo hosts
 - RCM/device modification for TLS or host validation where required
 
-That reality is documented in [device-bootstrap.md](C:/Projects/JiboExperiments/OpenJibo/docs/device-bootstrap.md). OTA is a future improvement path, not the current bootstrap dependency.
+That reality is documented in [device-bootstrap.md](../../../docs/device-bootstrap.md). OTA is a future improvement path, not the current bootstrap dependency.
 
 ## Next Job
 

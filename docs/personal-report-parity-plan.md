@@ -4,7 +4,7 @@ As-of: `2026-05-07`
 
 ## Objective
 
-Bring OpenJibo personal report behavior closer to original Jibo charm while keeping cloud architecture modern and provider-agnostic.
+Bring BEefy personal report behavior closer to original Jibo charm while keeping cloud architecture modern and provider-agnostic.
 
 ## Pegasus Findings (Source Anchors)
 
@@ -27,7 +27,7 @@ Bring OpenJibo personal report behavior closer to original Jibo charm while keep
 - Grocery/list behavior found in Pegasus is scripted-response style, not a standalone list skill:
   - `RA_JBO_ShoppingList.mim` and `RA_JBO_ManageToDoList.mim` are "not supported yet" style responses.
 
-## OpenJibo Current State
+## BEefy Current State
 
 - Personal report state machine exists and is test-backed.
 - Weather provider integration exists (OpenWeather), including current and tomorrow.
@@ -51,7 +51,7 @@ Bring OpenJibo personal report behavior closer to original Jibo charm while keep
 
 ## Phase 2: Weather Visual Layer Parity
 
-- Add weather Hi/Lo view payload support (OpenJibo-side equivalent to `weatherHiLo.json` behavior).
+- Add weather Hi/Lo view payload support (openjibo-side equivalent to `weatherHiLo.json` behavior).
 - Carry mapped weather icon token + hi/lo values into outbound skill action config.
 - Keep fallback behavior safe when view assets are unavailable.
 

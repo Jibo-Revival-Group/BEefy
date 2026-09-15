@@ -7,9 +7,9 @@ param(
 
     [string]$ImageTag = "managed",
     [string]$Location = "",
-    [string]$ApiHostname = "api.openjibo.com",
-    [string]$SocketHostname = "open-jibo-socket.openjibo.com",
-    [string]$NeoHubHostname = "neohub.openjibo.com",
+    [string]$ApiHostname = "api.5x1.com",
+    [string]$SocketHostname = "api.5x1.com",
+    [string]$NeoHubHostname = "api.5x1.com",
     [string]$NativeCompatibilityApiHostname = "open-jibo.jibo.pro",
     [string]$NativeCompatibilitySocketHostname = "open-jibo-socket.jibo.pro",
     [string]$AdditionalCompatibilityApiHostname = "api.jibo.pro",

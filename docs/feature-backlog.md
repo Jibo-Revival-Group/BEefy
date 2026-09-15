@@ -21,9 +21,9 @@ Shared `1.0.20` priorities remain here:
 3. stabilize provider-neutral identity, provider registry, signed onboarding handoff/return, explicit selection, export, revocation, and recovery contracts
 4. keep self-hosted isolated operation independent of a managed service
 5. define conversion profiles with JiboAutoMod for managed, community-hosted, owner-managed, hybrid, isolated, and developer choices
-6. keep OpenJibo.com neutral and clearly identify every hosted provider/operator
+6. keep api.5x1.com neutral and clearly identify every hosted provider/operator
 
-Transcendent Software's `$5/month/robot` managed membership, billing, entitlements, hosted backup policy, customer site, support, funds transparency, and paid pilot are implemented privately and represented publicly by [cloud.openjibo.com](https://cloud.openjibo.com).
+Transcendent Software's `$5/month/robot` managed membership, billing, entitlements, hosted backup policy, customer site, support, funds transparency, and paid pilot are implemented privately and represented publicly by [api.5x1.com](https://api.5x1.com).
 
 Status key:
 
@@ -382,7 +382,7 @@ Current release theme:
 - Follow-up:
   - live validation remains in the immediate queue because volume depends on stock robot local global-command handling
 
-### Unknown OpenJibo Event Noise
+### Unknown BEefy Event Noise
 
 - Status: `implemented`
 - Tags: `protocol`
@@ -820,7 +820,7 @@ These are the carryover items that need a clean proof pass first:
 - Why later:
   - first protocol path is implemented, but content is synthetic
 - Questions:
-  - which source should provide headlines for hosted OpenJibo
+  - which source should provide headlines for hosted BEefy
   - whether news belongs under a broader Lasso-style aggregation service
   - how to keep content short and Jibo-native
 - Source-backed implementation notes:
@@ -842,7 +842,7 @@ These are the carryover items that need a clean proof pass first:
   - `@be/surprises`, `@be/surprises-date`, and `@be/surprises-ota` exist as local robot-side building blocks
 - Questions:
   - minimum hosted selector for stock-OS-compatible surprise offers
-  - how proactive `TRIGGER` traffic maps into OpenJibo
+  - how proactive `TRIGGER` traffic maps into BEefy
   - whether `surprises-date/offer_date_fact` should be the first intentional proactive offer
 
 ### 15. Surprises Routing
@@ -867,7 +867,7 @@ These are the carryover items that need a clean proof pass first:
   - stock behavior historically included names, birthdays, holidays, and personal dates
 - Questions:
   - what belongs in memory versus account/profile versus skill-specific storage
-  - first safe OpenJibo memory slice
+  - first safe BEefy memory slice
   - privacy and hosted-data boundaries
 
 ### 17. Lasso / Knowledge And Event Aggregation
@@ -1002,7 +1002,7 @@ These are the carryover items that need a clean proof pass first:
 - Why now:
   - this is the next personality-charm expansion after parser guardrail and weather bring-up
   - Pegasus greetings behavior is strongly tied to presence/identity signals and proactive cooldown policy
-  - current OpenJibo has memory/proactivity foundations but no first-class presence extraction path yet
+  - current BEefy has memory/proactivity foundations but no first-class presence extraction path yet
 - Pegasus source anchors:
   - `C:\Projects\jibo\pegasus\packages\hub\be-skills\greetings_manifest.json`
   - `C:\Projects\jibo\sdk\skills\greetings\src\GreetingsSkill.ts`
@@ -1036,7 +1036,7 @@ These are the carryover items that need a clean proof pass first:
 - Tags: `protocol`, `content`, `storage`, `docs`
 - Why now:
   - personal report is a core Jibo charm surface and currently split between implemented weather speech and placeholder calendar/commute/news content
-  - Pegasus weather used explicit condition animations and weather views; current OpenJibo weather is functional but visually lighter
+  - Pegasus weather used explicit condition animations and weather views; current BEefy weather is functional but visually lighter
 - Scope:
   - weather icon/animation parity and view support
   - broader non-local weather query handling and short-range date coverage
@@ -1083,9 +1083,9 @@ These are the carryover items that need a clean proof pass first:
   - the robot stays in a live listen/capture state long enough to accept an item phrase
   - existing shopping/to-do flows remain unchanged
   - future integration-backed list work remains a separate backlog item
-- Refinement note (2026-08-07): Pegasus provides only refusal MIMs for shopping and to-do lists in the available snapshot; there is no authoritative legacy implementation to port. Treat the current household-list implementation as an OpenJibo capability needing iterative live-robot refinement, and capture protocol-boundary failures before changing the cloud parser.
+- Refinement note (2026-08-07): Pegasus provides only refusal MIMs for shopping and to-do lists in the available snapshot; there is no authoritative legacy implementation to port. Treat the current household-list implementation as an BEefy capability needing iterative live-robot refinement, and capture protocol-boundary failures before changing the cloud parser.
 
-- Refinement note (2026-08-07): Pegasus provides only refusal MIMs for shopping and to-do lists in the available snapshot; there is no authoritative legacy implementation to port. Treat the current household-list implementation as an OpenJibo capability needing iterative live-robot refinement, and capture protocol-boundary failures before changing the cloud parser.
+- Refinement note (2026-08-07): Pegasus provides only refusal MIMs for shopping and to-do lists in the available snapshot; there is no authoritative legacy implementation to port. Treat the current household-list implementation as an BEefy capability needing iterative live-robot refinement, and capture protocol-boundary failures before changing the cloud parser.
 
 ### 29. Legacy MIM Personality Import Ladder
 
@@ -1137,7 +1137,7 @@ These are the carryover items that need a clean proof pass first:
   - confirm the imported content does not disturb existing weather/news/pizza flows
 - Exit criteria:
   - a first importer path exists for the simplest legacy MIM files
-  - at least one legacy prompt pack is running through OpenJibo content instead of hand-authored fallback text
+  - at least one legacy prompt pack is running through BEefy content instead of hand-authored fallback text
   - we have a clear second-wave list for the more conditional MIM families
 
 ### 30. Original Personalized Function Inventory
@@ -1149,7 +1149,7 @@ These are the carryover items that need a clean proof pass first:
   - the goal is to keep the next few passes focused on personality-rich wins instead of letting the work sprawl
 - Known sources:
   - legacy Jibo OS/Pegasus chitchat and MIM response families
-  - current OpenJibo persona, memory, and greeting work as the implementation target
+  - current BEefy persona, memory, and greeting work as the implementation target
 - Inventory to track:
   - identity and origin questions
   - personality and capability questions
@@ -1280,7 +1280,7 @@ These are the carryover items that need a clean proof pass first:
 - Evidence:
   - the robot repeatedly logged `ServerPort::onTimer Haven't had contact from the server` followed by `SSL Exception: ... ssl3_write_pending:bad write retry` every three seconds
   - the stale contact counter reached about `216,000,000ms`; it did not recover autonomously
-  - robot-side DNS resolved `open-jibo-socket.openjibo.com` to the Azure Container App, and a robot-side HTTPS request to port `443` returned `204 No Content`; this rules out a missing public DNS record or closed public port as the observed failure
+  - robot-side DNS resolved `api.5x1.com` to the Azure Container App, and a robot-side HTTPS request to port `443` returned `204 No Content`; this rules out a missing public DNS record or closed public port as the observed failure
   - after a targeted `jibo-server-service` restart, a new process logged `NotificationSubsystem::connect established connection to server` at `2026-07-22 10:08:43 CDT` (`15:08:43 UTC`)
   - temporary `ECONNREFUSED 127.0.0.1:8888` entries from local consumers occurred during that restart window and cleared when the local server service returned
   - on `2026-07-22`, the separate Neo Hub voice socket closed at an exact two-minute cadence: the robot logged `Hub Client connection opened` and then `Hubclient: received zero bytes` 120 seconds later; the local fallback opened `@be/greetings`, set `SLEEP` false, and woke the robot
@@ -1407,13 +1407,13 @@ Production reliability gate: complete [Replace Snapshot-Backed In-Memory Cloud S
    - current progress: signed identity graph admission decisions, offline evidence bundles, portal trusted-server validation, and loop sync paths prove the trust/sync design; the production state implementation still uses the snapshot-backed in-memory store and must complete backlog item 13
    - planning anchor: [storage-trust-consensus-plan.md](storage-trust-consensus-plan.md)
    - status: `in progress`
-7. OpenJibo.com neutral platform and hosting-choice surface
-   - provide a web UI for `openjibo.com` as the Open Jibo showcase, community/source entry, documentation path, and neutral hosting-choice surface
+7. api.5x1.com neutral platform and hosting-choice surface
+   - provide a web UI for `api.5x1.com` as the Open Jibo showcase, community/source entry, documentation path, and neutral hosting-choice surface
    - keep `jiborevived.com` separate as the community-maintained Jibo Revival Group hub and status space
    - compare Transcendent Software's managed service, future admitted community providers, owner-managed servers, self-hosted hybrid, and self-hosted isolated operation consistently
-   - use `auth.openjibo.com` only if a shared neutral identity authority is intentionally separated; do not assume one commercial provider owns ecosystem identity
+   - use `auth.api.5x1.com` only if a shared neutral identity authority is intentionally separated; do not assume one commercial provider owns ecosystem identity
    - keep each provider's membership, billing, terms, privacy, support, and status on its clearly labeled provider surface
-   - use `cloud.openjibo.com` for Transcendent Software's managed service while the neutral site remains at `openjibo.com`
+   - use `api.5x1.com` for Transcendent Software's managed service while the neutral site remains at `api.5x1.com`
    - onboarding needs provider-specific extension points for signup/payment, free community clouds, hosted plan selection, subscription cancellation, and self-hosted server enrollment
    - onboarding should expose a data-driven trusted-server registry API backed by cloud state so the app can present approved managed options, distinguish self-hosted hybrid servers that stay synced but private, write signed admission/revocation/reactivation audit records, and let the user enter a separate custom self-hosted server name/IP with a local-vs-hybrid trust validator
    - provider-specific onboarding must use signed event callbacks and signed returns
@@ -1422,7 +1422,7 @@ Production reliability gate: complete [Replace Snapshot-Backed In-Memory Cloud S
    - provider revocation must force the robot back through an authorized validation/recovery flow without silently switching providers or deleting owner data
    - developer/smoke-only self-hosted paths can use HTTP locally; owner-facing robot paths should default to HTTPS/self-signed or equivalent patched trust behavior until safe HTTP is proven
    - status: `ready`
-   - current progress: the neutral site must explain the platform, community, source, conversion, and comparable hosting choices; Transcendent Software's private commercial membership application is represented publicly at `cloud.openjibo.com`
+   - current progress: the neutral site must explain the platform, community, source, conversion, and comparable hosting choices; Transcendent Software's private commercial membership application is represented publicly at `api.5x1.com`
 8. Loop advancement and multi-Jibo support
    - support family/friend advancement, multiple user recognition, and multiple Jibo interaction
    - keep the identity model ready for Jibo-to-Jibo communication and shared household use

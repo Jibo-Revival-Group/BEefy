@@ -70,14 +70,14 @@ Artifacts:
 
 Useful helper scripts:
 
-- [scripts/cloud/Invoke-LiveJiboPrep.ps1](/OpenJibo/scripts/cloud/Invoke-LiveJiboPrep.ps1)
-- [scripts/cloud/Get-WebSocketCaptureSummary.ps1](/OpenJibo/scripts/cloud/Get-WebSocketCaptureSummary.ps1)
-- [scripts/cloud/Import-WebSocketCaptureFixture.ps1](/OpenJibo/scripts/cloud/Import-WebSocketCaptureFixture.ps1)
-- [scripts/cloud/start-dotnet-with-node-cert.sh](/OpenJibo/scripts/cloud/start-dotnet-with-node-cert.sh)
-- [scripts/cloud/invoke-live-jibo-prep.sh](/OpenJibo/scripts/cloud/invoke-live-jibo-prep.sh)
-- [scripts/cloud/get-websocket-capture-summary.sh](/OpenJibo/scripts/cloud/get-websocket-capture-summary.sh)
-- [scripts/cloud/import-websocket-capture-fixture.py](/OpenJibo/scripts/cloud/import-websocket-capture-fixture.py)
-- [live-jibo-test-runbook.md](/OpenJibo/docs/live-jibo-test-runbook.md)
+- [scripts/cloud/Invoke-LiveJiboPrep.ps1](../scripts/cloud/Invoke-LiveJiboPrep.ps1)
+- [scripts/cloud/Get-WebSocketCaptureSummary.ps1](../scripts/cloud/Get-WebSocketCaptureSummary.ps1)
+- [scripts/cloud/Import-WebSocketCaptureFixture.ps1](../scripts/cloud/Import-WebSocketCaptureFixture.ps1)
+- [scripts/cloud/start-dotnet-with-node-cert.sh](../scripts/cloud/start-dotnet-with-node-cert.sh)
+- [scripts/cloud/invoke-live-jibo-prep.sh](../scripts/cloud/invoke-live-jibo-prep.sh)
+- [scripts/cloud/get-websocket-capture-summary.sh](../scripts/cloud/get-websocket-capture-summary.sh)
+- [scripts/cloud/import-websocket-capture-fixture.py](../scripts/cloud/import-websocket-capture-fixture.py)
+- [live-jibo-test-runbook.md](../docs/live-jibo-test-runbook.md)
 
 ## Group Testing Handoff
 
@@ -85,7 +85,7 @@ When you have a useful capture set and want to share it with another tester, bun
 
 Recommended helper:
 
-- [scripts/cloud/New-CaptureBundle.ps1](/OpenJibo/scripts/cloud/New-CaptureBundle.ps1)
+- [scripts/cloud/New-CaptureBundle.ps1](../scripts/cloud/New-CaptureBundle.ps1)
 
 The bundle includes:
 

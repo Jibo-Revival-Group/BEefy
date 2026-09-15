@@ -245,7 +245,7 @@ Use the round-trip wrapper when you want a single pass that scaffolds the overla
 PowerShell:
 
 ```powershell
-.\Roundtrip-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot C:\Projects\JiboExperiments\artifacts\harness-overlay -TargetMode open-jibo -Strict -Clean
+.\Roundtrip-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot artifacts/harness-overlay -TargetMode open-jibo -Strict -Clean
 ```
 
 This runs the same overlay-backed flow used during validation and leaves a `harness-roundtrip.json` summary in the chosen output directory.

@@ -1,8 +1,8 @@
-# OpenJibo Roadmap
+# BEefy Roadmap
 
 ## Purpose
 
-This is the long-range story for OpenJibo.
+This is the long-range story for BEefy.
 
 Use it when someone wants the shape of the project without reading every release note, backlog entry, or live-test log.
 
@@ -11,7 +11,7 @@ The current execution truth still lives in:
 - [Development plan](development-plan.md)
 - [Feature backlog](feature-backlog.md)
 - [Release 1.0.20 plan](release-1.0.20-plan.md)
-- [Transcendent Software managed OpenJibo Cloud service](https://cloud.openjibo.com)
+- [Transcendent Software managed BEefy Cloud service](https://api.5x1.com)
 - [Cloud deployment and topology plan](cloud-deployment-topology-plan.md)
 - [Storage trust and consensus plan](storage-trust-consensus-plan.md)
 - [Device bootstrap path](device-bootstrap.md)
@@ -88,7 +88,7 @@ This is where the breadcrumbs in the repo become important:
 - `open-jibo`, `open-jibo-ai`, `open-jibo-self-hosted`, and `open-jibo-developer` modes
 - a startup migration skill that can invite existing owners to convert and keep the menu entry available afterward
 - a reversible path back to stock
-- the hosted sites and support docs on `openjibo.com` and `openjibo.ai` that explain the transition clearly
+- the hosted sites and support docs on `api.5x1.com` and `openjibo.ai` that explain the transition clearly
 
 ## Phase 4: Tiered Brain
 
@@ -112,7 +112,7 @@ CoffeeBreak fits naturally above the tiered brain as a coordination plane.
 The intended relationship is:
 
 - Jibo keeps the voice, personality, and local interaction style
-- OpenJibo routes simple and medium-complexity tasks itself
+- BEefy routes simple and medium-complexity tasks itself
 - CoffeeBreak can take over when a task needs multiple tools, agents, or steps
 - the result comes back to Jibo in a form that still feels native to him
 
@@ -120,7 +120,7 @@ That makes CoffeeBreak a close cousin to the tiered brain rather than a separate
 
 ## Phase 5: Ecosystem Expansion
 
-After the core platform is stable, OpenJibo can grow into broader household value:
+After the core platform is stable, BEefy can grow into broader household value:
 
 - calendar and scheduling
 - smart home and Home Assistant style control
@@ -148,7 +148,7 @@ If you want the current execution truth, read:
 - [Development plan](development-plan.md)
 - [Feature backlog](feature-backlog.md)
 - [Release 1.0.20 plan](release-1.0.20-plan.md)
-- [Transcendent Software managed OpenJibo Cloud service](https://cloud.openjibo.com)
+- [Transcendent Software managed BEefy Cloud service](https://api.5x1.com)
 
 If you want the first-device path, read:
 

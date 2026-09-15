@@ -1,8 +1,8 @@
-# Self-Hosted OpenJibo Runbook
+# Self-Hosted BEefy Runbook
 
 ## Purpose
 
-This is the single starting point for self-hosting the OpenJibo cloud with Docker Compose on your own hardware. Other docs cover specific pieces in more depth; this runbook tells you which one to read next for each step.
+This is the single starting point for self-hosting the BEefy cloud with Docker Compose on your own hardware. Other docs cover specific pieces in more depth; this runbook tells you which one to read next for each step.
 
 - [scripts/cloud/README.md](../scripts/cloud/README.md) — full inventory of every script in the repo, including the managed/Azure path. Use it as a reference, not a starting point.
 - [docs/single-robot-http-self-hosting.md](single-robot-http-self-hosting.md) — deep dive on robot token/network overrides and the tokenless single-robot compatibility mode.
@@ -20,7 +20,7 @@ Everything else — .NET, ffmpeg, whisper.cpp — is built into the container im
 
 ## 2. Configure `.env`
 
-From the `OpenJibo` repo root:
+From the BEefy repo root:
 
 ```powershell
 .\scripts\cloud\Initialize-OpenJiboComposeEnv.ps1

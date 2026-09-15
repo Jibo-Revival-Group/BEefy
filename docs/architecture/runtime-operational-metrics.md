@@ -2,7 +2,7 @@
 
 Status date: `2026-09-07`
 
-OpenJibo emits privacy-safe aggregate measurements through the .NET meter `OpenJibo.Transport`. These
+BEefy emits privacy-safe aggregate measurements through the .NET meter `OpenJibo.Transport`. These
 measurements are intended to establish a concurrency and cost envelope; they are not a customer activity log.
 Robot IDs, session IDs, transcripts, audio, credentials, connection strings, and free-form error text must never
 be added as metric attributes.
@@ -133,7 +133,7 @@ database command-duration samples populate distinct hourly buckets across the re
 and prove that the provider meter
 was active. It may infer a zero for missing
 audio-limit-rejection counter samples only when accepted-audio or buffered-audio gauge samples prove that the
-OpenJibo transport meter was active across that same hourly-bucket threshold. It may infer a zero for missing
+BEefy transport meter was active across that same hourly-bucket threshold. It may infer a zero for missing
 restart samples only when distinct populated working-set and replica hours meet the threshold. These inferences
 are recorded in
 `evidence.inferredZeroSignals`; without the corroborating signals, the missing metric remains a blocker and is not

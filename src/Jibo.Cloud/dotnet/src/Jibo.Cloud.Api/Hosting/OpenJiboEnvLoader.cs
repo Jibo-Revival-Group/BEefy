@@ -22,15 +22,21 @@ internal static class OpenJiboEnvLoader
 
     private static IEnumerable<string> ResolveEnvFileCandidates(string? startPath)
     {
-        var openJiboRoot = FindOpenJiboRepoRoot(startPath ?? Directory.GetCurrentDirectory()) ??
-                           FindOpenJiboRepoRoot(AppContext.BaseDirectory);
-        if (!string.IsNullOrWhiteSpace(openJiboRoot))
-            yield return Path.Combine(openJiboRoot, ".env");
+        // Repo root is the directory that contains OpenJibo.slnx (this project is no longer nested).
+        var repoRoot = FindOpenJiboRepoRoot(startPath ?? Directory.GetCurrentDirectory()) ??
+                       FindOpenJiboRepoRoot(AppContext.BaseDirectory);
+        if (!string.IsNullOrWhiteSpace(repoRoot))
+            yield return Path.Combine(repoRoot, ".env");
 
-        var workspaceRoot = FindWorkspaceRoot(startPath ?? Directory.GetCurrentDirectory()) ??
-                            FindWorkspaceRoot(AppContext.BaseDirectory);
-        if (!string.IsNullOrWhiteSpace(workspaceRoot))
-            yield return Path.Combine(workspaceRoot, ".env");
+        // Also accept a .env next to the current working directory when not running from the tree.
+        var cwd = startPath ?? Directory.GetCurrentDirectory();
+        if (!string.IsNullOrWhiteSpace(cwd))
+        {
+            var cwdEnv = Path.Combine(Path.GetFullPath(cwd), ".env");
+            if (string.IsNullOrWhiteSpace(repoRoot) ||
+                !string.Equals(cwdEnv, Path.Combine(repoRoot, ".env"), StringComparison.OrdinalIgnoreCase))
+                yield return cwdEnv;
+        }
     }
 
     private static void LoadFile(string envPath)
@@ -73,16 +79,5 @@ internal static class OpenJiboEnvLoader
         }
 
         return null;
-    }
-
-    private static string? FindWorkspaceRoot(string? startPath)
-    {
-        if (string.IsNullOrWhiteSpace(startPath)) return null;
-
-        var openJiboRoot = FindOpenJiboRepoRoot(startPath);
-        if (string.IsNullOrWhiteSpace(openJiboRoot)) return null;
-
-        var parent = Directory.GetParent(openJiboRoot);
-        return parent?.Exists == true ? parent.FullName : null;
     }
 }

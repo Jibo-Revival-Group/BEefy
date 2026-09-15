@@ -1,6 +1,6 @@
 # Bootstrap Scripts
 
-These scripts support the first OpenJibo recovery path:
+These scripts support the first BEefy recovery path:
 
 - discover which hosts the robot is trying to reach
 - generate DNS override records for a controlled environment
@@ -63,16 +63,16 @@ Example:
 
 ```powershell
 .\jibo-mount --rw
-.\Scaffold-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot C:\Projects\JiboExperiments\artifacts\harness-overlay -Clean
-.\Run-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot C:\Projects\JiboExperiments\artifacts\harness-overlay -TargetMode open-jibo -Apply -Strict -Clean
-.\Rollback-OpenJiboConversion.ps1 -RobotRoot C:\Projects\JiboExperiments\artifacts\harness-overlay -ApplyPath C:\Projects\JiboExperiments\artifacts\harness-overlay\run-output\invoke\conversion-apply.json -Strict
-.\Roundtrip-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot C:\Projects\JiboExperiments\artifacts\harness-overlay -TargetMode open-jibo -Strict -Clean
-.\Validate-OpenJiboHarnessRoundTrip.ps1 -OutputDirectory C:\Projects\JiboExperiments\artifacts\harness-overlay-output
-.\Demo-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot C:\Projects\JiboExperiments\artifacts\demo-overlay -Strict -Clean
+.\Scaffold-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot artifacts/harness-overlay -Clean
+.\Run-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot artifacts/harness-overlay -TargetMode open-jibo -Apply -Strict -Clean
+.\Rollback-OpenJiboConversion.ps1 -RobotRoot artifacts/harness-overlay -ApplyPath artifacts/harness-overlay\run-output\invoke\conversion-apply.json -Strict
+.\Roundtrip-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot artifacts/harness-overlay -TargetMode open-jibo -Strict -Clean
+.\Validate-OpenJiboHarnessRoundTrip.ps1 -OutputDirectory artifacts/harness-overlay-output
+.\Demo-OpenJiboHarness.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OverlayRoot artifacts/demo-overlay -Strict -Clean
 .\Recommend-OpenJiboHarnessMode.ps1 -Goal demo
-.\Build-LinuxFilesystemFromCopies.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OutputRoot C:\Projects\JiboExperiments\artifacts\linux-fs-demo -Clean
-.\Inspect-LinuxFilesystemDemo.ps1 -OutputRoot C:\Projects\JiboExperiments\artifacts\linux-fs-demo5
-.\Run-OpenJiboFilesystemDemo.ps1 -DemoRoot C:\Projects\JiboExperiments\artifacts\linux-fs-demo5\demo-root -Strict
+.\Build-LinuxFilesystemFromCopies.ps1 -SourceRoot C:\Users\JacobDubin\Downloads\jibo_full_emmc -OutputRoot artifacts/linux-fs-demo -Clean
+.\Inspect-LinuxFilesystemDemo.ps1 -OutputRoot artifacts/linux-fs-demo5
+.\Run-OpenJiboFilesystemDemo.ps1 -DemoRoot artifacts/linux-fs-demo5\demo-root -Strict
 ```
 
 
@@ -84,7 +84,7 @@ Example:
 
 ```bash
 ./plan-oobe-ota-bootstrap.sh \
-  --api-hostname api.openjibo.com \
+  --api-hostname api.5x1.com \
   --trace-bundle /path/to/oobe-ota-traces \
   --certificate-mode external \
   --output-path /tmp/openjibo-oobe-ota-plan.json
@@ -113,9 +113,9 @@ Example:
   --source-root /path/to/jibo_full_emmc \
   --overlay-root /tmp/openjibo-demo-overlay \
   --target-mode open-jibo \
-  --base-url https://api.openjibo.com \
-  --api-hostname api.openjibo.com \
-  --hub-hostname neohub.openjibo.com \
+  --base-url https://api.5x1.com \
+  --api-hostname api.5x1.com \
+  --hub-hostname api.5x1.com \
   --strict \
   --clean \
   --output-directory /tmp/openjibo-conversion-video

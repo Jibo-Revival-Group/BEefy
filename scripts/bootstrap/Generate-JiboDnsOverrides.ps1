@@ -3,9 +3,9 @@ param(
     [string[]]$HostNames = @(
         "api.jibo.com",
         "api-socket.jibo.com",
-        "open-jibo-socket.openjibo.com",
+        "api.5x1.com",
         "neo-hub.jibo.com",
-        "neohub.openjibo.com"
+        "api.5x1.com"
     )
 )
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document maps the legacy Pegasus/Jibo cloud `system_diagram.png` architecture to the current OpenJibo `1.0.20` cloud.
+This document maps the legacy Pegasus/Jibo cloud `system_diagram.png` architecture to the current BEefy `1.0.20` cloud.
 
 Use it to keep release planning grounded in three views:
 
@@ -31,7 +31,7 @@ Conclusion: do not treat template-skill flow as a port target. Treat it as a sha
 
 ## System Diagram Mapping
 
-| Legacy block | OpenJibo `1.0.20` equivalent | Current gap / opportunity |
+| Legacy block | BEefy `1.0.20` equivalent | Current gap / opportunity |
 | --- | --- | --- |
 | `Auth` | [JiboCloudProtocolService.cs](../src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Application/Services/JiboCloudProtocolService.cs) (`CreateHubToken`, `CreateAccessToken`, account handlers) | move from in-memory/session stubs to durable tenant/account identity services |
 | `Loop` | [JiboCloudProtocolService.cs](../src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Application/Services/JiboCloudProtocolService.cs) (`HandleLoop`) + [InMemoryCloudStateStore.cs](../src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Persistence/InMemoryCloudStateStore.cs) | richer loop/member lifecycle and onboarding flows |
@@ -53,7 +53,7 @@ Captured source:
 
 - `C:\Projects\jibo\sdk\packages\skills-service-manager\resources\state-diagrams\glsm.png`
 
-First OpenJibo support slice (implemented):
+First BEefy support slice (implemented):
 
 - explicit derived listener phases are now emitted in cloud diagnostics:
   - `HJ_LISTENING`
@@ -190,7 +190,7 @@ It emphasized a personality-rich surface while still being operationally observa
 
 ## Where We Are
 
-OpenJibo `1.0.20` is a functional hosted `.NET` modular monolith with:
+BEefy `1.0.20` is a functional hosted `.NET` modular monolith with:
 
 - protocol compatibility paths for HTTP and websocket robot flows
 - deterministic intent routing plus state-machine slices

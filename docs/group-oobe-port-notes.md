@@ -8,25 +8,25 @@ for later review of security, stability, and long-term maintainability.
 
 ## Ported In This Pass
 
-- `OpenJibo/src/Directory.Build.props`
+- `BEefy/src/Directory.Build.props`
   - excludes stale root-owned build artifact directories from compilation
   - intended as a build-safety guard, not a behavior change
-- `OpenJibo/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Persistence/PersistenceBackendKind.cs`
+- `BEefy/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Persistence/PersistenceBackendKind.cs`
   - adds `Sqlite` as a persistence backend enum value
-- `OpenJibo/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Persistence/PersistenceSnapshotStoreFactory.cs`
+- `BEefy/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Persistence/PersistenceSnapshotStoreFactory.cs`
   - wires the SQLite snapshot store into the existing factory
-- `OpenJibo/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Persistence/SqliteSnapshotStore.cs`
+- `BEefy/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Persistence/SqliteSnapshotStore.cs`
   - adds a minimal SQLite snapshot backend for JSON snapshot round-tripping
-- `OpenJibo/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Jibo.Cloud.Infrastructure.csproj`
+- `BEefy/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Infrastructure/Jibo.Cloud.Infrastructure.csproj`
   - adds the SQLite package dependency
-- `OpenJibo/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Api/Program.cs`
+- `BEefy/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Api/Program.cs`
   - enables permissive CORS for local browser-based tooling
-- `OpenJibo/scripts/cloud/start-dotnet-with-node-cert.sh`
+- `BEefy/scripts/cloud/start-dotnet-with-node-cert.sh`
   - makes cert-chain handling more robust for local development
   - removes stale root-owned build artifact directories before startup
-- `OpenJibo/src/Jibo WiFi QR Generator/jibo_qr_generator.html`
+- `BEefy/src/Jibo WiFi QR Generator/jibo_qr_generator.html`
   - adds the chunked OOBE QR workflow and optional server-issued token path
-- `OpenJibo/tests/Jibo.Cloud.Tests/Infrastructure/PersistenceStoreTests.cs`
+- `BEefy/tests/Jibo.Cloud.Tests/Infrastructure/PersistenceStoreTests.cs`
   - adds a backend wiring test for SQLite
 
 ## Deliberately Held Back

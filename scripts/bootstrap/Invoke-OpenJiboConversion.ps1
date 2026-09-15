@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$RobotRoot,
     [string]$TargetMode = "open-jibo",
-    [string]$ApiHostname = "api.openjibo.com",
+    [string]$ApiHostname = "api.5x1.com",
     [string]$HubHostname = "",
     [string]$OutputDirectory,
     [switch]$Apply,

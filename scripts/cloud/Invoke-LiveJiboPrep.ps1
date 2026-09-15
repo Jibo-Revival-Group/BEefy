@@ -3,15 +3,14 @@ param(
     [string[]]$ExpectedHosts = @(
         "api.jibo.com",
         "api-socket.jibo.com",
-        "open-jibo-socket.openjibo.com",
-        "neohub.openjibo.com"
+        "api.5x1.com"
     ),
     [string]$CaptureDirectory = "..\..\src\Jibo.Cloud\dotnet\src\Jibo.Cloud.Api\bin\Debug\net10.0\captures\websocket"
 )
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "OpenJibo live Jibo prep"
+Write-Host "BEefy live Jibo prep"
 Write-Host ""
 
 Write-Host "1. HTTP health check"

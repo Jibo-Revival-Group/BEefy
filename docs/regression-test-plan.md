@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This plan is the repeatable live regression checklist for OpenJibo Cloud releases.
+This plan is the repeatable live regression checklist for BEefy Cloud releases.
 
 Use [live-jibo-test-runbook.md](live-jibo-test-runbook.md) for the environment setup and capture mechanics. Use this file for what to test once the robot is connected and the hosted `.NET` cloud is running.
 
@@ -57,7 +57,7 @@ A release is not ready until these are true or explicitly deferred in [developme
 - focused `.NET` cloud tests pass
 - running robot reports the expected cloud version by voice and `/health`
 - `cloud version` uses `Cloud version ...` wording and settles without self-hotphrase interruption, a self-listened `Cloudford`, or a generic chat tail
-- no current-release path emits obsolete OpenJibo-only websocket events such as synthetic pending/context/ack packets
+- no current-release path emits obsolete openjibo-only websocket events such as synthetic pending/context/ack packets
 - known working live paths still work: startup, simple chat, radio, basic news, constrained yes/no, alarm, and gallery/create
 - any remaining failure is classified as cloud payload, local robot state, STT/audio quality, environment/routing, or deferred feature gap
 
@@ -501,7 +501,7 @@ For each item, record:
 - transcript heard
 - turn type and active listen rule
 - whether the robot stayed listening or settled cleanly
-- whether the reply matched stock Jibo behavior or the current OpenJibo parity target
+- whether the reply matched stock Jibo behavior or the current BEefy parity target
 
 ## Optional Feature Slice Checks
 

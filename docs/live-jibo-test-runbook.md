@@ -2,7 +2,7 @@
 
 ## Goal
 
-Run the first real `Jibo -> .NET OpenJibo cloud` test on the Ubuntu machine using the same working certificate and controlled routing that currently work with the Node server.
+Run the first real `Jibo -> .NET BEefy cloud` test on the Ubuntu machine using the same working certificate and controlled routing that currently work with the Node server.
 
 This runbook intentionally avoids introducing Azure, new hostnames, or new robot bootstrap changes during the first live test.
 
@@ -165,7 +165,7 @@ If the robot does not connect or the first turn fails:
 Do not mix these into the first live run:
 
 - Azure deployment cutover
-- new permanent OpenJibo hostnames
+- new permanent BEefy hostnames
 - IaC rollout
 - new device bootstrap edits beyond the already working setup
 

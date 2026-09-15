@@ -43,7 +43,7 @@ internal static class PortalEndpoints
             {
                 directoryVersion = "1",
                 hostedHttpsRequired = true,
-                trustedRootHost = "api.openjibo.com",
+                trustedRootHost = "api.5x1.com",
                 allowCustomEntry = true,
                 customEntryMode = "self-hosted",
                 serverTypes = new

@@ -26,7 +26,7 @@ Open Jibo should use explicit modes instead of overwriting stock configuration i
 | Mode | Purpose | Expected server target |
 | --- | --- | --- |
 | `normal`, `oobe` or `int-developer` | Original Jibo behavior and rollback target (reference as `stock`) | original region/config where available |
-| `open-jibo` | Default managed Open Jibo experience | managed Open Jibo production cloud (`api.openjibo.com`, `open-jibo-socket.openjibo.com`, `neohub.openjibo.com`) |
+| `open-jibo` | Default managed Open Jibo experience | managed Open Jibo production cloud (`api.5x1.com`, `api.5x1.com`, `api.5x1.com`) |
 | `open-jibo-ai` | Open Jibo with higher-level AI/orchestration features | `openjibo.ai` or managed AI-capable cloud |
 | `open-jibo-self-hosted` | Owner-managed local or private server | owner supplied host/region |
 | `open-jibo-developer` | Testing/debugging mode for development builds and captures | developer supplied host/region |
@@ -150,22 +150,22 @@ Additional files to audit:
 
 Region-template replacements the conversion scripts now target in every discovered `region_config.json` and `aws-sdk-all.js` copy:
 
-- `{service}.{region}.api.jibo.com` -> `{service}.{region}.api.openjibo.com`
-- `https://api.jibo.com` -> `https://api.openjibo.com`
-- `http://api.jibo.com:8080` -> `http://api.openjibo.com:8080`
-- `https://{region}.jibo.com` -> `https://{region}.openjibo.com`
-- `http://{region}.jibo.com:8080` -> `http://{region}.openjibo.com:8080`
-- `wss://{region}-socket.jibo.com` -> `wss://{region}-socket.openjibo.com`
-- `ws://{region}-socket.jibo.com:8090` -> `ws://{region}-socket.openjibo.com:8090`
+- `{service}.{region}.api.jibo.com` -> `{service}.{region}.api.5x1.com`
+- `https://api.jibo.com` -> `https://api.5x1.com`
+- `http://api.jibo.com:8080` -> `https://api.5x1.com:8080`
+- `https://{region}.jibo.com` -> `https://{region}.api.5x1.com`
+- `http://{region}.jibo.com:8080` -> `http://{region}.api.5x1.com:8080`
+- `wss://{region}-socket.jibo.com` -> `wss://{region}-socket.api.5x1.com`
+- `ws://{region}-socket.jibo.com:8090` -> `ws://{region}-socket.api.5x1.com:8090`
 
 Live `jibo-ssm` runtime bundle replacements the conversion scripts now also target:
 
-- `data.region + ".jibo.com"` -> `"api.openjibo.com"`
-- `this._wifiService.options.region + ".jibo.com"` -> `"api.openjibo.com"`
-- previously converted `.openjibo.com` concatenations and compact no-space forms -> `"api.openjibo.com"`
-- `API: 'api.jibo.com'` -> `API: 'api.openjibo.com'`
+- `data.region + ".jibo.com"` -> `"api.5x1.com"`
+- `this._wifiService.options.region + ".jibo.com"` -> `"api.5x1.com"`
+- previously converted `.api.5x1.com` concatenations and compact no-space forms -> `"api.5x1.com"`
+- `API: 'api.jibo.com'` -> `API: 'api.5x1.com'`
 
-The SSM value is an HTTPS `GET /` connectivity probe, not the Jetstream region endpoint. Keep `credentials.region` set to `open-jibo` for region selection, but make this probe use the canonical `api.openjibo.com` host rather than deriving `open-jibo.openjibo.com`.
+The SSM value is an HTTPS `GET /` connectivity probe, not the Jetstream region endpoint. Keep `credentials.region` set to `open-jibo` for region selection, but make this probe use the canonical `api.5x1.com` host rather than deriving `open-jibo.api.5x1.com`.
 
 Native `jibo-server-service` compatibility patch:
 
@@ -336,7 +336,7 @@ Use `scripts/bootstrap/plan-oobe-ota-bootstrap.sh` to produce a machine-readable
 1. Confirm the provenance, redistribution rights, and security handling of the historical `*.jibo.com` certificate and key before placing any related material in this repository or in an owner-facing tool.
 2. Capture Maaarcna's prototype request/response traces for `PrepareRobot`, `SetupRobot`, `GetStatus`, `GetUpdateFrom`, asset downloads, NTP sync, and post-update verification.
 3. Validate whether OOBE can be launched from a normal boot without wiping owner data, and whether that path still honors QR-provided DNS long enough to run OTA.
-4. Decide how the first Open Jibo OTA package survives the reboot/apply sequence and retargets the robot to `api.openjibo.com` or the selected self-hosted server without relying on the expired stock certificate after conversion.
+4. Decide how the first Open Jibo OTA package survives the reboot/apply sequence and retargets the robot to `api.5x1.com` or the selected self-hosted server without relying on the expired stock certificate after conversion.
 5. Build package provenance rules: source packages from known stock OTA/Nexus archives where legal, avoid robot-unique files, and produce reproducible Open Jibo subsystem tarballs with manifest hashes.
 6. Confirm multi-robot behavior for a LAN bootstrap server, including access token handling, per-robot identity issuance, simultaneous OOBE sessions, and rollback if one robot fails mid-update.
 

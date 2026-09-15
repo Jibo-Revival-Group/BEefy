@@ -2,7 +2,7 @@
 
 ## Summary
 
-`Jibo.Cloud.DotNet` is the stable hosted implementation of the OpenJibo cloud.
+`Jibo.Cloud.DotNet` is the stable hosted implementation of the BEefy cloud.
 
 This is the production-oriented path for restoring device connectivity and creating a foundation for future runtime, AI, and OTA work.
 
@@ -19,7 +19,7 @@ Run that from the repo root. For the full local guide, including Node and Playgr
 
 Release hygiene reminder:
 
-- bump [OpenJiboCloudBuildInfo.cs](/C:/Projects/JiboExperiments/OpenJibo/src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Application/Services/OpenJiboCloudBuildInfo.cs) whenever we ship a meaningful hosted-cloud update
+- bump [OpenJiboCloudBuildInfo.cs](src/Jibo.Cloud.Application/Services/OpenJiboCloudBuildInfo.cs) whenever we ship a meaningful hosted-cloud update
 - keep the spoken version response and `/health` version field aligned from that single source of truth
 - the API startup log now prints the same version on boot, which is useful for confirming the running build during live robot tests
 
@@ -157,7 +157,7 @@ A third path is now available for hosted deployments:
 The local tool path is intentionally off by default. It exists to help map real robot audio behavior while the stable hosted cloud remains the primary goal.
 
 The checked-in API host config enables that path by default, but it no longer
-pins Linux-only tool locations. At startup OpenJibo resolves `ffmpeg`,
+pins Linux-only tool locations. At startup BEefy resolves `ffmpeg`,
 `whisper-cli`, and the model from explicit config, environment variables,
 common Windows/Linux/macOS locations, and finally command names on `PATH`.
 
@@ -197,7 +197,7 @@ Configuration lives under `OpenJibo:Stt`:
 
 `OPENJIBO_STT_*` path overrides still apply to the local decode chain.
 
-The Azure path is disabled unless `EnableAzureSpeech` is true and both the region and subscription key are present. It is intended for hosted deployments such as `api.openjibo.com`, while self-hosted setups can remain on HTTP or continue using the local whisper discovery path.
+The Azure path is disabled unless `EnableAzureSpeech` is true and both the region and subscription key are present. It is intended for hosted deployments such as `api.5x1.com`, while self-hosted setups can remain on HTTP or continue using the local whisper discovery path.
 
 This is not yet a claim of production-ready onboard ASR. It is a `.NET` discovery seam that keeps us compatible with the Node oracle while we evaluate the hosted Azure STT path alongside the local whisper discovery path.
 

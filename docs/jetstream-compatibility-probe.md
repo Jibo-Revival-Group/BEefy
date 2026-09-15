@@ -1,6 +1,6 @@
 # JetStream Compatibility Probe
 
-The JetStream compatibility probe exercises OpenJibo from a workstation without
+The JetStream compatibility probe exercises BEefy from a workstation without
 converting a physical robot. Unlike the browser release smoke, it can set the
 stock-style `Authorization: Bearer <hub-token>` WebSocket header.
 
@@ -17,7 +17,7 @@ logs.
 
 ## Install
 
-From the `OpenJibo` directory:
+From the BEefy repo root:
 
 ```powershell
 npm install --prefix src/Jibo.Cloud/node
@@ -25,7 +25,7 @@ npm install --prefix src/Jibo.Cloud/node
 
 ## Authenticated local check
 
-Start a local OpenJibo server in `self-hosted-isolated` mode, then run:
+Start a local BEefy server in `self-hosted-isolated` mode, then run:
 
 ```powershell
 node src/Jibo.Cloud/node/invoke-jetstream-compatibility-probe.mjs `
@@ -95,7 +95,7 @@ HTTPS token calls and WSS sockets. The probe does not provide a TLS-verification
 bypass.
 
 Non-private hosts require `--allow-public-target` because token calls create
-diagnostic device records. Known production OpenJibo hosts require the additional
+diagnostic device records. Known production BEefy hosts require the additional
 `--dangerously-allow-production` switch. Do not use either switch without explicit
 authorization.
 

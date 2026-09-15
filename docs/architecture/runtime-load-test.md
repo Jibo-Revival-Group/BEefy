@@ -124,9 +124,9 @@ remain outside this matrix.
 
 ## Guarded Short Matrix Repeat (`2026-09-10`)
 
-Runs [`34477940754`](https://github.com/transcendentsoftware-jd/JiboExperiments/actions/runs/34477940754),
-[`34479120393`](https://github.com/transcendentsoftware-jd/JiboExperiments/actions/runs/34479120393), and
-[`34480066458`](https://github.com/transcendentsoftware-jd/JiboExperiments/actions/runs/34480066458) repeated the
+Runs [`34477940754`](https://github.com/Jibo-Revival-Group/BEefy/actions/runs/34477940754),
+[`34479120393`](https://github.com/Jibo-Revival-Group/BEefy/actions/runs/34479120393), and
+[`34480066458`](https://github.com/Jibo-Revival-Group/BEefy/actions/runs/34480066458) repeated the
 10%, 25%, and 50% cases on commit `c517f97c23ab460ea7d4b771185797edc2e074df`. All used unchanged image
 `sha-3773955b69c6`, observed exactly two serving replicas, proved a cross-replica committed read, retained complete
 per-tier connection/executing-command samples, inferred `pendingRequestMax: 0`, and passed cleanup restoration.

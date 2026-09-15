@@ -26,7 +26,7 @@ Options:
   --target-mode <mode>          open-jibo, open-jibo-ai, open-jibo-self-hosted, or open-jibo-developer (default: open-jibo)
   --base-url <url>              OpenJibo cloud base URL for smoke (default: BASE_URL or http://localhost:5000)
   --api-hostname <host>         Hostname to stage in robot conversion files (default: host parsed from --base-url)
-  --hub-hostname <host>         Neohub hostname to stage (default: neohub.openjibo.com for managed modes)
+  --hub-hostname <host>         Neohub hostname to stage (default: api.5x1.com for managed modes)
   --output-directory <path>     Evidence output directory (default: mktemp)
   --strict                      Pass strict validation into the conversion harness
   --clean                       Recreate the overlay before running the harness
@@ -74,7 +74,7 @@ if [[ -z "$api_hostname" ]]; then
 fi
 if [[ -z "$hub_hostname" ]]; then
   if [[ "$target_mode" == "open-jibo" || "$target_mode" == "open-jibo-ai" ]]; then
-    hub_hostname="neohub.openjibo.com"
+    hub_hostname="api.5x1.com"
   fi
 fi
 

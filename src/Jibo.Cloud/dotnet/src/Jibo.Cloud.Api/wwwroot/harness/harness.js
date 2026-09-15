@@ -14,7 +14,7 @@ async function ensureAdminAccess() {
   document.body.innerHTML = `
     <main class="shell">
       <section class="card">
-        <p class="eyebrow">OpenJibo Admin</p>
+        <p class="eyebrow">BEefy Admin</p>
         <h1>Robot harness access</h1>
         <p class="lede">Enter the admin password to use robot protocol and conversion tools.</p>
         <label for="adminPassword">Admin password<input id="adminPassword" type="password" autocomplete="current-password"></label>
@@ -89,7 +89,7 @@ function profileBody(overrides = {}) {
 function expectedHost() {
   const targetHost = $("targetHost").value.trim();
   return $("targetMode").value === "open-jibo" || $("targetMode").value === "open-jibo-ai"
-    ? "api.openjibo.com"
+    ? "api.5x1.com"
     : targetHost;
 }
 
@@ -199,7 +199,7 @@ $("runReleaseSmoke").addEventListener("click", async () => {
   try {
     const run = await runReleaseSmoke({
       baseUrl: window.location.origin,
-      protocolCall: createProtocolCaller(window.location.origin, $("hostName").value.trim() || "api.openjibo.com"),
+      protocolCall: createProtocolCaller(window.location.origin, $("hostName").value.trim() || "api.5x1.com"),
       robotPrefix: `browser-release-smoke-${Date.now()}`,
       concurrency: $("releaseRobotCount").value,
       turnPercent: $("releaseTurnPercent").value,

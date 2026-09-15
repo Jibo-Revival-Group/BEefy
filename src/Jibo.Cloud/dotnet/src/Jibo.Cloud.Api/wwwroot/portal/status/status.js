@@ -315,6 +315,7 @@ function shouldOfferIdentityReview(robot) {
   const namedDeviceId = /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+){2,}$/.test(deviceId) && !deviceId.startsWith("robot-");
   return Boolean(robot.identitySuggestion) ||
     robot.friendlyName === "OpenJibo Registered Robot" ||
+    robot.friendlyName === "BEefy Registered Robot" ||
     robotId.startsWith("robot-") ||
     (namedDeviceId && deviceId.toLowerCase() !== robotId.toLowerCase());
 }
@@ -387,7 +388,7 @@ async function renderLogin(message = "", isError = false) {
   app.innerHTML = `
     <div class="center-shell">
       <section class="card login-card">
-        <p class="eyebrow">OpenJibo Status</p>
+        <p class="eyebrow">BEefy Status</p>
         <h1>Admin access</h1>
         <p class="lede">Use the status password to open the fleet health view.</p>
         <label for="statusPassword">Admin password</label>
@@ -930,7 +931,7 @@ function renderStatusView(summary, previous = previousSummary) {
       <section class="card status-hero">
         <div class="status-hero-top">
           <div class="status-title">
-            <p class="status-kicker">OpenJibo Status</p>
+            <p class="status-kicker">BEefy Status</p>
             <h1>Fleet health at a glance</h1>
             <p class="status-lede">Live socket presence, recent activity, and a clean fleet inventory.</p>
           </div>

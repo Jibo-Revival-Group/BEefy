@@ -6,7 +6,7 @@ echo "plan-openjibo-conversion.sh $SCRIPT_VERSION" >&2
 
 robot_root=""
 target_mode="open-jibo"
-api_hostname="api.openjibo.com"
+api_hostname="api.5x1.com"
 hub_hostname=""
 output_path=""
 strict=false
@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --api-hostname)
-      api_hostname="${2:-api.openjibo.com}"
+      api_hostname="${2:-api.5x1.com}"
       shift 2
       ;;
     --hub-hostname)
@@ -50,7 +50,7 @@ if [ -z "$robot_root" ]; then
 fi
 
 if [ -z "$hub_hostname" ] && { [ "$target_mode" = "open-jibo" ] || [ "$target_mode" = "open-jibo-ai" ]; }; then
-  hub_hostname="neohub.openjibo.com"
+  hub_hostname="api.5x1.com"
 fi
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -75,7 +75,7 @@ const path = require("path");
 
 const auditPath = path.resolve(process.argv[2]);
 const targetMode = process.argv[3];
-const apiEndpointInput = (process.argv[4] || "api.openjibo.com").trim() || "api.openjibo.com";
+const apiEndpointInput = (process.argv[4] || "api.5x1.com").trim() || "api.5x1.com";
 const hubEndpointInput = (process.argv[5] || "").trim() || apiEndpointInput;
 const outputPath = (process.argv[6] || "").trim();
 const strict = String(process.argv[7]).toLowerCase() === "true";
@@ -140,7 +140,7 @@ const proposedChanges = [
       `set hub_secure to ${hubEndpoint.secure}`,
       "add HubClient.override section to directly override hub and entrypoint hostnames",
       "write both override ports so CreateHubToken and NeoHub use the intended self-hosted endpoints",
-      "this bypasses library hostname construction and prevents open-jibo.openjibo.com issues",
+      "this bypasses library hostname construction and prevents api.5x1.com issues",
     ],
   },
   {
@@ -166,9 +166,9 @@ const proposedChanges = [
     File: "all discovered region_config.json copies",
     Action: "replace the stock region endpoint templates in every discovered copy",
     Details: [
-      "change {service}.{region}.api.jibo.com to {service}.{region}.api.openjibo.com",
-      "change https://api.jibo.com to https://api.openjibo.com",
-      "change http://api.jibo.com:8080 to http://api.openjibo.com:8080",
+      "change {service}.{region}.api.jibo.com to {service}.{region}.api.5x1.com",
+      "change https://api.jibo.com to https://api.5x1.com",
+      "change http://api.jibo.com:8080 to http://api.5x1.com:8080",
       "change https://{region}.jibo.com to https://{region}.openjibo.com",
       "change http://{region}.jibo.com:8080 to http://{region}.openjibo.com:8080",
       "change the socket template to the Open Jibo socket suffix",
@@ -187,9 +187,9 @@ const proposedChanges = [
     File: "usr/local/bin/jibo-ssm/lib/skills-service-manager.js and other scanned jibo-ssm runtime JS files",
     Action: "replace the hardcoded server hostname builder inside the live jibo-ssm bundle",
     Details: [
-      'replace stock and previously converted data.region hostname concatenations with fixed "api.openjibo.com"',
-      'replace stock and previously converted this._wifiService.options.region hostname concatenations with fixed "api.openjibo.com"',
-      "change API: 'api.jibo.com' to API: 'api.openjibo.com'",
+      'replace stock and previously converted data.region hostname concatenations with fixed "api.5x1.com"',
+      'replace stock and previously converted this._wifiService.options.region hostname concatenations with fixed "api.5x1.com"',
+      "change API: 'api.jibo.com' to API: 'api.5x1.com'",
       "keep credentials.region as open-jibo for Jetstream selection while the SSM HTTPS connectivity probe uses the canonical API host",
     ],
   },
@@ -222,8 +222,8 @@ const proposedChanges = [
     Action: "replace region hostname concatenations in jibo-server-client library files",
     Details: [
       "the jibo-server-client library constructs hostnames by concatenating region + .openjibo.com",
-      "replace data.region + '.openjibo.com' patterns with fixed 'api.openjibo.com'",
-      "this prevents open-jibo.openjibo.com when region is set to 'open-jibo'",
+      "replace data.region + '.openjibo.com' patterns with fixed 'api.5x1.com'",
+      "this prevents api.5x1.com when region is set to 'open-jibo'",
     ],
   },
   {
@@ -231,7 +231,7 @@ const proposedChanges = [
     Action: "replace region hostname concatenations in BE jibo-server-client library files",
     Details: [
       "the BE skill also bundles jibo-server-client with the same hostname construction",
-      "apply the same region + .openjibo.com to api.openjibo.com replacements",
+      "apply the same region + .openjibo.com to api.5x1.com replacements",
     ],
   },
   {
@@ -304,7 +304,7 @@ const plan = {
     "verify the audit report is clean enough for the target device",
     "take a backup before any write helper runs",
     "confirm the conversion mode target with the owner",
-    "confirm api.openjibo.com, open-jibo-socket.openjibo.com, and neohub.openjibo.com DNS/custom-domain routing is ready before physical robot conversion",
+    "confirm api.5x1.com, api.5x1.com, and api.5x1.com DNS/custom-domain routing is ready before physical robot conversion",
   ],
 };
 

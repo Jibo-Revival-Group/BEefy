@@ -9,7 +9,7 @@ These scripts help exercise the new .NET hosted cloud locally.
 - `Start-OpenJiboPlayground.ps1`
   Starts the direct local Jibo ASR/TTS Playground demo.
 - `Invoke-CloudSmoke.ps1`
-  Runs a few quick HTTP checks against a local OpenJibo cloud instance.
+  Runs a few quick HTTP checks against a local BEefy cloud instance.
 - `Invoke-OpenJiboMigration.ps1`
   Runs the PostgreSQL migration wrapper against the local or managed database targets.
 - `Publish-OpenJiboManaged.ps1`
@@ -17,21 +17,21 @@ These scripts help exercise the new .NET hosted cloud locally.
 - `Deploy-OpenJiboManagedFoundation.ps1`
   Deploys the managed foundation resources, then seeds Key Vault secrets from the deployment outputs and supplied bootstrap values.
 - `Deploy-OpenJiboManaged.ps1`
-  Deploys the first Azure Container Apps stack from the Bicep template under `infra/azure/container-apps/`. Use `-RunMigration` to apply schema changes and `-RunSmoke` to verify the deployed endpoint. By default it binds `api.openjibo.com`, `open-jibo-socket.openjibo.com`, and `neohub.openjibo.com` so the robot API, notification socket, and neohub paths stay aligned.
+  Deploys the first Azure Container Apps stack from the Bicep template under `infra/azure/container-apps/`. Use `-RunMigration` to apply schema changes and `-RunSmoke` to verify the deployed endpoint. By default it binds `api.5x1.com` (API, socket, and neo-hub all terminate here) so the robot API, notification socket, and neohub paths stay aligned.
 - `deploy-openjibo-managed-foundation.sh`
   Bash deploy wrapper for the managed foundation stack.
 - `publish-openjibo-managed.sh`
   Bash build-and-push wrapper for the managed ACR image.
 - `deploy-openjibo-managed.sh`
-  Bash deploy wrapper for the managed Container Apps stack plus optional migration and smoke. It defaults to the canonical managed host trio: `--api-hostname api.openjibo.com`, `--socket-hostname open-jibo-socket.openjibo.com`, and `--neohub-hostname neohub.openjibo.com`. Fleet peer sync is disabled by default; `--enable-peer-sync` requires `--peer-sync-allowed-hosts` with exact hosts.
+  Bash deploy wrapper for the managed Container Apps stack plus optional migration and smoke. It defaults to the canonical managed host `api.5x1.com` for `--api-hostname`, `--socket-hostname`, and `--neohub-hostname`. Fleet peer sync is disabled by default; `--enable-peer-sync` requires `--peer-sync-allowed-hosts` with exact hosts.
 - `Test-OpenJiboManagedDeploymentContract.ps1`
   Validates the managed deployment contract by checking the Bicep templates, workflow, and deploy scripts for expected markers before any Azure calls run.
 - `test-openjibo-managed-deployment-contract.sh`
-  Bash contract checker for the managed deployment path and workflow markers, including the canonical managed host trio and `api.openjibo.com` hostname path.
+  Bash contract checker for the managed deployment path and workflow markers, including the canonical managed host trio and `api.5x1.com` hostname path.
 - `Test-OpenJiboSelfHostedDeploymentContract.ps1`
   Validates the self-hosted contract by checking the Compose file, migration wrapper, and smoke script before local CI brings up the stack.
 - GitHub Actions `openjibo-cloud-managed-deploy`
-  Manual workflow that deploys the foundation, builds the managed image, deploys the ACA stack, binds the canonical API/socket/neohub hostnames, runs migrations, and smokes the deployed endpoint. The workflow defaults the robot-facing host trio to `api.openjibo.com`, `open-jibo-socket.openjibo.com`, and `neohub.openjibo.com`.
+  Manual workflow that deploys the foundation, builds the managed image, deploys the ACA stack, binds the canonical API/socket/neohub hostnames, runs migrations, and smokes the deployed endpoint. The workflow defaults the robot-facing host trio to `api.5x1.com` (API, socket, and neo-hub all terminate here).
 - `OPENJIBO_POSTGRES_PASSWORD`
   Required when running the self-hosted PostgreSQL stack locally or in CI so the database password stays out of source control.
 - Managed Azure deploy secrets:
@@ -134,7 +134,7 @@ If you do not want hosted AI search enabled, leave both secrets empty. The deplo
 
 ## Managed hostname binding
 
-`deploy-openjibo-managed.sh` and `Deploy-OpenJiboManaged.ps1` bind the requested host trio after the Container App deployment. Azure Container Apps managed certificates require DNS to point directly at the generated Container App hostname before certificate issuance can succeed. For subdomains such as `api.openjibo.com`, `open-jibo-socket.openjibo.com`, and `neohub.openjibo.com`, create a CNAME from each custom hostname to the generated Container App FQDN returned by the deployment output.
+`deploy-openjibo-managed.sh` and `Deploy-OpenJiboManaged.ps1` bind the requested host trio after the Container App deployment. Azure Container Apps managed certificates require DNS to point directly at the generated Container App hostname before certificate issuance can succeed. For subdomains such as `api.5x1.com` (API, socket, and neo-hub all terminate here), create a CNAME from each custom hostname to the generated Container App FQDN returned by the deployment output.
 
 Use `--skip-hostname-binding` or `-SkipHostnameBinding` only for temporary diagnostics where the generated Container App FQDN is enough.
 

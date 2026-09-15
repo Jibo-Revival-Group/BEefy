@@ -1,8 +1,8 @@
-# OpenJibo
+# BEefy
 
-OpenJibo is the working revival track for Jibo.
+BEefy is the BEam-focused cloud and tooling fork for bringing Jibo back online.
 
-We are rebuilding the hosted cloud first, then using that foundation for OTA, Open Jibo OS, and a tiered brain that can eventually hand higher-order work to CoffeeBreak without losing Jibo's original charm.
+We are rebuilding the hosted cloud first, then using that foundation for OTA, Open Jibo OS, and a tiered brain that can eventually hand higher-order work to CoffeeBreak without losing Jibo's original charm. The production host is `api.5x1.com:443`.
 
 ## Current Focus
 
@@ -28,7 +28,7 @@ For device bootstrap and OOBE QR setup, use:
 
 It covers:
 
-- the current `.NET` OpenJibo cloud
+- the current `.NET` BEefy cloud
 - the legacy Node protocol oracle
 - the Playground direct-to-Jibo ASR/TTS demo
 
@@ -56,7 +56,7 @@ The repo now has three distinct lanes:
 The core shape is:
 
 ```text
-Jibo device -> OpenJibo cloud -> normalized runtime contracts -> capabilities and planning
+Jibo device -> BEefy cloud -> normalized runtime contracts -> capabilities and planning
 ```
 
 ## First Supported Device Path
@@ -64,8 +64,8 @@ Jibo device -> OpenJibo cloud -> normalized runtime contracts -> capabilities an
 The first supported recovery path is enthusiast-friendly, not zero-touch:
 
 ```text
-QR Wi-Fi -> inject OpenJibo region config -> set robot region ->
-RCM/device patch for TLS and host acceptance -> OpenJibo cloud on Azure
+QR Wi-Fi -> inject BEefy region config -> set robot region ->
+RCM/device patch for TLS and host acceptance -> BEefy cloud on api.5x1.com:443
 ```
 
 That path is documented in [docs/device-bootstrap.md](docs/device-bootstrap.md).
@@ -81,7 +81,7 @@ That path is documented in [docs/device-bootstrap.md](docs/device-bootstrap.md).
 ## Repo Map
 
 ```text
-OpenJibo/
+BEefy/
   docs/
     architecture/
     cloud-deployment-topology-plan.md
@@ -128,7 +128,6 @@ Use these when you want the active technical truth:
 - [Open Jibo mode conversion plan](docs/open-jibo-mode-conversion-plan.md)
 - [Release 1.0.19 closeout](docs/release-1.0.19-plan.md)
 - [Release 1.0.20 plan](docs/release-1.0.20-plan.md)
-- [Transcendent Software OpenJibo Cloud managed service](https://cloud.openjibo.com)
 - [Support tiers](docs/support-tiers.md)
 - [System diagram alignment](docs/system-diagram-alignment.md)
 - [Public site plan](docs/public-site-plan.md)

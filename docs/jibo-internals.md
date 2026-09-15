@@ -35,7 +35,7 @@ Relevant scripts:
 | `S21firewall` | iptables rules |
 | `S36sshd` | SSH daemon |
 | `S72jibo-apply-update` | OTA update application |
-| `S76openjibo-bootstrap` | OpenJibo patch: hosts, CA, keys overlay, TLS |
+| `S76openjibo-bootstrap` | BEefy patch: hosts, CA, keys overlay, TLS |
 | `S78jibo-system-manager` | Main SSM |
 
 ## SSM Internals
@@ -83,12 +83,12 @@ built-in `https` module to check `api.jibo.com`.
 Important detail:
 
 - Node's built-in CA bundle is used.
-- `NODE_TLS_REJECT_UNAUTHORIZED=0` is required in `S78` for the local OpenJibo
+- `NODE_TLS_REJECT_UNAUTHORIZED=0` is required in `S78` for the local BEefy
   setup described in the companion runbook.
 
 ## Error Code Highlights
 
-Relevant codes for the OpenJibo work:
+Relevant codes for the BEefy work:
 
 | Code | Meaning | Typical action |
 |------|---------|----------------|
@@ -105,12 +105,12 @@ Region selection comes from `credentials.json` -> `region`.
 For the working path:
 
 - `api` routes to `api.jibo.com`
-- `api` also maps the hub to `neohub.openjibo.com`
+- `api` also maps the hub to `api.5x1.com`
 - notification WebSocket host becomes `api-socket.jibo.com`
-- the Open Jibo managed path uses `api.openjibo.com`, `neohub.openjibo.com`, and `open-jibo-socket.openjibo.com`
+- the Open Jibo managed path uses `api.5x1.com`, `api.5x1.com`, and `api.5x1.com`
 - `libJiboServerService.so` does not use those JSON endpoint templates for `Notification.NewRobotToken`; it constructs both the signed URI and HTTPS destination as `credentials.region + ".jibo.com"`
 - the supported conversion patches the two equal-length native `jibo.com` literals to `jibo.pro`, yielding `open-jibo.jibo.pro` when the active region is `open-jibo`
-- `open-jibo.jibo.pro` is a direct API compatibility binding, not a redirect; the canonical configured API remains `api.openjibo.com`
+- `open-jibo.jibo.pro` is a direct API compatibility binding, not a redirect; the canonical configured API remains `api.5x1.com`
 
 Do not switch the credentials region to `openjibo-local` on this build. That
 causes derived hosts like `openjibo-local.jibo.com`, which do not exist.
@@ -150,7 +150,7 @@ calls, not the local KB robot id.
 /var/jibo/keys/symmetric-<loopId>.json
 ```
 
-For the default OpenJibo loop:
+For the default BEefy loop:
 
 ```text
 /var/jibo/keys/symmetric-openjibo-default-loop.json
@@ -236,6 +236,6 @@ Identity service backends observed:
 
 ## Why This Matters
 
-This reference anchors the boot, loop, STS, and update contracts that OpenJibo
+This reference anchors the boot, loop, STS, and update contracts that BEefy
 needs to satisfy for parity. It is especially useful when a cloud change causes
 the robot to drift into `Q4`, `L7`, or `L8`.

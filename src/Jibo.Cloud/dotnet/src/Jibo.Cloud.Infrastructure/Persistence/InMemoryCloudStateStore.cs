@@ -99,12 +99,13 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
             ArchivedUtc = DateTimeOffset.UtcNow,
             HostMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["api.jibo.com"] = "openjibo.com",
-                ["api.openjibo.com"] = "openjibo.com",
-                ["api-socket.jibo.com"] = "openjibo.com",
-                ["open-jibo-socket.openjibo.com"] = "openjibo.com",
-                ["neo-hub.jibo.com"] = "openjibo.com",
-                ["neohub.openjibo.com"] = "openjibo.com"
+                ["api.jibo.com"] = "api.5x1.com",
+                ["api.openjibo.com"] = "api.5x1.com",
+                ["api.5x1.com"] = "api.5x1.com",
+                ["api-socket.jibo.com"] = "api.5x1.com",
+                ["open-jibo-socket.openjibo.com"] = "api.5x1.com",
+                ["neo-hub.jibo.com"] = "api.5x1.com",
+                ["neohub.openjibo.com"] = "api.5x1.com"
             }
         };
 
@@ -3293,13 +3294,14 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
     {
         if (_trustedServers.Any(server =>
                 server.IsTrustRoot &&
-                server.CanonicalHost.Equals("api.openjibo.com", StringComparison.OrdinalIgnoreCase)))
+                (server.CanonicalHost.Equals("api.5x1.com", StringComparison.OrdinalIgnoreCase) ||
+                 server.CanonicalHost.Equals("api.openjibo.com", StringComparison.OrdinalIgnoreCase))))
             return;
 
         _trustedServers.Add(new TrustedServerRecord
         {
-            CanonicalHost = "api.openjibo.com",
-            DisplayName = "Open Jibo trust root API",
+            CanonicalHost = "api.5x1.com",
+            DisplayName = "BEefy trust root API",
             ServerKind = "managed",
             IsListed = true,
             AcceptsPublicConnections = true,

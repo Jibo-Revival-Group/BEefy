@@ -3,7 +3,7 @@
 Pegasus treated calendar as a loop-scoped report surface, with report output fed by the
 household context instead of an isolated generic calendar service.
 
-In OpenJibo, the current calendar path follows the same broad shape:
+In BEefy, the current calendar path follows the same broad shape:
 
 - calendar report output is loop-scoped
 - the report provider can read persisted loop calendar events

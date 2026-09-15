@@ -9,13 +9,12 @@ public sealed class FileProtocolTelemetrySinkTests : IDisposable
 {
     private readonly string _appBaseDirectory;
     private readonly string _repoRoot;
-    private readonly string _workspaceRoot;
 
     public FileProtocolTelemetrySinkTests()
     {
-        _workspaceRoot = Path.Combine(Path.GetTempPath(), "OpenJibo.ProtocolTelemetry.Tests",
+        // Repo root is flat (OpenJibo.slnx at root); no nested OpenJibo/ directory.
+        _repoRoot = Path.Combine(Path.GetTempPath(), "OpenJibo.ProtocolTelemetry.Tests",
             Guid.NewGuid().ToString("N"));
-        _repoRoot = Path.Combine(_workspaceRoot, "OpenJibo");
         _appBaseDirectory = Path.Combine(_repoRoot, "src", "Jibo.Cloud", "dotnet", "src", "Jibo.Cloud.Api", "bin",
             "Debug", "net10.0");
 
@@ -26,7 +25,7 @@ public sealed class FileProtocolTelemetrySinkTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_workspaceRoot)) Directory.Delete(_workspaceRoot, true);
+        if (Directory.Exists(_repoRoot)) Directory.Delete(_repoRoot, true);
     }
 
     [Fact]
