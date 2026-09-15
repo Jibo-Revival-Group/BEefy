@@ -415,7 +415,9 @@ public sealed class WebSocketTurnFinalizationService(
                 turnState.FirstAudioReceivedUtc ??= receivedAtUtc;
             }
 
-            FeedIncrementalStt(session);
+            // Do not run Sherpa decode on the websocket receive path — model init/decode
+            // can block for seconds and starve LISTEN/audio, causing robot reconnects.
+            // The 50ms idle watchdog feeds incremental STT instead.
             await sink.RecordTurnDiagnosticAsync("binary_audio_received", BuildTurnDiagnosticSnapshot(session, envelope,
                 new Dictionary<string, object?>
                 {
@@ -2211,6 +2213,7 @@ public sealed class WebSocketTurnFinalizationService(
                                    elapsedSinceLastAudio >= silenceWindow;
         var reachedContentSilence = HasContentSilence(turnState, silenceWindow);
         var transcriptHintEarlyFinalize = ShouldEarlyFinalizeFromTranscriptHint(turnState);
+        var modelConfigured = IsModelEndpointingConfigured();
         var modelEndpointing = TryEvaluateModelEndpoint(session, reachedHardTimeout, out var modelSaysFinalize);
 
         // Incomplete-command deferrals must not re-enter finalize on arrival-time
@@ -2224,10 +2227,17 @@ public sealed class WebSocketTurnFinalizationService(
             return false;
 
         var closeTrigger = receivedEndOfStream || reachedHardTimeout || transcriptHintEarlyFinalize;
-        if (modelEndpointing)
-            closeTrigger = closeTrigger || modelSaysFinalize;
+        if (modelConfigured)
+        {
+            // Wait for the idle watchdog to create/feed the incremental session.
+            // Do not fall back to the 350ms silence timer while that is starting.
+            if (modelEndpointing)
+                closeTrigger = closeTrigger || modelSaysFinalize;
+        }
         else
+        {
             closeTrigger = closeTrigger || reachedSilenceWindow || reachedContentSilence;
+        }
 
         return turnState is
                {
@@ -2244,7 +2254,7 @@ public sealed class WebSocketTurnFinalizationService(
     private bool ShouldEarlyFinalizeBufferedAudio(CloudSession session)
     {
         // Model endpointing replaces the early-probe ladder; do not run both.
-        if (IsModelEndpointingActive(session))
+        if (IsModelEndpointingConfigured())
             return false;
 
         var turnState = session.TurnState;

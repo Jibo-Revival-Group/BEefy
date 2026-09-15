@@ -86,6 +86,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(sttOptions);
         services.AddSingleton(listenEndpointingOptions);
         services.AddHostedService<WhisperServerHostedService>();
+        services.AddHostedService<SherpaRecognizerWarmupHostedService>();
         services.AddSingleton(openWeatherOptions);
         services.AddSingleton(newsApiOptions);
         services.AddSingleton(holidayOptions);

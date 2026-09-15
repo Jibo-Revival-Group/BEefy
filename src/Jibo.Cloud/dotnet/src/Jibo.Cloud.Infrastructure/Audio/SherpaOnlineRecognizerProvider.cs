@@ -111,13 +111,9 @@ public sealed class SherpaOnlineRecognizerProvider : IDisposable
             _listenOptions.Rule2MinTrailingSilenceSeconds);
         config.Rule3MinUtteranceLength = Math.Max(1f, rule3MinUtteranceLengthSeconds);
 
-        if (!string.IsNullOrWhiteSpace(model.Hotwords))
-        {
-            config.HotwordsFile = model.Hotwords;
-            config.HotwordsScore = 1.5f;
-            config.DecodingMethod = "modified_beam_search";
-            config.MaxActivePaths = 4;
-        }
+        // Do not attach openjibo-hotwords.txt: this Zipformer English model uses BPE
+        // tokens, so word-level hotwords like "Jibo" fail to encode and force a broken
+        // modified_beam_search path (see sherpa EncodeBase / InitHotwords warnings).
 
         return new OnlineRecognizer(config);
     }

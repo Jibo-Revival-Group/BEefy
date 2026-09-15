@@ -123,6 +123,8 @@ public sealed class SherpaModelLocator(ILogger<SherpaModelLocator> logger)
             return null;
 
         var hotwords = Path.Combine(directory, "openjibo-hotwords.txt");
+        // Hotwords path is retained for diagnostics but not applied — BPE models reject
+        // word-level phrases like "Jibo" (see SherpaOnlineRecognizerProvider).
         return new ModelPaths(directory, encoder, decoder, joiner, tokens,
             File.Exists(hotwords) ? hotwords : null);
     }
