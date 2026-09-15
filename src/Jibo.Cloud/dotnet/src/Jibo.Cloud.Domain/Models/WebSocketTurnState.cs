@@ -8,6 +8,8 @@ public sealed class WebSocketTurnState
     public static readonly TimeSpan DiagnosticSpeechLateAudioIgnoreWindow = TimeSpan.FromSeconds(7);
     public static readonly TimeSpan StopCommandLateAudioIgnoreWindow = TimeSpan.FromSeconds(4);
     public static readonly TimeSpan LateListenSetupIgnoreWindow = TimeSpan.FromMilliseconds(1500);
+    public static readonly TimeSpan OrphanAudioWithoutListenUnstickAge = TimeSpan.FromMilliseconds(2500);
+    public static readonly TimeSpan OrphanAudioWithoutListenUnstickCooldown = TimeSpan.FromSeconds(10);
 
     public string? TransId { get; set; }
     public string? ContextPayload { get; set; }
@@ -17,6 +19,11 @@ public sealed class WebSocketTurnState
     public DateTimeOffset? IgnoreAdditionalAudioUntilUtc { get; set; }
     public DateTimeOffset? IgnoreLateListenSetupUntilUtc { get; set; }
     public DateTimeOffset? AutoFinalizeBlockedUntilUtc { get; set; }
+    /// <summary>
+    /// First time binary arrived while a leftover transId was present without SawListen.
+    /// Used to unstick fleet blue-ring loops with NO_INPUT + @be/idle.
+    /// </summary>
+    public DateTimeOffset? OrphanAudioWithoutListenSinceUtc { get; set; }
     public string? AudioTranscriptHint { get; set; }
     public string? LastSttError { get; set; }
     public DateTimeOffset? LastSttErrorUtc { get; set; }

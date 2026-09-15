@@ -349,8 +349,23 @@ public sealed class WebSocketTurnFinalizationService(
                     turnState.TransId,
                     ignoreLateAudio,
                     ignoreAudioWithoutListen);
+
+                // Keep discarding orphan audio, but after sustained no-LISTEN streaming
+                // send NO_INPUT + @be/idle so robots exit the blue-ring deadlock.
+                if (ignoreAudioWithoutListen && !ignoreLateAudio)
+                {
+                    var unstickReplies = await TryUnstickOrphanListenAudioAsync(
+                        session,
+                        envelope,
+                        cancellationToken);
+                    if (unstickReplies is not null)
+                        return unstickReplies;
+                }
+
                 return [];
             }
+
+            turnState.OrphanAudioWithoutListenSinceUtc = null;
 
             var incomingBytes = envelope.Binary?.Length ?? 0;
             if (incomingBytes > MaximumAudioFrameBytes ||
@@ -752,6 +767,7 @@ public sealed class WebSocketTurnFinalizationService(
 
         session.TurnState.AwaitingTurnCompletion = true;
         session.TurnState.ListenOpenedUtc ??= DateTimeOffset.UtcNow;
+        session.TurnState.OrphanAudioWithoutListenSinceUtc = null;
         UpdateGlsmPhaseMarker(session);
         logger.LogDebug("Listen setup exit session={SessionId} transId={TransId} awaiting={Awaiting}",
             session.SessionId,
@@ -1112,6 +1128,7 @@ public sealed class WebSocketTurnFinalizationService(
         turnState.HotphraseEmptyTurnCount = 0;
         turnState.IgnoreAdditionalAudioUntilUtc = null;
         turnState.IgnoreLateListenSetupUntilUtc = null;
+        turnState.OrphanAudioWithoutListenSinceUtc = null;
         turnState.ListenRules = [];
         turnState.ListenAsrHints = [];
         turnState.AutoFinalizeBlockedUntilUtc = null;
@@ -2517,6 +2534,59 @@ public sealed class WebSocketTurnFinalizationService(
     {
         return !turnState.SawListen &&
                !string.IsNullOrWhiteSpace(turnState.TransId);
+    }
+
+    private async Task<IReadOnlyList<WebSocketReply>?> TryUnstickOrphanListenAudioAsync(
+        CloudSession session,
+        WebSocketMessageEnvelope envelope,
+        CancellationToken cancellationToken)
+    {
+        var turnState = session.TurnState;
+        var now = DateTimeOffset.UtcNow;
+        turnState.OrphanAudioWithoutListenSinceUtc ??= now;
+
+        var orphanAge = now - turnState.OrphanAudioWithoutListenSinceUtc.Value;
+        if (orphanAge < WebSocketTurnState.OrphanAudioWithoutListenUnstickAge)
+            return null;
+
+        var orphanAgeMs = (int)orphanAge.TotalMilliseconds;
+        logger.LogWarning(
+            "Turn orphan listen audio unstick session={SessionId} transId={TransId} orphanAgeMs={OrphanAgeMs}",
+            session.SessionId,
+            turnState.TransId,
+            orphanAgeMs);
+
+        await sink.RecordTurnDiagnosticAsync(
+            "orphan_listen_audio_unstuck",
+            BuildTurnDiagnosticSnapshot(session, envelope, new Dictionary<string, object?>
+            {
+                ["orphanAgeMs"] = orphanAgeMs,
+                ["transID"] = turnState.TransId,
+                ["sawListen"] = turnState.SawListen,
+                ["sawContext"] = turnState.SawContext,
+                ["awaitingTurnCompletion"] = turnState.AwaitingTurnCompletion
+            }),
+            cancellationToken);
+
+        turnState.AwaitingTurnCompletion = false;
+        session.LastTranscript = string.Empty;
+        session.LastIntent = null;
+        session.LastListenType = "no-input";
+
+        var replies = ResponsePlanToSocketMessagesMapper
+            .MapNoInputAndRedirectToSkill(
+                turnState.TransId ?? session.LastTransId ?? string.Empty,
+                turnState.ListenRules,
+                "@be/idle")
+            .Select(map => new WebSocketReply { Text = map.Text, DelayMs = map.DelayMs })
+            .ToArray();
+
+        turnState.OrphanAudioWithoutListenSinceUtc = null;
+        ClearListenTracking(turnState);
+        turnState.IgnoreAdditionalAudioUntilUtc =
+            now.Add(WebSocketTurnState.OrphanAudioWithoutListenUnstickCooldown);
+        UpdateGlsmPhaseMarker(session);
+        return replies;
     }
 
     private static bool IsHotphraseLaunchListenSetup(string? text)

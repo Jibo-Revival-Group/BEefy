@@ -5994,6 +5994,110 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task OrphanBinaryWithoutListen_UnsticksWithIdleRedirectAfterThreshold()
+    {
+        var session = _store.OpenSession(
+            "neo-hub-listen",
+            "openjibo-default-loop",
+            "hub-orphan-listen-token",
+            "neo-hub.jibo.com",
+            "/listen");
+        session.TurnState.TransId = "trans-orphan-listen";
+        session.LastTransId = "trans-orphan-listen";
+        session.TurnState.SawListen = false;
+        session.TurnState.SawContext = false;
+        session.TurnState.AwaitingTurnCompletion = false;
+        session.TurnState.ListenRules = ["launch", "globals/global_commands_launch"];
+
+        var earlyReplies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com",
+            Path = "/listen",
+            Kind = "neo-hub-listen",
+            Token = "hub-orphan-listen-token",
+            Binary = new byte[4096]
+        });
+
+        Assert.Empty(earlyReplies);
+        Assert.Equal(0, session.TurnState.BufferedAudioBytes);
+        Assert.NotNull(session.TurnState.OrphanAudioWithoutListenSinceUtc);
+
+        session.TurnState.OrphanAudioWithoutListenSinceUtc =
+            DateTimeOffset.UtcNow - WebSocketTurnState.OrphanAudioWithoutListenUnstickAge -
+            TimeSpan.FromMilliseconds(100);
+
+        var unstickReplies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com",
+            Path = "/listen",
+            Kind = "neo-hub-listen",
+            Token = "hub-orphan-listen-token",
+            Binary = new byte[4096]
+        });
+
+        Assert.Equal(3, unstickReplies.Count);
+        Assert.Equal("LISTEN", ReadReplyType(unstickReplies[0]));
+        Assert.Equal("EOS", ReadReplyType(unstickReplies[1]));
+        Assert.Equal("SKILL_REDIRECT", ReadReplyType(unstickReplies[2]));
+
+        using var listenPayload = JsonDocument.Parse(unstickReplies[0].Text!);
+        Assert.Equal(string.Empty,
+            listenPayload.RootElement.GetProperty("data").GetProperty("asr").GetProperty("text").GetString());
+
+        using var redirectPayload = JsonDocument.Parse(unstickReplies[2].Text!);
+        Assert.Equal("@be/idle",
+            redirectPayload.RootElement.GetProperty("data").GetProperty("match").GetProperty("skillID")
+                .GetString());
+
+        Assert.Null(session.TurnState.OrphanAudioWithoutListenSinceUtc);
+        Assert.False(session.TurnState.SawListen);
+        Assert.Equal("no-input", session.LastListenType);
+        Assert.True(session.TurnState.IgnoreAdditionalAudioUntilUtc.HasValue);
+        Assert.True(session.TurnState.IgnoreAdditionalAudioUntilUtc > DateTimeOffset.UtcNow);
+
+        var cooldownReplies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com",
+            Path = "/listen",
+            Kind = "neo-hub-listen",
+            Token = "hub-orphan-listen-token",
+            Binary = new byte[4096]
+        });
+
+        Assert.Empty(cooldownReplies);
+        Assert.Equal(0, session.TurnState.BufferedAudioBytes);
+
+        session.TurnState.IgnoreAdditionalAudioUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(-1);
+
+        await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com",
+            Path = "/listen",
+            Kind = "neo-hub-listen",
+            Token = "hub-orphan-listen-token",
+            Text =
+                """{"type":"LISTEN","transID":"trans-orphan-listen-fresh","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}"""
+        });
+
+        Assert.True(session.TurnState.SawListen);
+        Assert.True(session.TurnState.AwaitingTurnCompletion);
+        Assert.Null(session.TurnState.OrphanAudioWithoutListenSinceUtc);
+
+        var acceptedReplies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com",
+            Path = "/listen",
+            Kind = "neo-hub-listen",
+            Token = "hub-orphan-listen-token",
+            Binary = new byte[4096]
+        });
+
+        Assert.Empty(acceptedReplies);
+        Assert.True(session.TurnState.BufferedAudioBytes > 0);
+        Assert.True(session.TurnState.BufferedAudioChunkCount > 0);
+    }
+
+    [Fact]
     public async Task ContextWithoutListen_DuringFollowUp_DoesNotBufferAudio()
     {
         var helloReplies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
