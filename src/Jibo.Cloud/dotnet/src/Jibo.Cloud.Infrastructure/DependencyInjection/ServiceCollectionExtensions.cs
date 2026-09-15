@@ -152,8 +152,10 @@ public static class ServiceCollectionExtensions
                                                  "OPENJIBO_PERSONAL_MEMORY_STORAGE_CONNECTION_STRING")
                                              ?? Environment.GetEnvironmentVariable(
                                                  "OPENJIBO_PERSONAL_MEMORY_SQL_CONNECTION_STRING");
-        var ownerFirstName = configuration?["OpenJibo:OwnerFirstName"];
-        var ownerLastName = configuration?["OpenJibo:OwnerLastName"];
+        var ownerFirstName = configuration?["OpenJibo:Owner:FirstName"]
+                             ?? configuration?["OpenJibo:OwnerFirstName"];
+        var ownerLastName = configuration?["OpenJibo:Owner:LastName"]
+                            ?? configuration?["OpenJibo:OwnerLastName"];
         switch (stateBackendKind)
         {
             case PersistenceBackendKind.Sqlite when string.IsNullOrWhiteSpace(stateConnectionString):
@@ -316,6 +318,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<JiboWebSocketService>();
         services.AddSingleton<JiboVerificationService>();
         services.AddSingleton<PortalSessionService>();
+        services.AddSingleton<LoopMemberPhotoUrlSigner>();
+        services.AddSingleton<LoopMemberPhotoProcessor>();
         services.AddSingleton<HomeAssistantConnectionRegistry>();
         services.AddSingleton<HomeAssistantPendingClimateStore>();
         services.AddSingleton<RepeatLastCommandStore>();

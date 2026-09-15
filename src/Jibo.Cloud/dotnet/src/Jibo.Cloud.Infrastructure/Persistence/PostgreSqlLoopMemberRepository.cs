@@ -8,7 +8,8 @@ public sealed class PostgreSqlLoopMemberRepository(PostgreSqlCloudStateDataSourc
 {
     private const string Columns = "m.MemberId, m.LoopId, m.AccountId, m.Email, m.FirstName, m.LastName, m.Gender, " +
         "m.Birthday, m.IsChild, m.PhoneNumber, m.Status, m.MemberType, m.Nickname, m.PhoneticName, " +
-        "m.FaceEnrolled, m.VoiceEnrolled, m.LegalGuardianId, m.AgreementId, m.CreatedUtc, m.PortalEditedUtc";
+        "m.FaceEnrolled, m.VoiceEnrolled, m.LegalGuardianId, m.AgreementId, m.CreatedUtc, m.PortalEditedUtc, " +
+        "m.PhotoContentHash, m.PhotoContentType, m.PhotoUpdatedUtc";
 
     public async Task<IReadOnlyList<LoopMemberRecord>> ListAsync(string accountId, string loopId, int limit = 250,
         CancellationToken cancellationToken = default)
@@ -48,9 +49,11 @@ public sealed class PostgreSqlLoopMemberRepository(PostgreSqlCloudStateDataSourc
         await using var command = new NpgsqlCommand("""
             INSERT INTO LoopMembers (MemberId, LoopId, AccountId, Email, FirstName, LastName, Gender, Birthday,
                 IsChild, PhoneNumber, Status, MemberType, Nickname, PhoneticName, FaceEnrolled, VoiceEnrolled,
-                LegalGuardianId, AgreementId, CreatedUtc, UpdatedUtc, PortalEditedUtc)
+                LegalGuardianId, AgreementId, CreatedUtc, UpdatedUtc, PortalEditedUtc,
+                PhotoContentHash, PhotoContentType, PhotoUpdatedUtc)
             SELECT @id, @loop, @memberAccount, @email, @first, @last, @gender, @birthday, @child, @phone,
-                @status, @type, @nickname, @phonetic, @face, @voice, @guardian, @agreement, @created, NOW(), @portal
+                @status, @type, @nickname, @phonetic, @face, @voice, @guardian, @agreement, @created, NOW(), @portal,
+                @photoHash, @photoType, @photoUpdated
             WHERE EXISTS (SELECT 1 FROM Loops WHERE LoopId = @loop AND OwnerAccountId = @owner)
             ON CONFLICT (MemberId) DO UPDATE SET AccountId = EXCLUDED.AccountId, Email = EXCLUDED.Email,
                 FirstName = EXCLUDED.FirstName, LastName = EXCLUDED.LastName, Gender = EXCLUDED.Gender,
@@ -58,7 +61,9 @@ public sealed class PostgreSqlLoopMemberRepository(PostgreSqlCloudStateDataSourc
                 Status = EXCLUDED.Status, MemberType = EXCLUDED.MemberType, Nickname = EXCLUDED.Nickname,
                 PhoneticName = EXCLUDED.PhoneticName, FaceEnrolled = EXCLUDED.FaceEnrolled,
                 VoiceEnrolled = EXCLUDED.VoiceEnrolled, LegalGuardianId = EXCLUDED.LegalGuardianId,
-                AgreementId = EXCLUDED.AgreementId, UpdatedUtc = NOW(), PortalEditedUtc = EXCLUDED.PortalEditedUtc
+                AgreementId = EXCLUDED.AgreementId, UpdatedUtc = NOW(), PortalEditedUtc = EXCLUDED.PortalEditedUtc,
+                PhotoContentHash = EXCLUDED.PhotoContentHash, PhotoContentType = EXCLUDED.PhotoContentType,
+                PhotoUpdatedUtc = EXCLUDED.PhotoUpdatedUtc
             WHERE LoopMembers.LoopId = EXCLUDED.LoopId
             """, connection, transaction);
         command.Parameters.AddWithValue("id", member.Id.Trim()); command.Parameters.AddWithValue("loop", member.LoopId.Trim());
@@ -75,6 +80,10 @@ public sealed class PostgreSqlLoopMemberRepository(PostgreSqlCloudStateDataSourc
         command.Parameters.AddWithValue("created", member.CreatedUtc);
         command.Parameters.Add("portal", NpgsqlDbType.TimestampTz).Value =
             (object?)member.PortalEditedUtc ?? DBNull.Value;
+        AddNullable(command, "photoHash", member.PhotoContentHash);
+        AddNullable(command, "photoType", member.PhotoContentType);
+        command.Parameters.Add("photoUpdated", NpgsqlDbType.TimestampTz).Value =
+            (object?)member.PhotoUpdatedUtc ?? DBNull.Value;
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) throw new InvalidOperationException("Loop scope was not found.");
         await CloudStateRevision.BumpAsync(connection, transaction, cancellationToken); await transaction.CommitAsync(cancellationToken);
         return member;
@@ -116,7 +125,10 @@ public sealed class PostgreSqlLoopMemberRepository(PostgreSqlCloudStateDataSourc
         LegalGuardianId = Get(r, 16),
         AgreementId = Get(r, 17),
         CreatedUtc = r.GetFieldValue<DateTimeOffset>(18),
-        PortalEditedUtc = r.IsDBNull(19) ? null : r.GetFieldValue<DateTimeOffset>(19)
+        PortalEditedUtc = r.IsDBNull(19) ? null : r.GetFieldValue<DateTimeOffset>(19),
+        PhotoContentHash = r.FieldCount > 20 ? Get(r, 20) : null,
+        PhotoContentType = r.FieldCount > 21 ? Get(r, 21) : null,
+        PhotoUpdatedUtc = r.FieldCount > 22 && !r.IsDBNull(22) ? r.GetFieldValue<DateTimeOffset>(22) : null
     };
     private static void AddScope(NpgsqlCommand c, string account, string loop) { c.Parameters.AddWithValue("account", Require(account, nameof(account))); c.Parameters.AddWithValue("loop", Require(loop, nameof(loop))); }
     private static void AddNullable(NpgsqlCommand c, string name, string? value) =>

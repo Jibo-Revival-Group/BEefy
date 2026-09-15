@@ -96,6 +96,9 @@ public interface ICloudStateStore
     bool RemoveLoopMember(string loopId, string memberId);
     LoopMemberRecord SetMemberEnrollment(string loopId, string memberId, bool? face, bool? voice);
 
+    LoopMemberRecord SetMemberPhoto(string loopId, string memberId, string contentHash, string contentType);
+    LoopMemberRecord ClearMemberPhoto(string loopId, string memberId);
+
     RecognitionObservationRecord RecordRecognitionObservation(string loopId, string memberId, string modality,
         string outcome, double? confidence = null, string? source = null);
 

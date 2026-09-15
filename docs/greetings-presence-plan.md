@@ -68,6 +68,9 @@ Current implementation progress:
 - holiday-aware proactive greetings now use the loop holiday calendar when the current date matches
 - morning proactive greetings now stay distinct from return-visit greetings so a fresh start of day still sounds like a morning greeting
 - the remaining work is to broaden the presence policy surface so it can grow into richer day-part and return-visit variations without reworking the storage seam again
+- greeting turns now also persist turn-derived recognition observations (`source: "turn-context"`)
+- `"who am I"` name recall falls back to loop roster firstName when personal memory is empty
+- full loop/photo/enrollment map: [loop-identity-enrollment.md](loop-identity-enrollment.md)
 
 ## Implementation Slices
 

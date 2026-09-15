@@ -11,6 +11,7 @@ using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Calendar;
+using Jibo.Cloud.Infrastructure.Media;
 using Jibo.Cloud.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -470,14 +471,16 @@ internal static class PortalEndpoints
             PortalSessionService portalSessionService,
             IUserIntegrationStore integrationStore,
             ICloudStateStore cloudStateStore,
-            HomeAssistantConnectionRegistry registry) =>
+            HomeAssistantConnectionRegistry registry,
+            LoopMemberPhotoUrlSigner photoUrlSigner) =>
         {
             var session = ResolvePortalSession(request, null, portalSessionService);
             if (session is null)
                 return Results.Unauthorized();
 
             var link = integrationStore.FindLinkForJibo(session.FriendlyId, session.FriendlyId);
-            return Results.Json(BuildDashboardPayload(session, link, registry, cloudStateStore, integrationStore));
+            return Results.Json(BuildDashboardPayload(
+                session, link, registry, cloudStateStore, integrationStore, photoUrlSigner, request));
         });
 
         app.MapGet("/api/portal/calendar-feeds", (
@@ -547,14 +550,15 @@ internal static class PortalEndpoints
         app.MapGet("/api/portal/loop-members", (
             HttpRequest request,
             PortalSessionService portalSessionService,
-            ICloudStateStore cloudStateStore) =>
+            ICloudStateStore cloudStateStore,
+            LoopMemberPhotoUrlSigner photoUrlSigner) =>
         {
             var session = ResolvePortalSession(request, null, portalSessionService);
             if (session is null)
                 return Results.Unauthorized();
 
             var loopId = ResolvePortalLoopId(cloudStateStore, session);
-            return Results.Json(BuildLoopMembersPayload(cloudStateStore, loopId));
+            return Results.Json(BuildLoopMembersPayload(cloudStateStore, loopId, photoUrlSigner, request));
         });
 
         app.MapPost("/api/portal/loop-members", async (
@@ -562,6 +566,7 @@ internal static class PortalEndpoints
             HttpRequest httpRequest,
             PortalSessionService portalSessionService,
             ICloudStateStore cloudStateStore,
+            LoopMemberPhotoUrlSigner photoUrlSigner,
             LoopUpdatedPushService loopUpdatedPushService,
             CancellationToken cancellationToken) =>
         {
@@ -587,7 +592,7 @@ internal static class PortalEndpoints
                 markPortalEdited: true);
 
             await TryPushLoopUpdatedAsync(loopUpdatedPushService, session, loopId, cancellationToken);
-            return Results.Json(BuildLoopMemberPayload(member));
+            return Results.Json(BuildLoopMemberPayload(member, photoUrlSigner, httpRequest));
         });
 
         app.MapPut("/api/portal/loop-members/{memberId}", async (
@@ -596,6 +601,7 @@ internal static class PortalEndpoints
             HttpRequest httpRequest,
             PortalSessionService portalSessionService,
             ICloudStateStore cloudStateStore,
+            LoopMemberPhotoUrlSigner photoUrlSigner,
             LoopUpdatedPushService loopUpdatedPushService,
             CancellationToken cancellationToken) =>
         {
@@ -628,7 +634,7 @@ internal static class PortalEndpoints
                     markPortalEdited: true);
 
                 await TryPushLoopUpdatedAsync(loopUpdatedPushService, session, loopId, cancellationToken);
-                return Results.Json(BuildLoopMemberPayload(updated));
+                return Results.Json(BuildLoopMemberPayload(updated, photoUrlSigner, httpRequest));
             }
             catch (InvalidOperationException)
             {
@@ -660,6 +666,93 @@ internal static class PortalEndpoints
             cloudStateStore.RemoveLoopMember(loopId, memberId);
             await TryPushLoopUpdatedAsync(loopUpdatedPushService, session, loopId, cancellationToken);
             return Results.Json(new { removed = true, memberId });
+        });
+
+        app.MapPut("/api/portal/loop-members/{memberId}/photo", async (
+            string memberId,
+            HttpRequest request,
+            PortalSessionService portalSessionService,
+            ICloudStateStore cloudStateStore,
+            IMediaContentStore mediaContentStore,
+            LoopMemberPhotoProcessor photoProcessor,
+            LoopMemberPhotoUrlSigner photoUrlSigner,
+            LoopUpdatedPushService loopUpdatedPushService,
+            CancellationToken cancellationToken) =>
+        {
+            var session = ResolvePortalSession(request, null, portalSessionService);
+            if (session is null)
+                return Results.Unauthorized();
+
+            var loopId = ResolvePortalLoopId(cloudStateStore, session);
+            var existing = cloudStateStore.GetLoopMembers(loopId)
+                .FirstOrDefault(m => m.Id.Equals(memberId, StringComparison.OrdinalIgnoreCase));
+            if (existing is null)
+                return Results.NotFound(new { error = "Loop member not found." });
+
+            if (string.Equals(existing.Type, "robot", StringComparison.OrdinalIgnoreCase))
+                return Results.BadRequest(new { error = "The robot member cannot have a profile photo." });
+
+            await using var buffer = new MemoryStream();
+            await request.Body.CopyToAsync(buffer, cancellationToken);
+            if (buffer.Length > LoopMemberPhotoProcessor.MaxUploadBytes)
+                return Results.BadRequest(new { error = "Photo upload exceeds the 8 MB limit." });
+
+            LoopMemberPhotoProcessor.ProcessedPhoto processed;
+            try
+            {
+                processed = photoProcessor.Process(buffer.ToArray());
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+
+            var storePath = LoopMemberPhotoProcessor.MediaStorePath(loopId, existing.Id);
+            await mediaContentStore.StoreAsync(
+                storePath,
+                processed.ContentType,
+                processed.Content,
+                new Dictionary<string, object?>
+                {
+                    ["memberId"] = existing.Id,
+                    ["loopId"] = loopId,
+                    ["contentHash"] = processed.ContentHash,
+                    ["width"] = processed.Width,
+                    ["height"] = processed.Height
+                },
+                cancellationToken);
+
+            var updated = cloudStateStore.SetMemberPhoto(
+                loopId,
+                existing.Id,
+                processed.ContentHash,
+                processed.ContentType);
+            await TryPushLoopUpdatedAsync(loopUpdatedPushService, session, loopId, cancellationToken);
+            return Results.Json(BuildLoopMemberPayload(updated, photoUrlSigner, request));
+        });
+
+        app.MapDelete("/api/portal/loop-members/{memberId}/photo", async (
+            string memberId,
+            HttpRequest request,
+            PortalSessionService portalSessionService,
+            ICloudStateStore cloudStateStore,
+            LoopMemberPhotoUrlSigner photoUrlSigner,
+            LoopUpdatedPushService loopUpdatedPushService,
+            CancellationToken cancellationToken) =>
+        {
+            var session = ResolvePortalSession(request, null, portalSessionService);
+            if (session is null)
+                return Results.Unauthorized();
+
+            var loopId = ResolvePortalLoopId(cloudStateStore, session);
+            var existing = cloudStateStore.GetLoopMembers(loopId)
+                .FirstOrDefault(m => m.Id.Equals(memberId, StringComparison.OrdinalIgnoreCase));
+            if (existing is null)
+                return Results.NotFound(new { error = "Loop member not found." });
+
+            var updated = cloudStateStore.ClearMemberPhoto(loopId, existing.Id);
+            await TryPushLoopUpdatedAsync(loopUpdatedPushService, session, loopId, cancellationToken);
+            return Results.Json(BuildLoopMemberPayload(updated, photoUrlSigner, request));
         });
 
         app.MapPost("/api/portal/calendar-feeds/{memberId}/test", async (
@@ -3178,7 +3271,9 @@ internal static class PortalEndpoints
         HomeAssistantLinkRecord? link,
         HomeAssistantConnectionRegistry registry,
         ICloudStateStore cloudStateStore,
-        IUserIntegrationStore integrationStore)
+        IUserIntegrationStore integrationStore,
+        LoopMemberPhotoUrlSigner photoUrlSigner,
+        HttpRequest request)
     {
         var robot = cloudStateStore.FindDeviceByFriendlyId(session.DeviceId);
         return new
@@ -3196,7 +3291,11 @@ internal static class PortalEndpoints
                 }
                 : BuildHomeAssistantPayload(link, registry),
             calendarFeeds = BuildCalendarFeedsPayload(cloudStateStore, integrationStore, session),
-            loopMembers = BuildLoopMembersPayload(cloudStateStore, ResolvePortalLoopId(cloudStateStore, session))
+            loopMembers = BuildLoopMembersPayload(
+                cloudStateStore,
+                ResolvePortalLoopId(cloudStateStore, session),
+                photoUrlSigner,
+                request)
         };
     }
 
@@ -3359,19 +3458,26 @@ internal static class PortalEndpoints
         string? LastName,
         string? Nickname);
 
-    private static object BuildLoopMembersPayload(ICloudStateStore cloudStateStore, string loopId)
+    private static object BuildLoopMembersPayload(
+        ICloudStateStore cloudStateStore,
+        string loopId,
+        LoopMemberPhotoUrlSigner photoUrlSigner,
+        HttpRequest request)
     {
         var members = cloudStateStore.GetLoopMembers(loopId)
             .Where(static member => !string.Equals(member.Type, "robot", StringComparison.OrdinalIgnoreCase))
             .OrderBy(static member => member.Type.Equals("owner", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(static member => member.FirstName, StringComparer.OrdinalIgnoreCase)
-            .Select(BuildLoopMemberPayload)
+            .Select(member => BuildLoopMemberPayload(member, photoUrlSigner, request))
             .ToArray();
 
         return new { loopId, members };
     }
 
-    private static object BuildLoopMemberPayload(LoopMemberRecord member)
+    private static object BuildLoopMemberPayload(
+        LoopMemberRecord member,
+        LoopMemberPhotoUrlSigner photoUrlSigner,
+        HttpRequest request)
     {
         var displayName = !string.IsNullOrWhiteSpace(member.Nickname)
             ? member.Nickname
@@ -3379,6 +3485,13 @@ internal static class PortalEndpoints
                 .Where(static part => !string.IsNullOrWhiteSpace(part)));
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = member.Id;
+
+        string? photoUrl = null;
+        if (!string.IsNullOrWhiteSpace(member.PhotoContentHash))
+        {
+            var origin = $"{request.Scheme}://{request.Host}";
+            photoUrl = photoUrlSigner.BuildSignedUrl(origin, member.Id, member.PhotoContentHash);
+        }
 
         return new
         {
@@ -3388,6 +3501,8 @@ internal static class PortalEndpoints
             displayName,
             gender = member.Gender,
             type = member.Type,
+            hasPhoto = !string.IsNullOrWhiteSpace(member.PhotoContentHash),
+            photoUrl,
             canRemove = member.Type is not "owner" and not "robot"
         };
     }

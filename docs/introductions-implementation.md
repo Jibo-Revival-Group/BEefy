@@ -73,3 +73,6 @@ The implementation was verified by:
 - The cloud server only handles the initial launch routing
 - All enrollment processing happens robot-side through the Jibo SDK
 - The skill prompt is "Meet someone new" as defined in package.json
+- `createIdentity` uses the looper `_id` as `name` (not the human display name) with `kind: "face"`
+- `@be/who-am-i` must redirect with `entities.loopMemberReferent` (not `recipient`) so introductions pre-selects the member
+- Contact pickers render KB `photo` assets when present — see [loop-identity-enrollment.md](loop-identity-enrollment.md)

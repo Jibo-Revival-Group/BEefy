@@ -20,7 +20,8 @@ public sealed class JiboCloudProtocolService(
     RobotNotificationRegistry? robotNotificationRegistry = null,
     LoopUpdatedPushService? loopUpdatedPushService = null,
     ILogger<JiboCloudProtocolService>? logger = null,
-    RobotIdentitySuggestionStore? identitySuggestionStore = null)
+    RobotIdentitySuggestionStore? identitySuggestionStore = null,
+    LoopMemberPhotoUrlSigner? photoUrlSigner = null)
 {
     private const int SchedulerBackupDelayMs = 250;
     private const int SchedulerDownloadTickMs = 100;
@@ -48,6 +49,7 @@ public sealed class JiboCloudProtocolService(
     private readonly IMediaContentStore _mediaContentStore = mediaContentStore ?? new NullMediaContentStore();
     private readonly RobotNotificationRegistry? _robotNotificationRegistry = robotNotificationRegistry;
     private readonly LoopUpdatedPushService? _loopUpdatedPushService = loopUpdatedPushService;
+    private readonly LoopMemberPhotoUrlSigner? _photoUrlSigner = photoUrlSigner;
     private readonly ConcurrentDictionary<string, OobeTokenState> _oobeTokens = new(StringComparer.Ordinal);
     private readonly Lock _schedulerLock = new();
     private readonly SchedulerRuntimeState _schedulerState = new();
@@ -1173,8 +1175,9 @@ public sealed class JiboCloudProtocolService(
             .ToArray());
     }
 
-    public static object MapLoopMember(LoopMemberRecord member)
+    public object MapLoopMember(LoopMemberRecord member)
     {
+        var photoUrl = TryBuildMemberPhotoUrl(member);
         return new
         {
             id = member.Id,
@@ -1188,7 +1191,8 @@ public sealed class JiboCloudProtocolService(
                 gender = member.Gender,
                 birthday = member.Birthday,
                 isChild = member.IsChild,
-                phoneNumber = member.PhoneNumber
+                phoneNumber = member.PhoneNumber,
+                photoUrl
             },
             enrolled = new { face = member.FaceEnrolled, voice = member.VoiceEnrolled },
             status = member.Status,
@@ -1199,6 +1203,17 @@ public sealed class JiboCloudProtocolService(
             agreementId = member.AgreementId,
             created = member.CreatedUtc.ToUnixTimeMilliseconds()
         };
+    }
+
+    private string? TryBuildMemberPhotoUrl(LoopMemberRecord member)
+    {
+        if (_photoUrlSigner is null ||
+            string.IsNullOrWhiteSpace(member.PhotoContentHash) ||
+            string.IsNullOrWhiteSpace(member.Id))
+            return null;
+
+        var origin = _canonicalApiBaseUrl ?? $"https://{OpenJiboHostNames.CanonicalApi}";
+        return _photoUrlSigner.BuildSignedUrl(origin, member.Id, member.PhotoContentHash);
     }
 
     private static object MapRecognitionObservation(RecognitionObservationRecord observation)
@@ -1217,7 +1232,7 @@ public sealed class JiboCloudProtocolService(
         };
     }
 
-    public static object MapLoopRecord(LoopRecord loop, IEnumerable<LoopMemberRecord> members)
+    public object MapLoopRecord(LoopRecord loop, IEnumerable<LoopMemberRecord> members)
     {
         return new
         {
@@ -1226,8 +1241,11 @@ public sealed class JiboCloudProtocolService(
             owner = loop.OwnerAccountId,
             robot = loop.RobotId,
             robotFriendlyId = loop.RobotFriendlyId,
+            // Stock LoopManager._applyLoopChanges requires the type:"robot" member so it can
+            // rootNode.addEdges(memberIdsByAccountId[cloudLoop.robot], 'robot'). Filtering it out
+            // made robotMemberId undefined and aborted the whole sync before any humans were written.
+            // ListMembers / portal still filter robots for human-facing lists.
             members = members
-                .Where(static m => !string.Equals(m.Type, "robot", StringComparison.OrdinalIgnoreCase))
                 .Select(MapLoopMember)
                 .ToArray(),
             isSuspended = loop.IsSuspended,
@@ -1237,7 +1255,7 @@ public sealed class JiboCloudProtocolService(
         };
     }
 
-    public static object BuildLoopNotificationPayload(
+    public object BuildLoopNotificationPayload(
         LoopRecord loop,
         IEnumerable<LoopMemberRecord> members)
     {

@@ -23,10 +23,26 @@ public sealed partial class JiboInteractionService
 
     private JiboInteractionDecision BuildRecallNameDecision(TurnContext turn, GreetingPresenceProfile? presence = null)
     {
-        var personScope = ResolveTenantScope(turn, presence?.PrimaryPersonId);
+        presence ??= ResolveGreetingPresenceProfile(turn);
+
+        var personScope = ResolveTenantScope(turn, presence.PrimaryPersonId);
         var name = personalMemoryStore.GetName(personScope);
         if (string.IsNullOrWhiteSpace(name) && CanUseLoopLevelNameMemoryFallback(presence))
             name = personalMemoryStore.GetName(ResolveTenantScope(turn));
+
+        // Fall back to the robot's loop roster firstName when personal memory is empty —
+        // same path greetings already use via ResolvePreferredGreetingName.
+        if (string.IsNullOrWhiteSpace(name) &&
+            CanUseLoopLevelNameMemoryFallback(presence) &&
+            !string.IsNullOrWhiteSpace(presence.PrimaryPersonId) &&
+            presence.LoopUserFirstNames.TryGetValue(presence.PrimaryPersonId, out var loopFirstName) &&
+            !string.IsNullOrWhiteSpace(loopFirstName))
+            name = loopFirstName;
+
+        if (string.IsNullOrWhiteSpace(name) &&
+            CanUseLoopLevelNameMemoryFallback(presence) &&
+            presence.LoopUserFirstNames.Count == 1)
+            name = presence.LoopUserFirstNames.Values.FirstOrDefault();
 
         name = ToDisplayName(name ?? string.Empty);
 
@@ -36,7 +52,7 @@ public sealed partial class JiboInteractionService
                 "I do not know your name yet. You can say, my name is Alex.")
             : new JiboInteractionDecision(
                 "memory_get_name",
-                presence is not null && !string.IsNullOrWhiteSpace(presence.PrimaryPersonId)
+                presence.HasKnownIdentity || !string.IsNullOrWhiteSpace(presence.PrimaryPersonId)
                     ? $"I think you are {name}."
                     : $"You told me your name is {name}.");
     }

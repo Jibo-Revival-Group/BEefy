@@ -66,7 +66,9 @@ public sealed partial class PostgreSqlCloudStateStore
                 Id = resolvedRobotId,
                 LoopId = loopId,
                 AccountId = resolvedRobotId,
-                FirstName = string.IsNullOrWhiteSpace(resolvedFriendlyId) ? resolvedRobotId : resolvedFriendlyId,
+                // Leave FirstName/LastName null so robot-side UserNode.isJibo (!data.firstName) is true.
+                FirstName = null,
+                LastName = null,
                 Type = "robot",
                 CreatedUtc = now
             }));
@@ -230,6 +232,28 @@ public sealed partial class PostgreSqlCloudStateStore
             faceEnrolled: face ?? current.FaceEnrolled, voiceEnrolled: voice ?? current.VoiceEnrolled)));
     }
 
+    public LoopMemberRecord SetMemberPhoto(string loopId, string memberId, string contentHash, string contentType)
+    {
+        var repository = Require(_members, "loop members");
+        var account = GetAccount().AccountId;
+        var current = Sync(repository.GetAsync(account, loopId, memberId)) ??
+                      throw new KeyNotFoundException("Loop member was not found.");
+        return Sync(repository.UpsertAsync(account, CopyMember(current,
+            photoContentHash: RequireValue(contentHash, nameof(contentHash)).ToLowerInvariant(),
+            photoContentType: RequireValue(contentType, nameof(contentType)),
+            photoUpdatedUtc: DateTimeOffset.UtcNow,
+            setPhoto: true)));
+    }
+
+    public LoopMemberRecord ClearMemberPhoto(string loopId, string memberId)
+    {
+        var repository = Require(_members, "loop members");
+        var account = GetAccount().AccountId;
+        var current = Sync(repository.GetAsync(account, loopId, memberId)) ??
+                      throw new KeyNotFoundException("Loop member was not found.");
+        return Sync(repository.UpsertAsync(account, CopyMember(current, clearPhoto: true)));
+    }
+
     public RecognitionObservationRecord RecordRecognitionObservation(string loopId, string memberId,
         string modality, string outcome, double? confidence = null, string? source = null) =>
         Sync(Require(_recognition, "recognition observations").AddAsync(GetAccount().AccountId,
@@ -275,15 +299,30 @@ public sealed partial class PostgreSqlCloudStateStore
     private static LoopMemberRecord CopyMember(LoopMemberRecord item, string? firstName = null,
         string? lastName = null, string? gender = null, long? birthday = null, bool? isChild = null,
         string? nickname = null, string? phoneticName = null, bool? faceEnrolled = null,
-        bool? voiceEnrolled = null, DateTimeOffset? portalEditedUtc = null) => new()
-    {
-        Id = item.Id, LoopId = item.LoopId, AccountId = item.AccountId, Email = item.Email,
-        FirstName = firstName ?? item.FirstName, LastName = lastName ?? item.LastName,
-        Gender = gender ?? item.Gender, Birthday = birthday ?? item.Birthday,
-        IsChild = isChild ?? item.IsChild, PhoneNumber = item.PhoneNumber, Status = item.Status, Type = item.Type,
-        Nickname = nickname ?? item.Nickname, PhoneticName = phoneticName ?? item.PhoneticName,
-        FaceEnrolled = faceEnrolled ?? item.FaceEnrolled, VoiceEnrolled = voiceEnrolled ?? item.VoiceEnrolled,
-        LegalGuardianId = item.LegalGuardianId, AgreementId = item.AgreementId, CreatedUtc = item.CreatedUtc,
-        PortalEditedUtc = portalEditedUtc ?? item.PortalEditedUtc
-    };
+        bool? voiceEnrolled = null, DateTimeOffset? portalEditedUtc = null,
+        string? photoContentHash = null, string? photoContentType = null,
+        DateTimeOffset? photoUpdatedUtc = null, bool setPhoto = false, bool clearPhoto = false) =>
+        item.Clone(
+            firstName: firstName ?? item.FirstName,
+            setFirstName: true,
+            lastName: lastName ?? item.LastName,
+            setLastName: true,
+            gender: gender ?? item.Gender,
+            setGender: true,
+            birthday: birthday ?? item.Birthday,
+            setBirthday: true,
+            isChild: isChild,
+            nickname: nickname ?? item.Nickname,
+            setNickname: true,
+            phoneticName: phoneticName ?? item.PhoneticName,
+            setPhoneticName: true,
+            faceEnrolled: faceEnrolled,
+            voiceEnrolled: voiceEnrolled,
+            portalEditedUtc: portalEditedUtc ?? item.PortalEditedUtc,
+            setPortalEditedUtc: true,
+            photoContentHash: photoContentHash,
+            photoContentType: photoContentType,
+            photoUpdatedUtc: photoUpdatedUtc,
+            setPhoto: setPhoto,
+            clearPhoto: clearPhoto);
 }

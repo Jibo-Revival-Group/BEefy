@@ -394,6 +394,93 @@ public sealed partial class JiboInteractionService
             LastGreetingRoute = route,
             LastGreetingIntent = intentName
         });
+
+        RecordTurnRecognitionObservations(turn, presence, tenantScope.LoopId);
+    }
+
+    /// <summary>
+    /// Persists recognition observations derived from the live turn CONTEXT so the identity
+    /// graph is not limited to smoke-seeded HTTP <c>Loop_*.RecordRecognitionObservation</c> rows.
+    /// </summary>
+    private void RecordTurnRecognitionObservations(
+        TurnContext turn,
+        GreetingPresenceProfile presence,
+        string loopId)
+    {
+        if (cloudStateStore is null || string.IsNullOrWhiteSpace(loopId)) return;
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(presence.SpeakerId))
+            {
+                TryRecordObservation(
+                    loopId,
+                    presence.SpeakerId,
+                    modality: "voice",
+                    outcome: "recognized");
+            }
+
+            foreach (var personId in presence.PeoplePresentIds)
+            {
+                if (string.IsNullOrWhiteSpace(personId)) continue;
+                if (string.Equals(personId, "NOT_TRAINED", StringComparison.OrdinalIgnoreCase))
+                {
+                    TryRecordObservation(
+                        loopId,
+                        presence.PrimaryPersonId ?? personId,
+                        modality: "face",
+                        outcome: "unrecognized");
+                    continue;
+                }
+
+                TryRecordObservation(loopId, personId, modality: "face", outcome: "recognized");
+            }
+
+            // Capture NOT_TRAINED even when it was filtered out of PeoplePresentIds.
+            if (turn.Attributes.TryGetValue("context", out var contextValue) &&
+                contextValue is not null &&
+                contextValue.ToString() is { } contextText &&
+                contextText.Contains("NOT_TRAINED", StringComparison.OrdinalIgnoreCase) &&
+                presence.PeoplePresentIds.Count == 0 &&
+                string.IsNullOrWhiteSpace(presence.SpeakerId))
+            {
+                TryRecordObservation(
+                    loopId,
+                    "unknown",
+                    modality: "face",
+                    outcome: "unrecognized");
+            }
+        }
+        catch
+        {
+            // Recognition logging must never break a live greeting turn.
+        }
+    }
+
+    private void TryRecordObservation(string loopId, string memberId, string modality, string outcome)
+    {
+        if (cloudStateStore is null || string.IsNullOrWhiteSpace(memberId)) return;
+        if (string.Equals(memberId, "unknown", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(outcome, "unrecognized", StringComparison.OrdinalIgnoreCase))
+        {
+            // Soft-fail path for anonymous presence without inventing a fake member row.
+            return;
+        }
+
+        try
+        {
+            cloudStateStore.RecordRecognitionObservation(
+                loopId,
+                memberId,
+                modality,
+                outcome,
+                confidence: null,
+                source: "turn-context");
+        }
+        catch (InvalidOperationException)
+        {
+            // Member may not exist yet in cloud state; keep the greeting path moving.
+        }
     }
 
     private static string ResolveTimeOfDayGreetingPrefix(DateTimeOffset? referenceLocalTime)

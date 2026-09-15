@@ -1978,29 +1978,22 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
             if (index < 0) throw new InvalidOperationException($"Member '{memberId}' not found in loop '{loopId}'.");
 
             var existing = _loopMembers[index];
-            _loopMembers[index] = new LoopMemberRecord
-            {
-                Id = existing.Id,
-                LoopId = existing.LoopId,
-                AccountId = existing.AccountId,
-                Email = existing.Email,
-                FirstName = firstName?.Trim() ?? existing.FirstName,
-                LastName = lastName?.Trim() ?? existing.LastName,
-                Gender = gender ?? existing.Gender,
-                Birthday = birthday ?? existing.Birthday,
-                IsChild = isChild,
-                PhoneNumber = existing.PhoneNumber,
-                Status = existing.Status,
-                Type = existing.Type,
-                Nickname = nickname ?? existing.Nickname,
-                PhoneticName = phoneticName ?? existing.PhoneticName,
-                FaceEnrolled = existing.FaceEnrolled,
-                VoiceEnrolled = existing.VoiceEnrolled,
-                LegalGuardianId = existing.LegalGuardianId,
-                AgreementId = existing.AgreementId,
-                CreatedUtc = existing.CreatedUtc,
-                PortalEditedUtc = markPortalEdited ? DateTimeOffset.UtcNow : existing.PortalEditedUtc
-            };
+            _loopMembers[index] = existing.Clone(
+                firstName: firstName?.Trim() ?? existing.FirstName,
+                setFirstName: true,
+                lastName: lastName?.Trim() ?? existing.LastName,
+                setLastName: true,
+                gender: gender ?? existing.Gender,
+                setGender: true,
+                birthday: birthday ?? existing.Birthday,
+                setBirthday: true,
+                isChild: isChild,
+                nickname: nickname ?? existing.Nickname,
+                setNickname: true,
+                phoneticName: phoneticName ?? existing.PhoneticName,
+                setPhoneticName: true,
+                portalEditedUtc: markPortalEdited ? DateTimeOffset.UtcNow : existing.PortalEditedUtc,
+                setPortalEditedUtc: markPortalEdited || existing.PortalEditedUtc is not null);
         }
 
         TouchState();
@@ -2017,29 +2010,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
             if (index < 0) return false;
 
             var existing = _loopMembers[index];
-            _loopMembers[index] = new LoopMemberRecord
-            {
-                Id = existing.Id,
-                LoopId = existing.LoopId,
-                AccountId = existing.AccountId,
-                Email = existing.Email,
-                FirstName = existing.FirstName,
-                LastName = existing.LastName,
-                Gender = existing.Gender,
-                Birthday = existing.Birthday,
-                IsChild = existing.IsChild,
-                PhoneNumber = existing.PhoneNumber,
-                Status = "removed",
-                Type = existing.Type,
-                Nickname = existing.Nickname,
-                PhoneticName = existing.PhoneticName,
-                FaceEnrolled = existing.FaceEnrolled,
-                VoiceEnrolled = existing.VoiceEnrolled,
-                LegalGuardianId = existing.LegalGuardianId,
-                AgreementId = existing.AgreementId,
-                CreatedUtc = existing.CreatedUtc,
-                PortalEditedUtc = existing.PortalEditedUtc
-            };
+            _loopMembers[index] = existing.Clone(status: "removed");
         }
 
         TouchState();
@@ -2056,35 +2027,56 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
             if (index < 0) throw new InvalidOperationException($"Member '{memberId}' not found in loop '{loopId}'.");
 
             var existing = _loopMembers[index];
-            _loopMembers[index] = new LoopMemberRecord
-            {
-                Id = existing.Id,
-                LoopId = existing.LoopId,
-                AccountId = existing.AccountId,
-                Email = existing.Email,
-                FirstName = existing.FirstName,
-                LastName = existing.LastName,
-                Gender = existing.Gender,
-                Birthday = existing.Birthday,
-                IsChild = existing.IsChild,
-                PhoneNumber = existing.PhoneNumber,
-                Status = existing.Status,
-                Type = existing.Type,
-                Nickname = existing.Nickname,
-                PhoneticName = existing.PhoneticName,
-                FaceEnrolled = face ?? existing.FaceEnrolled,
-                VoiceEnrolled = voice ?? existing.VoiceEnrolled,
-                LegalGuardianId = existing.LegalGuardianId,
-                AgreementId = existing.AgreementId,
-                CreatedUtc = existing.CreatedUtc,
-            PortalEditedUtc = existing.PortalEditedUtc
-            };
+            _loopMembers[index] = existing.Clone(
+                faceEnrolled: face ?? existing.FaceEnrolled,
+                voiceEnrolled: voice ?? existing.VoiceEnrolled);
         }
 
         TouchState();
         return GetLoopMember(loopId, memberId);
     }
 
+    public LoopMemberRecord SetMemberPhoto(string loopId, string memberId, string contentHash, string contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentHash))
+            throw new ArgumentException("contentHash is required.", nameof(contentHash));
+        if (string.IsNullOrWhiteSpace(contentType))
+            throw new ArgumentException("contentType is required.", nameof(contentType));
+
+        lock (_syncRoot)
+        {
+            var index = _loopMembers.FindIndex(m =>
+                m.LoopId.Equals(loopId, StringComparison.OrdinalIgnoreCase) &&
+                m.Id.Equals(memberId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) throw new InvalidOperationException($"Member '{memberId}' not found in loop '{loopId}'.");
+
+            var existing = _loopMembers[index];
+            _loopMembers[index] = existing.Clone(
+                photoContentHash: contentHash.Trim().ToLowerInvariant(),
+                photoContentType: contentType.Trim(),
+                photoUpdatedUtc: DateTimeOffset.UtcNow,
+                setPhoto: true);
+        }
+
+        TouchState();
+        return GetLoopMember(loopId, memberId);
+    }
+
+    public LoopMemberRecord ClearMemberPhoto(string loopId, string memberId)
+    {
+        lock (_syncRoot)
+        {
+            var index = _loopMembers.FindIndex(m =>
+                m.LoopId.Equals(loopId, StringComparison.OrdinalIgnoreCase) &&
+                m.Id.Equals(memberId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) throw new InvalidOperationException($"Member '{memberId}' not found in loop '{loopId}'.");
+
+            _loopMembers[index] = _loopMembers[index].Clone(clearPhoto: true);
+        }
+
+        TouchState();
+        return GetLoopMember(loopId, memberId);
+    }
 
     public IReadOnlyList<RecognitionObservationRecord> GetRecognitionObservations(string loopId)
     {
@@ -2653,31 +2645,11 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
             var member = _loopMembers[i];
             if (string.Equals(member.Type, "robot", StringComparison.OrdinalIgnoreCase) ||
                 (member.AccountId != null && member.AccountId.Equals(oldRobotId, StringComparison.OrdinalIgnoreCase)))
-                _loopMembers[i] = new LoopMemberRecord
-                {
-                    Id = member.Id,
-                    LoopId = member.LoopId,
-                    AccountId = string.Equals(member.AccountId, oldRobotId, StringComparison.OrdinalIgnoreCase)
+                _loopMembers[i] = member.Clone(
+                    accountId: string.Equals(member.AccountId, oldRobotId, StringComparison.OrdinalIgnoreCase)
                         ? registration.RobotId
                         : member.AccountId,
-                    Email = member.Email,
-                    FirstName = member.FirstName,
-                    LastName = member.LastName,
-                    Gender = member.Gender,
-                    Birthday = member.Birthday,
-                    IsChild = member.IsChild,
-                    PhoneNumber = member.PhoneNumber,
-                    Status = member.Status,
-                    Type = member.Type,
-                    Nickname = member.Nickname,
-                    PhoneticName = member.PhoneticName,
-                    FaceEnrolled = member.FaceEnrolled,
-                    VoiceEnrolled = member.VoiceEnrolled,
-                    LegalGuardianId = member.LegalGuardianId,
-                    AgreementId = member.AgreementId,
-                    CreatedUtc = member.CreatedUtc,
-                PortalEditedUtc = member.PortalEditedUtc
-                };
+                    setAccountId: true);
         }
 
         for (var i = 0; i < _loops.Count; i++)
@@ -3453,29 +3425,11 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
                 string.Equals(member.Type, "robot", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            _loopMembers[i] = new LoopMemberRecord
-            {
-                Id = member.Id,
-                LoopId = member.LoopId,
-                AccountId = member.AccountId,
-                Email = member.Email,
-                FirstName = _account.FirstName,
-                LastName = _account.LastName,
-                Gender = member.Gender,
-                Birthday = member.Birthday,
-                IsChild = member.IsChild,
-                PhoneNumber = member.PhoneNumber,
-                Status = member.Status,
-                Type = member.Type,
-                Nickname = member.Nickname,
-                PhoneticName = member.PhoneticName,
-                FaceEnrolled = member.FaceEnrolled,
-                VoiceEnrolled = member.VoiceEnrolled,
-                LegalGuardianId = member.LegalGuardianId,
-                AgreementId = member.AgreementId,
-                CreatedUtc = member.CreatedUtc,
-            PortalEditedUtc = member.PortalEditedUtc
-            };
+            _loopMembers[i] = member.Clone(
+                firstName: _account.FirstName,
+                setFirstName: true,
+                lastName: _account.LastName,
+                setLastName: true);
         }
     }
 
@@ -3566,8 +3520,10 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
         {
             LoopId = loopId,
             AccountId = robotId,
-            FirstName = "Jibo",
-            LastName = "Robot",
+            // Leave FirstName/LastName null so robot-side UserNode.isJibo (!data.firstName) is true.
+            // With FirstName set, introductions would list Jibo as an enrollable person.
+            FirstName = null,
+            LastName = null,
             Gender = "unknown",
             Type = "robot",
             Status = "active"

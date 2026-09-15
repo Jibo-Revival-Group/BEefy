@@ -2252,7 +2252,7 @@ public sealed class JiboCloudProtocolServiceTests
         var members = loops[0].GetProperty("members").EnumerateArray().ToArray();
         Assert.NotEmpty(members);
         Assert.Contains(members, member => member.GetProperty("type").GetString() == "owner");
-        Assert.DoesNotContain(members, member => member.GetProperty("type").GetString() == "robot");
+        Assert.Contains(members, member => member.GetProperty("type").GetString() == "robot");
     }
 
     [Fact]

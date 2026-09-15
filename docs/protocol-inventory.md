@@ -47,7 +47,8 @@ Observed from `open-jibo-link.js`:
 | --- | --- | --- | --- |
 | `Account_*` | `CreateHubToken`, `CreateAccessToken`, `Login`, `Get` | high | initial dispatch implemented |
 | `Notification_*` | `NewRobotToken` | high | initial dispatch implemented |
-| `Loop_*` | `List`, `ListLoops` | medium | initial dispatch implemented |
+| `Loop_*` | `List`, `ListLoops`, `ListMembers`, `InviteMember`, `UpdateMember`, `RemoveMember`, `SetEnrollment`, `UpdatePhoneticName`, `RecordRecognitionObservation`, `ListRecognitionObservations` | high | List/ListLoops return owner **and** `type:"robot"` member (required by stock LoopManager). See [loop-identity-enrollment.md](loop-identity-enrollment.md). |
+| `GET /media/loop-member-photo/{memberId}/{hash}.jpg` | signed query or portal session | high | Binary JPEG serve (not the legacy UTF-8 `/media/` protocol path) |
 | `Robot_*` | `GetRobot`, `UpdateRobot` | medium | initial dispatch implemented |
 | `Update_*` | `ListUpdates`, `ListUpdatesFrom`, `GetUpdateFrom`, `CreateUpdate`, `RemoveUpdate` | medium | list/get scaffolding implemented |
 | `Media_20160725` | `List`, `Get`, `Create`, `Remove` | medium | implemented in current parity scaffold |

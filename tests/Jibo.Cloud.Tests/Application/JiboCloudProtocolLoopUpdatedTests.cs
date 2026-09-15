@@ -3,6 +3,7 @@ using System.Text.Json;
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Persistence;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jibo.Cloud.Tests.Application;
@@ -27,12 +28,20 @@ public sealed class JiboCloudProtocolLoopUpdatedTests
 
         var pendingStore = new RobotPendingNotificationStore();
         var registry = new RobotNotificationRegistry(pendingStore);
-        var pushService = new LoopUpdatedPushService(store, registry, NullLogger<LoopUpdatedPushService>.Instance);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+        var photoSigner = new LoopMemberPhotoUrlSigner(configuration);
+        var pushService = new LoopUpdatedPushService(
+            store,
+            registry,
+            photoSigner,
+            configuration,
+            NullLogger<LoopUpdatedPushService>.Instance);
         var service = new JiboCloudProtocolService(
             store,
             authHandler: new CloudAuthProtocolHandler(store),
             robotNotificationRegistry: registry,
-            loopUpdatedPushService: pushService);
+            loopUpdatedPushService: pushService,
+            photoUrlSigner: photoSigner);
 
         using var socket = new CapturingWebSocket();
         registry.Register(["Ghost-Instance-Onion-Silk"], socket);

@@ -402,6 +402,57 @@ function bindPortalControls() {
     });
   });
 
+  document.querySelectorAll(".member-photo-input").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const status = document.getElementById("loopMembersActionStatus");
+      const memberId = input.getAttribute("data-member-id");
+      const file = input.files && input.files[0];
+      if (!file || !memberId) return;
+
+      try {
+        const token = getSessionToken();
+        const response = await fetch(`/api/portal/loop-members/${encodeURIComponent(memberId)}/photo`, {
+          method: "PUT",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            "Content-Type": file.type || "application/octet-stream",
+          },
+          body: file,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || `Upload failed (${response.status})`);
+        }
+        await renderDashboard("Profile photo updated.");
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "status error";
+        status.classList.remove("hidden");
+      } finally {
+        input.value = "";
+      }
+    });
+  });
+
+  document.querySelectorAll(".member-photo-clear").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const status = document.getElementById("loopMembersActionStatus");
+      const memberId = button.getAttribute("data-member-id");
+      if (!window.confirm("Clear this person's profile photo?")) return;
+
+      try {
+        await apiFetch(`/api/portal/loop-members/${encodeURIComponent(memberId)}/photo`, {
+          method: "DELETE",
+        });
+        await renderDashboard("Profile photo cleared.");
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "status error";
+        status.classList.remove("hidden");
+      }
+    });
+  });
+
   const addMemberButton = document.getElementById("addMemberButton");
   if (addMemberButton) {
     addMemberButton.addEventListener("click", async () => {
@@ -964,8 +1015,20 @@ function genderOptionsHtml(selectedGender) {
 function renderLoopMemberRow(member) {
   const badgeLabel = member.type === "owner" ? "Owner" : "Member";
   const badgeClass = member.type === "owner" ? "success" : "neutral";
+  const initials = (member.firstName || member.displayName || "?").trim().charAt(0).toUpperCase();
+  const photoHtml = member.photoUrl
+    ? `<img class="member-avatar-image" src="${escapeHtml(member.photoUrl)}" alt="">`
+    : `<span class="member-avatar-initials">${escapeHtml(initials)}</span>`;
   return `
     <div class="member-row" data-member-id="${escapeHtml(member.id)}">
+      <div class="member-avatar">
+        ${photoHtml}
+        <label class="member-photo-label button secondary" title="Upload photo">
+          Photo
+          <input class="member-photo-input" type="file" accept="image/*" data-member-id="${escapeHtml(member.id)}" hidden>
+        </label>
+        ${member.hasPhoto ? `<button class="button danger member-photo-clear" data-member-id="${escapeHtml(member.id)}" type="button">Clear</button>` : ""}
+      </div>
       <input class="member-first-name" type="text" value="${escapeHtml(member.firstName || "")}" placeholder="First name">
       <input class="member-last-name" type="text" value="${escapeHtml(member.lastName || "")}" placeholder="Last name">
       <select class="member-gender">

@@ -206,6 +206,7 @@ app.MapGet("/health/replica", (HttpContext context, ReleaseSmokeAuthorizationOpt
 
 app.MapPortalStaticFiles();
 app.MapPortalEndpoints();
+app.MapLoopMemberPhotoEndpoints();
 
 app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, JiboCloudProtocolService service,
     IProtocolTelemetrySink telemetrySink, ITransportMetrics transportMetrics,

@@ -82,8 +82,9 @@ Responsible for:
 - uploaded media metadata
 - backup manifests
 - binary references
+- loop-member profile photo bytes (384×384 JPEG under `loop-member-photo/{loopId}/{memberId}`) served only via signed capability URLs or portal session — see [loop-identity-enrollment.md](loop-identity-enrollment.md)
 
-Payload bytes belong in Azure Blob Storage (or the self-hosted blob/file adapter) and manifests belong in PostgreSQL.
+Payload bytes belong in Azure Blob Storage (or the self-hosted blob/file adapter) and manifests belong in PostgreSQL. Loop member photo hash/type/updated metadata live on `LoopMembers`.
 
 ## Record Shape Guidance
 

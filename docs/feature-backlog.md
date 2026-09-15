@@ -894,29 +894,29 @@ These are the carryover items that need a clean proof pass first:
 
 ### 19. Who Am I / Identity Management
 
-- Status: `discovery`
+- Status: `in_progress`
 - Tags: `protocol`, `content`, `storage`
 - Evidence:
-  - `@be/who-am-i` exists
-  - source references `jibo.kb.loop`, owner/member lookup, enrollment, and name collection
+  - `@be/who-am-i` exists and is on the main menu; redirects to introductions with `loopMemberReferent`
+  - cloud `"who am I"` / name recall falls back to loop roster firstName
+  - turn-context recognition observations + portal/BEacon People surfaces
+  - see [loop-identity-enrollment.md](loop-identity-enrollment.md)
 - Questions:
-  - recognition, enrollment, rename, and profile-correction boundaries
-  - split between local state and hosted cloud state
-  - first useful hosted identity slice
-  - live QA has shown person-identification collisions in the same loop (for example, a parent and child both getting normalized to the same remembered name)
-  - person-identification correction likely needs its own repair pass before we can trust greetings, reports, and presence triggers in mixed-household scenarios
+  - live person-identification collisions in mixed households (parent/child same normalized name)
+  - person-identification correction repair pass before trusting greetings in multi-person rooms
 
 ### 20. Onboarding, Loop Management, And Fresh Start
 
-- Status: `discovery`
+- Status: `in_progress`
 - Tags: `protocol`, `docs`, `storage`
 - Evidence:
   - `@be/first-contact`, `@be/introductions`, `@be/tutorial`, `@be/restore`, and `@be/who-am-i` exist
-  - current `.NET` loop/account state is still mostly scaffolded
+  - `.NET` `List`/`ListLoops` now includes the `type:"robot"` member required by stock LoopManager
+  - portal loop-member CRUD + signed profile photos; BEacon People panel for local roster/sync proof
+  - see [loop-identity-enrollment.md](loop-identity-enrollment.md)
 - Questions:
-  - how to provision an owner without the original mobile app
-  - how to add, remove, and re-enroll loop members
-  - whether the first replacement is operator-only, a lightweight web app, or both
+  - how to provision an owner without the original mobile app on a wiped robot
+  - whether invite-by-email parity is needed beyond portal add-person
 
 ### 21. How Old Are You / Robot Age Persona
 
@@ -1021,6 +1021,8 @@ These are the carryover items that need a clean proof pass first:
   - birthday-aware proactive greetings now use stored birthday memory on matching dates
   - holiday-aware proactive greetings now use loop holiday records on matching dates
   - morning proactive greetings now stay distinct from return-visit greetings
+  - turn-context recognition observations and loop firstName fallback for `"who am I"`
+  - see [loop-identity-enrollment.md](loop-identity-enrollment.md)
 - Exit criteria:
   - presence-aware greetings are routed deterministically with tests
   - proactive greetings are frequency-bounded and do not trigger from surprise source when blocked by policy
