@@ -54,6 +54,9 @@ public sealed class WebSocketTurnFinalizationService(
     private static readonly TimeSpan AutoFinalizeHotphraseOggEarlyProbeMinTurnAge = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan AutoFinalizeHotphraseOggEarlyProbeGap = TimeSpan.FromMilliseconds(550);
     private static readonly TimeSpan AutoFinalizeEarlyProbeRetryInterval = TimeSpan.FromMilliseconds(250);
+    // When an incomplete deferral stalls without Opus VAD silence, force close after this
+    // post-speech arrival gap instead of waiting for the hard speech timeout.
+    private static readonly TimeSpan AutoFinalizeDeferredIncompleteAudioGap = TimeSpan.FromMilliseconds(900);
 
     // Safety net only when VAD cannot see trailing quiet. Mid-utterance probes at
     // ~1.2s caused incomplete STT retries that stacked to ~3-3.5s on longer commands.
@@ -1255,7 +1258,29 @@ public sealed class WebSocketTurnFinalizationService(
                 return [];
             }
 
+            var sttStarted = Stopwatch.GetTimestamp();
             var finalizedTurn = await ResolveTranscriptAsync(turn, session, envelope, cancellationToken);
+            var sttDurationMs = (int)Stopwatch.GetElapsedTime(sttStarted).TotalMilliseconds;
+            var closeTrigger = ResolveAutoFinalizeCloseTrigger(turnState);
+            if (string.Equals(closeTrigger, "audio_gap", StringComparison.Ordinal))
+            {
+                var gapSinceLastAudioMs = turnState.LastAudioReceivedUtc.HasValue
+                    ? (int)(DateTimeOffset.UtcNow - turnState.LastAudioReceivedUtc.Value).TotalMilliseconds
+                    : -1;
+                var audioGapTurnAgeMs = turnState.FirstAudioReceivedUtc.HasValue
+                    ? (int)(DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value).TotalMilliseconds
+                    : -1;
+                await sink.RecordTurnDiagnosticAsync("auto_finalize_forced_after_audio_gap",
+                    BuildTurnDiagnosticSnapshot(session, envelope, new Dictionary<string, object?>
+                    {
+                        ["messageType"] = messageType,
+                        ["turnAgeMs"] = audioGapTurnAgeMs,
+                        ["gapSinceLastAudioMs"] = gapSinceLastAudioMs,
+                        ["deferredIncompleteAudioBytes"] = turnState.DeferredIncompleteAudioBytes,
+                        ["bufferedAudioBytes"] = turnState.BufferedAudioBytes
+                    }), cancellationToken);
+            }
+
             if (ShouldCloseHotphraseNonCommandAsNoInput(finalizedTurn, turnState, messageType,
                     allowFallbackOnMissingTranscript, out var hotphraseNonCommandReason))
             {
@@ -1783,8 +1808,14 @@ public sealed class WebSocketTurnFinalizationService(
             }
 
             AmbientTurnProgressPublisher.BindTurn(finalizedTurn, session);
+            var planStarted = Stopwatch.GetTimestamp();
             var plan = await MeasurePhaseAsync("plan",
                 () => conversationBroker.HandleTurnAsync(finalizedTurn, cancellationToken), cancellationToken);
+            var planWallDurationMs = (int)Stopwatch.GetElapsedTime(planStarted).TotalMilliseconds;
+            var syncPeopleDurationMs = TryReadDurationAttribute(finalizedTurn, "syncPeopleDurationMs");
+            var planDurationMs = syncPeopleDurationMs is > 0
+                ? Math.Max(0, planWallDurationMs - syncPeopleDurationMs.Value)
+                : planWallDurationMs;
 
             var intentName = plan.IntentName;
 
@@ -1912,7 +1943,11 @@ public sealed class WebSocketTurnFinalizationService(
                         ? (int)plan.FollowUp.Timeout.TotalMilliseconds
                         : null,
                     ["followUpOpen"] = session.FollowUpOpen,
-                    ["lastTranscript"] = finalizedTurn.NormalizedTranscript ?? finalizedTurn.RawTranscript
+                    ["lastTranscript"] = finalizedTurn.NormalizedTranscript ?? finalizedTurn.RawTranscript,
+                    ["sttDurationMs"] = sttDurationMs,
+                    ["syncPeopleDurationMs"] = syncPeopleDurationMs,
+                    ["planDurationMs"] = planDurationMs,
+                    ["closeTrigger"] = closeTrigger
                 }),
                 cancellationToken);
             logger.LogDebug(
@@ -2216,14 +2251,19 @@ public sealed class WebSocketTurnFinalizationService(
         var modelConfigured = IsModelEndpointingConfigured();
         var modelEndpointing = TryEvaluateModelEndpoint(session, reachedHardTimeout, out var modelSaysFinalize);
 
+        var reachedDeferredAudioGap = HasDeferredIncompleteAudioGap(turnState);
+
         // Incomplete-command deferrals must not re-enter finalize on arrival-time
         // silence alone — that re-ran STT on the same truncated buffer every ~450ms.
+        // Escape via content silence, OGG EOS, hard timeout, model endpoint, or a
+        // longer post-speech audio gap when VAD never sees trailing quiet.
         if (turnState.DeferredIncompleteAudioBytes > 0 &&
             turnState.BufferedAudioBytes <= turnState.DeferredIncompleteAudioBytes &&
             !receivedEndOfStream &&
             !reachedHardTimeout &&
             !(modelEndpointing && modelSaysFinalize) &&
-            !reachedContentSilence)
+            !reachedContentSilence &&
+            !reachedDeferredAudioGap)
             return false;
 
         var closeTrigger = receivedEndOfStream || reachedHardTimeout || transcriptHintEarlyFinalize;
@@ -2233,10 +2273,12 @@ public sealed class WebSocketTurnFinalizationService(
             // Do not fall back to the 350ms silence timer while that is starting.
             if (modelEndpointing)
                 closeTrigger = closeTrigger || modelSaysFinalize;
+            closeTrigger = closeTrigger || reachedDeferredAudioGap || reachedContentSilence;
         }
         else
         {
-            closeTrigger = closeTrigger || reachedSilenceWindow || reachedContentSilence;
+            closeTrigger = closeTrigger || reachedSilenceWindow || reachedContentSilence ||
+                           reachedDeferredAudioGap;
         }
 
         return turnState is
@@ -3582,12 +3624,7 @@ public sealed class WebSocketTurnFinalizationService(
 
         if (!IsHotphraseLaunchTurn(turn) || !turnState.FirstAudioReceivedUtc.HasValue) return false;
 
-        var turnAge = DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value;
-        var hardAge = ResolveHardBufferedAudioAge(turnState);
-        var forceCloseIncomplete =
-            turnAge >= hardAge ||
-            HasReceivedOggEndOfStream(turnState) ||
-            HasContentSilence(turnState, AutoFinalizeHotphraseOggSilenceWindow);
+        var forceCloseIncomplete = ShouldForceCloseIncompleteDeferral(turnState);
 
         var normalized = NormalizeUsableTranscript(turn.NormalizedTranscript ?? turn.RawTranscript);
         if (string.IsNullOrWhiteSpace(normalized)) return false;
@@ -3631,12 +3668,7 @@ public sealed class WebSocketTurnFinalizationService(
             !turnState.FirstAudioReceivedUtc.HasValue)
             return turn;
 
-        var turnAge = DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value;
-        var forceCloseIncomplete =
-            turnAge >= ResolveHardBufferedAudioAge(turnState) ||
-            HasReceivedOggEndOfStream(turnState) ||
-            HasContentSilence(turnState, AutoFinalizeHotphraseOggSilenceWindow);
-        if (!forceCloseIncomplete) return turn;
+        if (!ShouldForceCloseIncompleteDeferral(turnState)) return turn;
 
         var normalized = NormalizeUsableTranscript(turn.NormalizedTranscript ?? turn.RawTranscript);
         if (string.IsNullOrWhiteSpace(normalized)) return turn;
@@ -4031,8 +4063,7 @@ public sealed class WebSocketTurnFinalizationService(
         if (!turnState.FirstAudioReceivedUtc.HasValue)
             return false;
 
-        var turnAge = DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value;
-        if (turnAge >= ResolveHardBufferedAudioAge(turnState) ||
+        if (ShouldForceCloseIncompleteDeferral(turnState) ||
             HasReceivedOggEndOfStream(turnState))
             return false;
 
@@ -4043,6 +4074,57 @@ public sealed class WebSocketTurnFinalizationService(
 
         reason = completeness.Reason;
         return true;
+    }
+
+    private static bool HasDeferredIncompleteAudioGap(WebSocketTurnState turnState)
+    {
+        if (turnState.DeferredIncompleteAudioBytes <= 0 ||
+            turnState.BufferedAudioBytes > turnState.DeferredIncompleteAudioBytes ||
+            !turnState.LastAudioReceivedUtc.HasValue)
+            return false;
+
+        return DateTimeOffset.UtcNow - turnState.LastAudioReceivedUtc.Value >=
+               AutoFinalizeDeferredIncompleteAudioGap;
+    }
+
+    private static bool ShouldForceCloseIncompleteDeferral(WebSocketTurnState turnState)
+    {
+        if (!turnState.FirstAudioReceivedUtc.HasValue)
+            return false;
+
+        var turnAge = DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value;
+        return turnAge >= ResolveHardBufferedAudioAge(turnState) ||
+               HasReceivedOggEndOfStream(turnState) ||
+               HasContentSilence(turnState, AutoFinalizeHotphraseOggSilenceWindow) ||
+               HasDeferredIncompleteAudioGap(turnState);
+    }
+
+    private static string ResolveAutoFinalizeCloseTrigger(WebSocketTurnState turnState)
+    {
+        if (HasReceivedOggEndOfStream(turnState))
+            return "ogg_eos";
+
+        var turnAge = turnState.FirstAudioReceivedUtc.HasValue
+            ? DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value
+            : TimeSpan.Zero;
+        if (turnAge >= ResolveHardBufferedAudioAge(turnState))
+            return "hard_timeout";
+
+        if (HasDeferredIncompleteAudioGap(turnState))
+            return "audio_gap";
+
+        var silenceWindow = ResolveAutoFinalizeSilenceWindow(turnState);
+        if (HasContentSilence(turnState, silenceWindow))
+            return "content_silence";
+
+        if (turnState.LastAudioReceivedUtc.HasValue &&
+            DateTimeOffset.UtcNow - turnState.LastAudioReceivedUtc.Value >= silenceWindow)
+            return "arrival_silence";
+
+        if (ShouldEarlyFinalizeFromTranscriptHint(turnState))
+            return "transcript_hint";
+
+        return "auto_finalize";
     }
 
     private static bool LooksLikeIncompleteAffinitySet(string normalized)
@@ -4247,6 +4329,22 @@ public sealed class WebSocketTurnFinalizationService(
             JsonElement { ValueKind: JsonValueKind.False } => false,
             _ when bool.TryParse(value.ToString(), out var parsed) => parsed,
             _ => false
+        };
+    }
+
+    private static int? TryReadDurationAttribute(TurnContext turn, string key)
+    {
+        if (!turn.Attributes.TryGetValue(key, out var value) || value is null) return null;
+        return value switch
+        {
+            int typed => typed,
+            long typedLong => (int)typedLong,
+            double typedDouble => (int)typedDouble,
+            float typedFloat => (int)typedFloat,
+            string text when int.TryParse(text, out var parsed) => parsed,
+            JsonElement element when element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var jsonInt)
+                => jsonInt,
+            _ => null
         };
     }
 

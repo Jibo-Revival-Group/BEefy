@@ -60,6 +60,8 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
 
     private readonly ISnapshotStore _snapshotStore;
     private readonly ConcurrentDictionary<string, string> _symmetricKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _loopRosterFingerprints =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _syncRoot = new();
     private readonly List<UpdateManifest> _updates;
     private readonly List<UserRecord> _users;
@@ -1545,6 +1547,12 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
 
         var resolvedLoopId = loopId.Trim();
         var resolvedRobotId = string.IsNullOrWhiteSpace(robotId) ? _robot.RobotId : robotId.Trim();
+        var fingerprint = LoopUserRosterFingerprint.Compute(loopUsers);
+        var fingerprintKey = LoopUserRosterFingerprint.BuildKey(resolvedLoopId, resolvedRobotId);
+        if (_loopRosterFingerprints.TryGetValue(fingerprintKey, out var previousFingerprint) &&
+            string.Equals(previousFingerprint, fingerprint, StringComparison.Ordinal))
+            return 0;
+
         var upserted = 0;
         lock (_syncRoot)
         {
@@ -1636,7 +1644,10 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
         }
 
         if (upserted > 0)
+        {
+            _loopRosterFingerprints[fingerprintKey] = fingerprint;
             TouchState();
+        }
 
         return upserted;
     }

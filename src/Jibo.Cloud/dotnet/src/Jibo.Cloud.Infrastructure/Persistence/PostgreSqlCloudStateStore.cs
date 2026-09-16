@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain;
@@ -41,6 +42,8 @@ public sealed partial class PostgreSqlCloudStateStore : ICloudStateStore
     private readonly TimeSpan _robotTokenLifetime;
     private readonly string? _ownerFirstName;
     private readonly string? _ownerLastName;
+    private readonly ConcurrentDictionary<string, string> _loopRosterFingerprints =
+        new(StringComparer.OrdinalIgnoreCase);
     private DateTimeOffset? _lastLoadedUtc;
     private DateTimeOffset? _lastSavedUtc;
 

@@ -1,5 +1,6 @@
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Domain.Models;
+using Jibo.Cloud.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -11,6 +12,28 @@ namespace Jibo.Cloud.Tests.Api;
 /// </summary>
 public sealed class PortalLoopMemberSyncTests
 {
+    [Fact]
+    public void RobotRosterSync_SkipsNoOpWhenRosterUnchanged()
+    {
+        var store = new InMemoryCloudStateStore();
+        var loop = store.AddLoop(null, null, "Ghost-Instance-Onion-Silk", "BOJW-1000-0017-0820-0020");
+        LoopUserSnapshot[] roster =
+        [
+            new LoopUserSnapshot("looper-zane", "Zane", "Tester", Type: "owner", Nickname: "Z"),
+            new LoopUserSnapshot("looper-jon", "Jon", "Tester", Type: "member")
+        ];
+
+        Assert.Equal(2, store.SyncPeopleFromLoopUsers(loop.LoopId, "Ghost-Instance-Onion-Silk", roster));
+        Assert.Equal(0, store.SyncPeopleFromLoopUsers(loop.LoopId, "Ghost-Instance-Onion-Silk", roster));
+        Assert.Equal(0, store.SyncPeopleFromLoopUsers(
+            loop.LoopId,
+            "Ghost-Instance-Onion-Silk",
+            [
+                new LoopUserSnapshot("looper-jon", "Jon", "Tester", Type: "member"),
+                new LoopUserSnapshot("looper-zane", "Zane", "Tester", Type: "owner", Nickname: "Z")
+            ]));
+    }
+
     [Fact]
     public void RobotRosterSync_UpsertsPeopleAndLoopMembersFromLoopUsers()
     {

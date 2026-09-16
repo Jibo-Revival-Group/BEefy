@@ -110,6 +110,12 @@ public sealed partial class PostgreSqlCloudStateStore
         var account = string.IsNullOrWhiteSpace(ownerAccountId) ? GetAccount().AccountId : ownerAccountId.Trim();
         var resolvedLoop = loopId.Trim();
         var resolvedRobot = string.IsNullOrWhiteSpace(robotId) ? GetRobot().RobotId : robotId.Trim();
+        var fingerprint = LoopUserRosterFingerprint.Compute(loopUsers);
+        var fingerprintKey = LoopUserRosterFingerprint.BuildKey(resolvedLoop, resolvedRobot);
+        if (_loopRosterFingerprints.TryGetValue(fingerprintKey, out var previousFingerprint) &&
+            string.Equals(previousFingerprint, fingerprint, StringComparison.Ordinal))
+            return 0;
+
         var people = Require(_people, "people");
         var members = Require(_members, "loop members");
         var currentPeople = Sync(people.ListAsync(account, resolvedLoop, 1000));
@@ -187,6 +193,10 @@ public sealed partial class PostgreSqlCloudStateStore
             if (member?.PortalEditedUtc is null)
                 Sync(people.DeleteAsync(account, resolvedLoop, stale.PersonId));
         }
+
+        if (upserted > 0)
+            _loopRosterFingerprints[fingerprintKey] = fingerprint;
+
         return upserted;
     }
 

@@ -524,6 +524,7 @@ public sealed partial class JiboInteractionService
         var loopUsers = TryReadLoopUsersFromTurn(turn);
         if (loopUsers.Count == 0) return;
 
+        var syncStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
             var robotId = ResolveTurnRobotId(turn);
@@ -542,6 +543,11 @@ public sealed partial class JiboInteractionService
                 "Could not synchronize loop people from the robot context; continuing the interaction. turnId={TurnId} deviceId={DeviceId}",
                 turn.TurnId,
                 turn.DeviceId);
+        }
+        finally
+        {
+            turn.Attributes["syncPeopleDurationMs"] =
+                (int)System.Diagnostics.Stopwatch.GetElapsedTime(syncStarted).TotalMilliseconds;
         }
     }
 
