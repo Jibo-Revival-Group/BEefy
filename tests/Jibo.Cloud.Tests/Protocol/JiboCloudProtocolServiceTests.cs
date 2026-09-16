@@ -2354,8 +2354,18 @@ public sealed class JiboCloudProtocolServiceTests
     }
 
     [Fact]
-    public async Task LoopInviteMember_ReturnsUpdatedLoop()
+    public async Task LoopInviteMember_IsInertCompatibilityHandler()
     {
+        var before = await _service.DispatchAsync(new ProtocolEnvelope
+        {
+            HostName = "api.jibo.com",
+            Method = "POST",
+            ServicePrefix = "Loop_20160324",
+            Operation = "ListLoops"
+        });
+        using var beforePayload = JsonDocument.Parse(before.BodyText);
+        var beforeCount = beforePayload.RootElement[0].GetProperty("members").GetArrayLength();
+
         var result = await _service.DispatchAsync(new ProtocolEnvelope
         {
             HostName = "api.jibo.com",
@@ -2368,51 +2378,53 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.Equal(200, result.StatusCode);
         using var payload = JsonDocument.Parse(result.BodyText);
         var members = payload.RootElement.GetProperty("members").EnumerateArray().ToArray();
-        Assert.Contains(members,
+        Assert.Equal(beforeCount, members.Length);
+        Assert.DoesNotContain(members,
             member => member.GetProperty("account").GetProperty("email").GetString() == "friend@example.com");
+        Assert.All(members, member =>
+        {
+            var type = member.GetProperty("type").GetString();
+            Assert.True(type is "owner" or "robot");
+        });
     }
 
     [Fact]
     public async Task LoopRecognitionObservation_CanBeListedForConversionSmokeEvidence()
     {
-        var invite = await _service.DispatchAsync(new ProtocolEnvelope
-        {
-            HostName = "api.jibo.com",
-            Method = "POST",
-            ServicePrefix = "Loop_20160715",
-            Operation = "InviteMember",
-            BodyText =
-                """{"loopId":"openjibo-default-loop","email":"recognized@example.com","firstName":"Recognized"}"""
-        });
+        var store = new InMemoryCloudStateStore();
+        var service = new JiboCloudProtocolService(store);
+        var loop = Assert.Single(store.GetLoops());
+        var member = store.AddLoopMember(
+            loop.LoopId,
+            null,
+            "recognized@example.com",
+            "Recognized",
+            null,
+            "unknown",
+            null,
+            false,
+            "member");
+        var memberId = member.Id;
 
-        using var invitePayload = JsonDocument.Parse(invite.BodyText);
-        var memberId = invitePayload.RootElement
-            .GetProperty("members")
-            .EnumerateArray()
-            .Single(member =>
-                member.GetProperty("account").GetProperty("email").GetString() == "recognized@example.com")
-            .GetProperty("id")
-            .GetString();
-
-        var record = await _service.DispatchAsync(new ProtocolEnvelope
+        var record = await service.DispatchAsync(new ProtocolEnvelope
         {
             HostName = "api.jibo.com",
             Method = "POST",
             ServicePrefix = "Loop_20160715",
             Operation = "RecordRecognitionObservation",
             BodyText =
-                $$"""{"loopId":"openjibo-default-loop","memberId":"{{memberId}}","modality":"face","outcome":"recognized","confidence":0.97,"source":"conversion-smoke"}"""
+                $$"""{"loopId":"{{loop.LoopId}}","memberId":"{{memberId}}","modality":"face","outcome":"recognized","confidence":0.97,"source":"conversion-smoke"}"""
         });
 
         Assert.Equal(200, record.StatusCode);
 
-        var list = await _service.DispatchAsync(new ProtocolEnvelope
+        var list = await service.DispatchAsync(new ProtocolEnvelope
         {
             HostName = "api.jibo.com",
             Method = "POST",
             ServicePrefix = "Loop_20160715",
             Operation = "ListRecognitionObservations",
-            BodyText = """{"loopId":"openjibo-default-loop"}"""
+            BodyText = $$"""{"loopId":"{{loop.LoopId}}"}"""
         });
 
         Assert.Equal(200, list.StatusCode);

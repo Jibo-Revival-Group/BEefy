@@ -1,7 +1,5 @@
 using Jibo.Cloud.Application.Abstractions;
-using Jibo.Cloud.Domain;
 using Jibo.Cloud.Domain.Models;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Jibo.Cloud.Application.Services;
@@ -12,8 +10,6 @@ namespace Jibo.Cloud.Application.Services;
 public sealed class LoopUpdatedPushService(
     ICloudStateStore cloudStateStore,
     RobotNotificationRegistry robotNotificationRegistry,
-    LoopMemberPhotoUrlSigner photoUrlSigner,
-    IConfiguration configuration,
     ILogger<LoopUpdatedPushService> logger)
 {
     public async Task<int> PushForLoopIdAsync(
@@ -36,7 +32,7 @@ public sealed class LoopUpdatedPushService(
             return 0;
         }
 
-        var payload = BuildLoopNotificationPayload(loop, cloudStateStore.GetLoopMembers(loopId));
+        var payload = BuildLoopNotificationPayload(loop, SeedMembersOnly(cloudStateStore.GetLoopMembers(loopId)));
         var pushed = await robotNotificationRegistry.PushLoopUpdatedAsync(robotKeys, payload, cancellationToken);
         if (pushed == 0)
         {
@@ -62,7 +58,6 @@ public sealed class LoopUpdatedPushService(
 
     private object BuildLoopNotificationPayload(LoopRecord loop, IEnumerable<LoopMemberRecord> members)
     {
-        var origin = ResolveApiOrigin();
         return new
         {
             id = loop.LoopId,
@@ -70,7 +65,7 @@ public sealed class LoopUpdatedPushService(
             owner = loop.OwnerAccountId,
             robot = loop.RobotId,
             robotFriendlyId = loop.RobotFriendlyId,
-            members = members.Select(member => MapLoopMember(member, origin)).ToArray(),
+            members = members.Select(MapLoopMember).ToArray(),
             isSuspended = loop.IsSuspended,
             created = loop.CreatedUtc.ToUnixTimeMilliseconds(),
             updated = loop.UpdatedUtc.ToUnixTimeMilliseconds(),
@@ -78,12 +73,9 @@ public sealed class LoopUpdatedPushService(
         };
     }
 
-    private object MapLoopMember(LoopMemberRecord member, string origin)
+    private static object MapLoopMember(LoopMemberRecord member)
     {
-        string? photoUrl = null;
-        if (!string.IsNullOrWhiteSpace(member.PhotoContentHash))
-            photoUrl = photoUrlSigner.BuildSignedUrl(origin, member.Id, member.PhotoContentHash);
-
+        // BEacon owns profile photos as local KB assets — do not attach signed URLs.
         return new
         {
             id = member.Id,
@@ -98,7 +90,7 @@ public sealed class LoopUpdatedPushService(
                 birthday = member.Birthday,
                 isChild = member.IsChild,
                 phoneNumber = member.PhoneNumber,
-                photoUrl
+                photoUrl = (string?)null
             },
             enrolled = new { face = member.FaceEnrolled, voice = member.VoiceEnrolled },
             status = member.Status,
@@ -111,15 +103,10 @@ public sealed class LoopUpdatedPushService(
         };
     }
 
-    private string ResolveApiOrigin()
-    {
-        var configured = configuration["OpenJibo:CanonicalApiBaseUrl"];
-        if (Uri.TryCreate(configured, UriKind.Absolute, out var uri) &&
-            uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-            return uri.GetLeftPart(UriPartial.Authority);
-
-        return $"https://{OpenJiboHostNames.CanonicalApi}";
-    }
+    private static IEnumerable<LoopMemberRecord> SeedMembersOnly(IEnumerable<LoopMemberRecord> members) =>
+        members.Where(static member =>
+            string.Equals(member.Type, "owner", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(member.Type, "robot", StringComparison.OrdinalIgnoreCase));
 
     private HashSet<string> BuildRobotKeys(LoopRecord loop, IReadOnlyCollection<string>? additionalRobotKeys)
     {

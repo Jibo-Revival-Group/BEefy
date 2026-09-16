@@ -3,7 +3,6 @@ using System.Text.Json;
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Persistence;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jibo.Cloud.Tests.Application;
@@ -11,7 +10,7 @@ namespace Jibo.Cloud.Tests.Application;
 public sealed class JiboCloudProtocolLoopUpdatedTests
 {
     [Fact]
-    public async Task DispatchAsync_UpdateMember_PushesLoopUpdatedToLiveSocket()
+    public async Task DispatchAsync_SetEnrollment_PushesLoopUpdatedToLiveSocket()
     {
         var store = new InMemoryCloudStateStore();
         var loop = store.AddLoop(null, null, "Ghost-Instance-Onion-Silk", "BOJW-1000-0017-0820-0020");
@@ -28,20 +27,15 @@ public sealed class JiboCloudProtocolLoopUpdatedTests
 
         var pendingStore = new RobotPendingNotificationStore();
         var registry = new RobotNotificationRegistry(pendingStore);
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
-        var photoSigner = new LoopMemberPhotoUrlSigner(configuration);
         var pushService = new LoopUpdatedPushService(
             store,
             registry,
-            photoSigner,
-            configuration,
             NullLogger<LoopUpdatedPushService>.Instance);
         var service = new JiboCloudProtocolService(
             store,
             authHandler: new CloudAuthProtocolHandler(store),
             robotNotificationRegistry: registry,
-            loopUpdatedPushService: pushService,
-            photoUrlSigner: photoSigner);
+            loopUpdatedPushService: pushService);
 
         using var socket = new CapturingWebSocket();
         registry.Register(["Ghost-Instance-Onion-Silk"], socket);
@@ -49,9 +43,9 @@ public sealed class JiboCloudProtocolLoopUpdatedTests
         var result = await service.DispatchAsync(new ProtocolEnvelope
         {
             ServicePrefix = "Loop_20160324",
-            Operation = "UpdateMember",
+            Operation = "SetEnrollment",
             BodyText =
-                $$"""{"loopId":"{{loop.LoopId}}","id":"{{member.Id}}","firstName":"Jordan","lastName":"Tester","gender":"male"}"""
+                $$"""{"loopId":"{{loop.LoopId}}","id":"{{member.Id}}","face":true,"voice":false}"""
         });
 
         Assert.Equal(200, result.StatusCode);
@@ -59,6 +53,17 @@ public sealed class JiboCloudProtocolLoopUpdatedTests
         Assert.Equal(
             "LoopUpdated",
             socket.LastPayload!.Value.GetProperty("payload").GetProperty("name").GetString());
+        var members = socket.LastPayload!.Value
+            .GetProperty("payload")
+            .GetProperty("payload")
+            .GetProperty("members")
+            .EnumerateArray()
+            .ToArray();
+        Assert.All(members, item =>
+        {
+            var type = item.GetProperty("type").GetString();
+            Assert.True(type is "owner" or "robot");
+        });
     }
 
     private sealed class CapturingWebSocket : WebSocket

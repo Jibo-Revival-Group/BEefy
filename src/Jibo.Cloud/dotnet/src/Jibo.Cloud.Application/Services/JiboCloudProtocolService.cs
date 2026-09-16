@@ -20,8 +20,7 @@ public sealed class JiboCloudProtocolService(
     RobotNotificationRegistry? robotNotificationRegistry = null,
     LoopUpdatedPushService? loopUpdatedPushService = null,
     ILogger<JiboCloudProtocolService>? logger = null,
-    RobotIdentitySuggestionStore? identitySuggestionStore = null,
-    LoopMemberPhotoUrlSigner? photoUrlSigner = null)
+    RobotIdentitySuggestionStore? identitySuggestionStore = null)
 {
     private const int SchedulerBackupDelayMs = 250;
     private const int SchedulerDownloadTickMs = 100;
@@ -49,7 +48,6 @@ public sealed class JiboCloudProtocolService(
     private readonly IMediaContentStore _mediaContentStore = mediaContentStore ?? new NullMediaContentStore();
     private readonly RobotNotificationRegistry? _robotNotificationRegistry = robotNotificationRegistry;
     private readonly LoopUpdatedPushService? _loopUpdatedPushService = loopUpdatedPushService;
-    private readonly LoopMemberPhotoUrlSigner? _photoUrlSigner = photoUrlSigner;
     private readonly ConcurrentDictionary<string, OobeTokenState> _oobeTokens = new(StringComparer.Ordinal);
     private readonly Lock _schedulerLock = new();
     private readonly SchedulerRuntimeState _schedulerState = new();
@@ -980,60 +978,19 @@ public sealed class JiboCloudProtocolService(
                     ReadString(body, "robotId") ?? ReadString(body, "deviceId"),
                     ReadString(body, "robotFriendlyId") ?? ReadString(body, "friendlyId") ?? ReadString(body, "deviceId"));
                 TryPushLoopUpdatedForLoop(loop.LoopId);
-                return ProtocolDispatchResult.Ok(MapLoopRecord(loop, stateStore.GetLoopMembers(loop.LoopId)));
+                return ProtocolDispatchResult.Ok(MapLoopRecord(loop, SeedMembersOnly(stateStore.GetLoopMembers(loop.LoopId))));
             }
             case "InviteMember" or "InviteLoopMember":
-            {
-                stateStore.AddLoopMember(
-                    loopIdForMutation,
-                    null,
-                    ReadString(body, "email"),
-                    ReadString(body, "firstName"),
-                    ReadString(body, "lastName"),
-                    ReadString(body, "gender"),
-                    ReadLong(body, "birthday"),
-                    ReadBool(body, "isChild"),
-                    "member",
-                    ReadString(body, "legalGuardianId"));
-
-                var loop = stateStore.GetLoops().FirstOrDefault(l =>
-                    l.LoopId.Equals(loopIdForMutation, StringComparison.OrdinalIgnoreCase));
-                TryPushLoopUpdatedForLoop(loopIdForMutation);
-                return ProtocolDispatchResult.Ok(loop is null
-                    ? new { result = "ok" }
-                    : MapLoopRecord(loop, stateStore.GetLoopMembers(loopIdForMutation)));
-            }
             case "UpdateMember" or "UpdateLoopMember":
-            {
-                var memberId = ReadString(body, "id") ?? string.Empty;
-                try
-                {
-                    stateStore.UpdateLoopMember(loopIdForMutation, memberId,
-                        ReadString(body, "firstName"), ReadString(body, "lastName"),
-                        ReadString(body, "gender"), ReadLong(body, "birthday"),
-                        ReadBool(body, "isChild"), ReadString(body, "nickname"), ReadString(body, "phoneticName"));
-                }
-                catch (InvalidOperationException)
-                {
-                    // Member not found - keep protocol flow moving.
-                }
-
-                var loop = stateStore.GetLoops().FirstOrDefault(l =>
-                    l.LoopId.Equals(loopIdForMutation, StringComparison.OrdinalIgnoreCase));
-                TryPushLoopUpdatedForLoop(loopIdForMutation);
-                return ProtocolDispatchResult.Ok(loop is null
-                    ? new { result = "ok" }
-                    : MapLoopRecord(loop, stateStore.GetLoopMembers(loopIdForMutation)));
-            }
             case "RemoveMember" or "RemoveLoopMember":
             {
-                stateStore.RemoveLoopMember(loopIdForMutation, ReadString(body, "id") ?? string.Empty);
+                // Household CRUD lives in BEacon. Keep these as inert compatibility
+                // handlers for stock clients that still call them.
                 var loop = stateStore.GetLoops().FirstOrDefault(l =>
                     l.LoopId.Equals(loopIdForMutation, StringComparison.OrdinalIgnoreCase));
-                TryPushLoopUpdatedForLoop(loopIdForMutation);
                 return ProtocolDispatchResult.Ok(loop is null
                     ? new { result = "ok" }
-                    : MapLoopRecord(loop, stateStore.GetLoopMembers(loopIdForMutation)));
+                    : MapLoopRecord(loop, SeedMembersOnly(stateStore.GetLoopMembers(loopIdForMutation))));
             }
             case "AcceptInvitation" or "AcceptLoopInvitation" or
                 "DeclineInvitation" or "DeclineLoopInvitation":
@@ -1043,7 +1000,7 @@ public sealed class JiboCloudProtocolService(
                 TryPushLoopUpdatedForLoop(loopIdForMutation);
                 return ProtocolDispatchResult.Ok(loop is null
                     ? new { result = "ok" }
-                    : MapLoopRecord(loop, stateStore.GetLoopMembers(loopIdForMutation)));
+                    : MapLoopRecord(loop, SeedMembersOnly(stateStore.GetLoopMembers(loopIdForMutation))));
             }
             case "SetEnrollment":
             {
@@ -1064,7 +1021,7 @@ public sealed class JiboCloudProtocolService(
                 TryPushLoopUpdatedForLoop(loopIdForMutation);
                 return ProtocolDispatchResult.Ok(loop is null
                     ? new { result = "ok" }
-                    : MapLoopRecord(loop, stateStore.GetLoopMembers(loopIdForMutation)));
+                    : MapLoopRecord(loop, SeedMembersOnly(stateStore.GetLoopMembers(loopIdForMutation))));
             }
             case "RecordRecognitionObservation" or "RecordRecognition":
             {
@@ -1183,10 +1140,17 @@ public sealed class JiboCloudProtocolService(
                     members = stateStore.GetLoopMembers(loop.LoopId);
                 }
 
-                return MapLoopRecord(loop, members);
+                // BEacon owns household humans. ListLoops only seeds owner + robot so
+                // LoopManager does not overwrite or prune the local BEacon roster.
+                return MapLoopRecord(loop, SeedMembersOnly(members));
             })
             .ToArray());
     }
+
+    private static IEnumerable<LoopMemberRecord> SeedMembersOnly(IEnumerable<LoopMemberRecord> members) =>
+        members.Where(static member =>
+            string.Equals(member.Type, "owner", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(member.Type, "robot", StringComparison.OrdinalIgnoreCase));
 
     private void EnsureSeededLoopMembersForList(LoopRecord loop)
     {
@@ -1226,7 +1190,8 @@ public sealed class JiboCloudProtocolService(
 
     public object MapLoopMember(LoopMemberRecord member)
     {
-        var photoUrl = TryBuildMemberPhotoUrl(member);
+        // Never emit photoUrl for protocol ListLoops / LoopUpdated — BEacon stores
+        // profile photos as local KB assets and LoopManager must not HTTP-replace them.
         return new
         {
             id = member.Id,
@@ -1241,7 +1206,7 @@ public sealed class JiboCloudProtocolService(
                 birthday = member.Birthday,
                 isChild = member.IsChild,
                 phoneNumber = member.PhoneNumber,
-                photoUrl
+                photoUrl = (string?)null
             },
             enrolled = new { face = member.FaceEnrolled, voice = member.VoiceEnrolled },
             status = member.Status,
@@ -1252,17 +1217,6 @@ public sealed class JiboCloudProtocolService(
             agreementId = member.AgreementId,
             created = member.CreatedUtc.ToUnixTimeMilliseconds()
         };
-    }
-
-    private string? TryBuildMemberPhotoUrl(LoopMemberRecord member)
-    {
-        if (_photoUrlSigner is null ||
-            string.IsNullOrWhiteSpace(member.PhotoContentHash) ||
-            string.IsNullOrWhiteSpace(member.Id))
-            return null;
-
-        var origin = _canonicalApiBaseUrl ?? $"https://{OpenJiboHostNames.CanonicalApi}";
-        return _photoUrlSigner.BuildSignedUrl(origin, member.Id, member.PhotoContentHash);
     }
 
     private static object MapRecognitionObservation(RecognitionObservationRecord observation)
@@ -1323,7 +1277,7 @@ public sealed class JiboCloudProtocolService(
         var loop = stateStore.GetLoops()
             .FirstOrDefault(item => item.LoopId.Equals(loopId, StringComparison.OrdinalIgnoreCase));
         if (loop is null) return;
-        var payload = BuildLoopNotificationPayload(loop, stateStore.GetLoopMembers(loopId));
+        var payload = BuildLoopNotificationPayload(loop, SeedMembersOnly(stateStore.GetLoopMembers(loopId)));
         var keys = BuildLoopRobotKeys(loop);
         if (keys.Count == 0) return;
         _ = _robotNotificationRegistry.PushLoopUpdatedAsync(keys, payload, CancellationToken.None);
