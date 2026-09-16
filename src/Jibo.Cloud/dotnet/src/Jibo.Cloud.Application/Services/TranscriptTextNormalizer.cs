@@ -59,6 +59,75 @@ internal static class TranscriptTextNormalizer
         "gee bow"
     ];
 
+    // Longer phrases first so StripLeadingPhrases prefers multi-token frames.
+    private static readonly string[] ConversationalLeadFillers =
+    [
+        "excuse me",
+        "i mean",
+        "all right",
+        "alright",
+        "actually",
+        "anyways",
+        "anyway",
+        "please",
+        "okay",
+        "sorry",
+        "yeah",
+        "right",
+        "just",
+        "like",
+        "well",
+        "hey",
+        "yo",
+        "ok",
+        "now",
+        "and",
+        "but",
+        "so",
+        "oh",
+        "o",
+        "um",
+        "uh",
+        "hmm",
+        "erm",
+        "ah"
+    ];
+
+    // Longer frames first so "can you tell me" wins over "can you".
+    private static readonly string[] PoliteRequestFrames =
+    [
+        "could you tell me",
+        "can you tell me",
+        "i would like to",
+        "i want to know",
+        "why don t we",
+        "why dont we",
+        "i d like to",
+        "do you know",
+        "i want to",
+        "i wanna",
+        "how about",
+        "could we",
+        "could you",
+        "would you",
+        "should we",
+        "shall we",
+        "will you",
+        "can we",
+        "can you",
+        "may we",
+        "tell me",
+        "let s",
+        "lets"
+    ];
+
+    private static readonly string[] TrailingCourtesySuffixes =
+    [
+        "thank you",
+        "please",
+        "thanks"
+    ];
+
     private static readonly Regex PunctuationToSpaceRegex = new(
         @"[^\p{L}\p{N}\s']+",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -93,12 +162,29 @@ internal static class TranscriptTextNormalizer
         var normalized = NormalizeLooseText(value);
         if (string.IsNullOrWhiteSpace(normalized)) return string.Empty;
 
-        foreach (var suffix in new[] { "please", "thanks", "thank you" })
+        while (TryStripTrailingCourtesySuffix(normalized, out var trimmed))
+            normalized = trimmed;
+
+        return normalized;
+    }
+
+    /// <summary>
+    /// Canonical form for second-pass intent matching: wake phrase, conversational
+    /// fillers, polite request frames, and trailing courtesy words are stripped.
+    /// </summary>
+    internal static string NormalizeRequestUtterance(string? value)
+    {
+        var normalized = StripLeadingWakePhrase(value);
+        if (string.IsNullOrWhiteSpace(normalized)) return string.Empty;
+
+        string previous;
+        do
         {
-            if (normalized.Equals(suffix, StringComparison.Ordinal)) return string.Empty;
-            if (normalized.EndsWith($" {suffix}", StringComparison.Ordinal))
-                return normalized[..^(suffix.Length + 1)].Trim();
-        }
+            previous = normalized;
+            normalized = StripLeadingPhrases(normalized, ConversationalLeadFillers);
+            normalized = StripLeadingPhrases(normalized, PoliteRequestFrames);
+            normalized = StripTrailingCourtesyWords(normalized);
+        } while (!string.Equals(previous, normalized, StringComparison.Ordinal));
 
         return normalized;
     }
@@ -153,6 +239,25 @@ internal static class TranscriptTextNormalizer
 
             if (!normalizedValue.StartsWith($"{phrase} ", StringComparison.Ordinal)) continue;
             trimmed = normalizedValue[(phrase.Length + 1)..].TrimStart();
+            return true;
+        }
+
+        trimmed = normalizedValue;
+        return false;
+    }
+
+    private static bool TryStripTrailingCourtesySuffix(string normalizedValue, out string trimmed)
+    {
+        foreach (var suffix in TrailingCourtesySuffixes)
+        {
+            if (string.Equals(normalizedValue, suffix, StringComparison.Ordinal))
+            {
+                trimmed = string.Empty;
+                return true;
+            }
+
+            if (!normalizedValue.EndsWith($" {suffix}", StringComparison.Ordinal)) continue;
+            trimmed = normalizedValue[..^(suffix.Length + 1)].TrimEnd();
             return true;
         }
 

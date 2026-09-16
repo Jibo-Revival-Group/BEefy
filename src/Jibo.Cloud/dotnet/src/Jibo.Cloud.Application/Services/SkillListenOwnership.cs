@@ -185,7 +185,7 @@ internal static class SkillListenOwnership
 
     public static bool IsNonQuestionKnowledgeQuery(string? transcript)
     {
-        if (TranscriptHeuristics.IsLikelyPromptEchoTranscript(transcript)) return true;
+        if (TranscriptHeuristics.IsLikelyStrongPromptEchoTranscript(transcript)) return true;
 
         var normalized = NormalizeLoose(transcript);
         if (string.IsNullOrWhiteSpace(normalized)) return false;

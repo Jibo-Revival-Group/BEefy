@@ -94,6 +94,43 @@ public sealed class AudioTranscriptNormalizerTests
     }
 
     [Theory]
+    [InlineData("Do you want to hear something")]
+    [InlineData("Would you like to play the word of the day game")]
+    [InlineData("Do you want to take a picture")]
+    [InlineData("I heard you")]
+    [InlineData("Oh there are no photos yet. Do you want to take one now")]
+    public void IsLikelyStrongPromptEchoTranscript_ReturnsTrue_ForSecondPersonOffers(string value)
+    {
+        Assert.True(TranscriptHeuristics.IsLikelyStrongPromptEchoTranscript(value));
+    }
+
+    [Theory]
+    [InlineData("Can we play word of the day please")]
+    [InlineData("could we play word of the day")]
+    [InlineData("shall we play word of the day")]
+    [InlineData("should we play a game")]
+    [InlineData("may we play word of the day")]
+    public void IsLikelyWeakPromptEcho_ReturnsTrue_ForFirstPersonPluralRequests(string value)
+    {
+        Assert.True(TranscriptHeuristics.IsLikelyWeakPromptEcho(value));
+        Assert.False(TranscriptHeuristics.IsLikelyStrongPromptEchoTranscript(value));
+        Assert.True(TranscriptHeuristics.IsLikelyPromptEchoTranscript(value));
+    }
+
+    [Theory]
+    [InlineData("so what time is it", "what time is it")]
+    [InlineData("can we play word of the day please", "play word of the day")]
+    [InlineData("whats the weather please", "whats the weather")]
+    [InlineData("could you tell me the time", "the time")]
+    [InlineData("what time is it please thanks", "what time is it")]
+    [InlineData("i want to know the weather", "the weather")]
+    [InlineData("actually okay so what is the date please", "what is the date")]
+    public void NormalizeRequestUtterance_StripsFillersPoliteFramesAndCourtesy(string value, string expected)
+    {
+        Assert.Equal(expected, TranscriptTextNormalizer.NormalizeRequestUtterance(value));
+    }
+
+    [Theory]
     [InlineData("cloud version")]
     [InlineData("what's your cloud version")]
     [InlineData("hey jibo stop")]

@@ -83,24 +83,30 @@ public static class TranscriptHeuristics
         "i hope you try again in a little while"
     };
 
-    private static readonly string[] PromptEchoPrefixes =
+    // Second-person offer forms that are almost always the robot re-hearing its own prompt.
+    private static readonly string[] StrongPromptEchoPrefixes =
     [
         "do you want to ",
         "do you want ",
         "would you like to ",
         "would you like ",
         "do you feel like ",
-        "shall we ",
-        "can we ",
-        "could we ",
-        "should we ",
-        "may we ",
         "what do you want to ",
         "what would you like to ",
         "want to take a ",
         "want to take one",
         "want to do ",
         "you want to do "
+    ];
+
+    // First-person-plural invites that can also be genuine user requests ("can we play X").
+    private static readonly string[] WeakPromptEchoPrefixes =
+    [
+        "shall we ",
+        "can we ",
+        "could we ",
+        "should we ",
+        "may we "
     ];
 
     private static readonly string[] PromptEchoQuestionMarkers =
@@ -135,17 +141,31 @@ public static class TranscriptHeuristics
 
     public static bool IsLikelyPromptEchoTranscript(string? value)
     {
+        return IsLikelyStrongPromptEchoTranscript(value) || IsLikelyWeakPromptEcho(value);
+    }
+
+    public static bool IsLikelyStrongPromptEchoTranscript(string? value)
+    {
         var normalized = NormalizeLooseTranscript(value);
         if (string.IsNullOrWhiteSpace(normalized)) return false;
 
         if (IsLikelyRobotSelfAudioTranscript(normalized)) return true;
 
-        if (PromptEchoPrefixes.Any(prefix => normalized.StartsWith(prefix, StringComparison.Ordinal)))
+        if (StrongPromptEchoPrefixes.Any(prefix => normalized.StartsWith(prefix, StringComparison.Ordinal)))
             return true;
 
         // Full-prompt captures often keep a leading clause before the question.
         return PromptEchoQuestionMarkers.Any(marker =>
             normalized.Contains(marker, StringComparison.Ordinal));
+    }
+
+    public static bool IsLikelyWeakPromptEcho(string? value)
+    {
+        var normalized = NormalizeLooseTranscript(value);
+        if (string.IsNullOrWhiteSpace(normalized)) return false;
+        if (IsLikelyStrongPromptEchoTranscript(normalized)) return false;
+
+        return WeakPromptEchoPrefixes.Any(prefix => normalized.StartsWith(prefix, StringComparison.Ordinal));
     }
 
     public static bool IsLikelyQuestion(string? value)
