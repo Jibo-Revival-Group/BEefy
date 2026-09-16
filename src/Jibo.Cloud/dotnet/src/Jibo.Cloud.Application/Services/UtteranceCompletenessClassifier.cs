@@ -33,6 +33,26 @@ public static class UtteranceCompletenessClassifier
         "i", "we", "they", "he", "she"
     };
 
+    /// <summary>
+    /// Finished name-recall / identity questions that end in a dangling-looking
+    /// token (e.g. "who am i") but are complete commands. Must stay ahead of the
+    /// dangling-function-word check so AUTO_FINALIZE does not stall them.
+    /// Keep in sync with <c>IsNameRecallQuestion</c> phrase coverage.
+    /// </summary>
+    private static readonly string[] KnownCompleteIdentityQuestions =
+    [
+        "what is my name",
+        "what s my name",
+        "whats my name",
+        "what's my name",
+        "who am i",
+        "do you remember my name",
+        "do you know me",
+        "do you remember me",
+        "who is this",
+        "can you recognize me"
+    ];
+
     public static Result Classify(
         string? partialTranscript,
         IReadOnlyList<string>? listenRules = null)
@@ -53,6 +73,9 @@ public static class UtteranceCompletenessClassifier
         if (string.IsNullOrWhiteSpace(command))
             return new Result(false, "wake_word_only");
 
+        if (IsKnownCompleteIdentityQuestion(command))
+            return new Result(true, "known_complete_identity_question");
+
         var tokens = command.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (tokens.Length == 0)
             return new Result(false, "empty_partial");
@@ -70,6 +93,11 @@ public static class UtteranceCompletenessClassifier
 
         return new Result(true, "complete");
     }
+
+    private static bool IsKnownCompleteIdentityQuestion(string command) =>
+        KnownCompleteIdentityQuestions.Any(phrase =>
+            command.Equals(phrase, StringComparison.Ordinal) ||
+            command.Contains(phrase, StringComparison.Ordinal));
 
     private static bool IsConstrainedListen(IReadOnlyList<string> rules) =>
         rules.Any(rule => IsYesNoRule(rule) ||

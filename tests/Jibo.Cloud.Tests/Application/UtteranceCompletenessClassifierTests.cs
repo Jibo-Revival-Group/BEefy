@@ -20,11 +20,29 @@ public sealed class UtteranceCompletenessClassifierTests
     }
 
     [Theory]
+    [InlineData("who am i")]
+    [InlineData("hey jibo who am i")]
+    [InlineData("what is my name")]
+    [InlineData("what's my name")]
+    [InlineData("do you know me")]
+    [InlineData("who is this")]
+    [InlineData("can you recognize me")]
+    public void Classify_KnownCompleteIdentityQuestions(string transcript)
+    {
+        var result = UtteranceCompletenessClassifier.Classify(transcript);
+        Assert.True(result.IsComplete, $"{transcript} => {result.Reason}");
+        Assert.Equal("known_complete_identity_question", result.Reason);
+    }
+
+    [Theory]
     [InlineData("turn on the", "dangling_function_word")]
     [InlineData("hey jibo turn on the", "dangling_function_word")]
     [InlineData("what is your", "dangling_function_word")]
     [InlineData("how old are", "dangling_function_word")]
     [InlineData("my favorite is", "dangling_function_word")]
+    [InlineData("who", "dangling_function_word")]
+    [InlineData("who am", "dangling_function_word")]
+    [InlineData("and i", "dangling_function_word")]
     [InlineData("hey jibo", "wake_word_only")]
     [InlineData("", "empty_partial")]
     public void Classify_IncompleteUtterances(string transcript, string expectedReason)
