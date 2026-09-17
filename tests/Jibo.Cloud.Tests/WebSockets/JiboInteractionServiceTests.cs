@@ -328,10 +328,8 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_GoodMorning_UsesReactiveGreetingWithRememberedName()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
         var cloudStateStore = new InMemoryCloudStateStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-a", "loop-a", "device-a"), "jake");
-        var service = CreateService(memoryStore, cloudStateStore);
+        var service = CreateService(cloudStateStore: cloudStateStore);
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -361,9 +359,7 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_GoodMorning_UsesPersonScopedNameWhenSpeakerIsKnown()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-a", "loop-a", "device-a", "person-1"), "alex");
-        var service = CreateService(memoryStore);
+        var service = CreateService();
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -374,7 +370,7 @@ public sealed class JiboInteractionServiceTests
                 ["accountId"] = "acct-a",
                 ["loopId"] = "loop-a",
                 ["context"] =
-                    """{"runtime":{"location":{"iso":"2026-07-27T08:00:00-04:00"},"perception":{"speaker":"person-1"},"loop":{"users":[{"id":"person-1","firstName":"jake"}]}}}"""
+                    """{"runtime":{"location":{"iso":"2026-07-27T08:00:00-04:00"},"perception":{"speaker":"person-1","peoplePresent":[{"id":"person-1"}]},"loop":{"users":[{"id":"person-1","firstName":"alex"}]}}}"""
             },
             DeviceId = "device-a"
         });
@@ -448,9 +444,7 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_WhoAmI_UsesPersonScopedNameWhenSpeakerIsKnown()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-b", "loop-b", "device-b", "person-2"), "sam");
-        var service = CreateService(memoryStore);
+        var service = CreateService();
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -461,7 +455,7 @@ public sealed class JiboInteractionServiceTests
                 ["accountId"] = "acct-b",
                 ["loopId"] = "loop-b",
                 ["context"] =
-                    """{"runtime":{"perception":{"speaker":"person-2"},"loop":{"users":[{"id":"person-2","firstName":"sam"}]}}}"""
+                    """{"runtime":{"perception":{"speaker":"person-2","peoplePresent":[{"id":"person-2"}]},"loop":{"users":[{"id":"person-2","firstName":"sam"}]}}}"""
             },
             DeviceId = "device-b"
         });
@@ -477,9 +471,7 @@ public sealed class JiboInteractionServiceTests
     [InlineData("can you recognize me")]
     public async Task BuildDecisionAsync_IdentityFollowUp_UsesPersonScopedNameWhenSpeakerIsKnown(string transcript)
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-c", "loop-c", "device-c", "person-3"), "taylor");
-        var service = CreateService(memoryStore);
+        var service = CreateService();
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -490,7 +482,7 @@ public sealed class JiboInteractionServiceTests
                 ["accountId"] = "acct-c",
                 ["loopId"] = "loop-c",
                 ["context"] =
-                    """{"runtime":{"perception":{"speaker":"person-3"},"loop":{"users":[{"id":"person-3","firstName":"taylor"}]}}}"""
+                    """{"runtime":{"perception":{"speaker":"person-3","peoplePresent":[{"id":"person-3"}]},"loop":{"users":[{"id":"person-3","firstName":"taylor"}]}}}"""
             },
             DeviceId = "device-c"
         });
@@ -511,11 +503,11 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("memory_get_name", decision.IntentName);
-        Assert.Equal("I do not know your name yet. You can say, my name is Alex.", decision.ReplyText);
+        Assert.Equal("I do not know your name yet. Add yourself in BEacon People on the robot.", decision.ReplyText);
     }
 
     [Fact]
-    public async Task BuildDecisionAsync_IdentityFollowUp_DoesNotGuessFromLoopFirstNameWhenMemoryIsMissing()
+    public async Task BuildDecisionAsync_IdentityFollowUp_UsesLoopFirstNameWhenSpeakerIsKnown()
     {
         var service = CreateService();
 
@@ -529,14 +521,14 @@ public sealed class JiboInteractionServiceTests
                 ["loopId"] = "loop-d",
                 ["context"] =
                     """
-                    {"runtime":{"perception":{"speaker":"person-9"},"loop":{"users":[{"id":"person-9","firstName":"hi"}]}}}
+                    {"runtime":{"perception":{"speaker":"person-9","peoplePresent":[{"id":"person-9"}]},"loop":{"users":[{"id":"person-9","firstName":"hi"}]}}}
                     """
             },
             DeviceId = "device-d"
         });
 
         Assert.Equal("memory_get_name", decision.IntentName);
-        Assert.Equal("I do not know your name yet. You can say, my name is Alex.", decision.ReplyText);
+        Assert.Equal("I think you are Hi.", decision.ReplyText);
     }
 
     [Fact]
@@ -600,10 +592,7 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_TriggerInTheMorning_UsesGoodMorningProactiveTone()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-morning", "loop-morning", "device-morning", "person-9"),
-            "jake");
-        var service = CreateService(memoryStore);
+        var service = CreateService();
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -629,9 +618,6 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_TriggerWithRecentGreetingHistory_UsesWelcomeBackTone()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-return", "loop-return", "device-return", "person-11"),
-            "jake");
         var cloudStateStore = new InMemoryCloudStateStore();
         cloudStateStore.UpsertGreetingPresence(new GreetingPresenceRecord
         {
@@ -644,7 +630,7 @@ public sealed class JiboInteractionServiceTests
             LastGreetingRoute = "ProactiveGreeting",
             LastGreetingIntent = "proactive_greeting"
         });
-        var service = CreateService(memoryStore, cloudStateStore);
+        var service = CreateService(cloudStateStore: cloudStateStore);
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -671,8 +657,6 @@ public sealed class JiboInteractionServiceTests
     public async Task BuildDecisionAsync_TriggerOnBirthday_BuildsBirthdayGreeting()
     {
         var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-bday", "loop-bday", "device-bday", "person-7"),
-            "jake");
         memoryStore.SetBirthday(new PersonalMemoryTenantScope("acct-bday", "loop-bday", "device-bday", "person-7"),
             "March 14");
         var cloudStateStore = new InMemoryCloudStateStore();
@@ -1623,9 +1607,7 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_HowAreYou_UsesRememberedNameForStateDrivenReply()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-how", "loop-how", "device-how"), "jake");
-        var service = CreateService(memoryStore);
+        var service = CreateService();
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -1634,7 +1616,9 @@ public sealed class JiboInteractionServiceTests
             Attributes = new Dictionary<string, object?>
             {
                 ["accountId"] = "acct-how",
-                ["loopId"] = "loop-how"
+                ["loopId"] = "loop-how",
+                ["context"] =
+                    """{"runtime":{"perception":{"speaker":"person-how","peoplePresent":[{"id":"person-how"}]},"loop":{"users":[{"id":"person-how","firstName":"jake"}]}}}"""
             },
             DeviceId = "device-how"
         });
@@ -1661,10 +1645,7 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_WhoAmI_WithMultiplePeoplePresent_DoesNotBorrowLoopLevelName()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-presence", "loop-presence", "device-presence"),
-            "jake");
-        var service = CreateService(memoryStore);
+        var service = CreateService();
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -1681,7 +1662,7 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("memory_get_name", decision.IntentName);
-        Assert.Equal("I do not know your name yet. You can say, my name is Alex.", decision.ReplyText);
+        Assert.Equal("I do not know your name yet. Add yourself in BEacon People on the robot.", decision.ReplyText);
     }
 
     [Theory]
@@ -2672,8 +2653,7 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_NameMemory_SetThenRecallWithinTenant()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        var service = CreateService(memoryStore);
+        var service = CreateService();
 
         var setDecision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -2688,7 +2668,9 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("memory_set_name", setDecision.IntentName);
-        Assert.Equal("Nice to meet you, alex. I will remember your name.", setDecision.ReplyText);
+        Assert.Equal(
+            "Nice to meet you, Alex. Add or edit household names in BEacon People on the robot.",
+            setDecision.ReplyText);
 
         var recallDecision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -2703,7 +2685,8 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("memory_get_name", recallDecision.IntentName);
-        Assert.Equal("You told me your name is Alex.", recallDecision.ReplyText);
+        Assert.Equal("I do not know your name yet. Add yourself in BEacon People on the robot.",
+            recallDecision.ReplyText);
     }
 
     [Fact]
@@ -3291,9 +3274,7 @@ public sealed class JiboInteractionServiceTests
     [Fact]
     public async Task BuildDecisionAsync_PersonalReport_OptInYesWithKnownName_AsksForIdentityConfirmation()
     {
-        var memoryStore = new InMemoryPersonalMemoryStore();
-        memoryStore.SetName(new PersonalMemoryTenantScope("acct-a", "loop-a", "device-a"), "alex");
-        var service = CreateService(memoryStore);
+        var service = CreateService();
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
@@ -3304,7 +3285,9 @@ public sealed class JiboInteractionServiceTests
             {
                 ["accountId"] = "acct-a",
                 ["loopId"] = "loop-a",
-                [PersonalReportStateKey] = "awaiting_opt_in"
+                [PersonalReportStateKey] = "awaiting_opt_in",
+                ["context"] =
+                    """{"runtime":{"perception":{"speaker":"person-a","peoplePresent":[{"id":"person-a"}]},"loop":{"users":[{"id":"person-a","firstName":"alex"}]}}}"""
             }
         });
 

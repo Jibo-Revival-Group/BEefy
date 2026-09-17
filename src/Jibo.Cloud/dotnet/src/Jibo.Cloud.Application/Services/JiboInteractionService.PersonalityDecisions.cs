@@ -272,12 +272,7 @@ public sealed partial class JiboInteractionService
 
     private string? ResolvePreferredGreetingName(TurnContext turn, GreetingPresenceProfile presence)
     {
-        var rememberedName = personalMemoryStore.GetName(ResolveTenantScope(turn, presence.PrimaryPersonId));
-        if (!string.IsNullOrWhiteSpace(rememberedName)) return ToDisplayName(rememberedName);
-
-        var tenantRememberedName = personalMemoryStore.GetName(ResolveTenantScope(turn));
-        if (!string.IsNullOrWhiteSpace(tenantRememberedName)) return ToDisplayName(tenantRememberedName);
-
+        // Display names come from BEacon loop users (runtime.loop.users), not cloud personal memory.
         var primaryPersonId = presence.PrimaryPersonId;
         if (CanUseLoopFirstNameFallback(presence) &&
             !string.IsNullOrWhiteSpace(primaryPersonId) &&

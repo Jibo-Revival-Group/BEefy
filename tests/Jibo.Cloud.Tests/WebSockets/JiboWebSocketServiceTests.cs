@@ -10202,6 +10202,7 @@ public sealed class JiboWebSocketServiceTests
         Assert.Equal("memory_get_name",
             JsonDocument.Parse(memoryReplies[0].Text!).RootElement.GetProperty("data").GetProperty("nlu")
                 .GetProperty("intent").GetString());
+        Assert.Equal("memory_get_name", session.LastIntent);
 
         var personalityReplies = await service.HandleMessageAsync(new WebSocketMessageEnvelope
         {
@@ -10256,7 +10257,7 @@ public sealed class JiboWebSocketServiceTests
         });
 
         Assert.Equal(3, reportVerifyReplies.Count);
-        Assert.Equal("personal_report_verify_user",
+        Assert.Equal("personal_report_request_name",
             JsonDocument.Parse(reportVerifyReplies[0].Text!).RootElement.GetProperty("data").GetProperty("nlu")
                 .GetProperty("intent").GetString());
 
@@ -10266,7 +10267,7 @@ public sealed class JiboWebSocketServiceTests
             Path = "/listen",
             Kind = "neo-hub-listen",
             Token = token,
-            Text = """{"type":"CLIENT_ASR","transID":"trans-smoke-report-deliver","data":{"text":"yes"}}"""
+            Text = """{"type":"CLIENT_ASR","transID":"trans-smoke-report-deliver","data":{"text":"my name is alex"}}"""
         });
 
         Assert.Equal(3, reportReplies.Count);

@@ -107,12 +107,10 @@ internal static partial class PersonalReportOrchestrator
         string semanticIntent,
         string loweredTranscript,
         JiboExperienceCatalog catalog,
-        IPersonalMemoryStore personalMemoryStore,
         Func<TurnContext, string, CancellationToken, Task<JiboInteractionDecision>> buildWeatherDecisionAsync,
         Func<TurnContext, CancellationToken, Task<JiboInteractionDecision>> buildCalendarDecisionAsync,
         Func<TurnContext, CancellationToken, Task<JiboInteractionDecision>> buildCommuteDecisionAsync,
         Func<TurnContext, CancellationToken, Task<JiboInteractionDecision>> buildNewsDecisionAsync,
-        Func<TurnContext, PersonalMemoryTenantScope> tenantScopeResolver,
         CancellationToken cancellationToken)
     {
         var state = ReadState(turn);
@@ -155,8 +153,8 @@ internal static partial class PersonalReportOrchestrator
                 {
                     case YesNoReply.Affirmative:
                     {
-                        var scope = tenantScopeResolver(turn);
-                        var knownName = ReadString(turn, UserNameMetadataKey) ?? personalMemoryStore.GetName(scope);
+                        var knownName = ReadString(turn, UserNameMetadataKey) ??
+                                        TryReadLoopPreferredFirstName(turn);
                         if (!string.IsNullOrWhiteSpace(knownName))
                             return BuildYesNoPromptDecision(
                                 "personal_report_verify_user",
@@ -259,7 +257,7 @@ internal static partial class PersonalReportOrchestrator
                         null,
                         false);
 
-                personalMemoryStore.SetName(tenantScopeResolver(turn), parsedName);
+                // Session-only identity for this report — do not write cloud personal-memory names.
                 return await BuildDeliveredReportDecisionAsync(
                     turn,
                     catalog,
@@ -913,6 +911,67 @@ internal static partial class PersonalReportOrchestrator
             string text => string.IsNullOrWhiteSpace(text) ? null : text.Trim(),
             _ => value.ToString()
         };
+    }
+
+    /// <summary>
+    /// Reads the speaker's loop firstName from CONTEXT when a single known person is present.
+    /// </summary>
+    private static string? TryReadLoopPreferredFirstName(TurnContext turn)
+    {
+        if (!turn.Attributes.TryGetValue("context", out var rawContext) || rawContext is null)
+            return null;
+
+        try
+        {
+            using var document = rawContext switch
+            {
+                string text => JsonDocument.Parse(text),
+                JsonElement element => JsonDocument.Parse(element.GetRawText()),
+                _ => JsonDocument.Parse(rawContext.ToString() ?? "{}")
+            };
+
+            if (!document.RootElement.TryGetProperty("runtime", out var runtime))
+                return null;
+
+            string? speakerId = null;
+            var peoplePresentCount = 0;
+            if (runtime.TryGetProperty("perception", out var perception))
+            {
+                if (perception.TryGetProperty("speaker", out var speaker) &&
+                    speaker.ValueKind == JsonValueKind.String)
+                    speakerId = speaker.GetString();
+
+                if (perception.TryGetProperty("peoplePresent", out var peoplePresent) &&
+                    peoplePresent.ValueKind == JsonValueKind.Array)
+                    peoplePresentCount = peoplePresent.GetArrayLength();
+            }
+
+            if (string.IsNullOrWhiteSpace(speakerId) || peoplePresentCount > 1)
+                return null;
+
+            if (!runtime.TryGetProperty("loop", out var loop) ||
+                !loop.TryGetProperty("users", out var users) ||
+                users.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var user in users.EnumerateArray())
+            {
+                if (!user.TryGetProperty("id", out var id) ||
+                    !string.Equals(id.GetString(), speakerId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (user.TryGetProperty("firstName", out var firstName) &&
+                    firstName.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(firstName.GetString()))
+                    return firstName.GetString()!.Trim();
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
     }
 
     private static bool? ReadBool(TurnContext turn, string key)

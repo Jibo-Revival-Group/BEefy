@@ -13,27 +13,21 @@ public sealed partial class JiboInteractionService
         if (string.IsNullOrWhiteSpace(name))
             return new JiboInteractionDecision(
                 "memory_set_name",
-                "I can remember it if you say, my name is Alex.");
+                "Household names are managed in BEacon People on the robot.");
 
-        personalMemoryStore.SetName(ResolveTenantScope(turn), name);
+        // Spoken names are not stored in cloud personal memory — BEacon owns the loop roster.
         return new JiboInteractionDecision(
             "memory_set_name",
-            $"Nice to meet you, {name}. I will remember your name.");
+            $"Nice to meet you, {ToDisplayName(name)}. Add or edit household names in BEacon People on the robot.");
     }
 
     private JiboInteractionDecision BuildRecallNameDecision(TurnContext turn, GreetingPresenceProfile? presence = null)
     {
         presence ??= ResolveGreetingPresenceProfile(turn);
 
-        var personScope = ResolveTenantScope(turn, presence.PrimaryPersonId);
-        var name = personalMemoryStore.GetName(personScope);
-        if (string.IsNullOrWhiteSpace(name) && CanUseLoopLevelNameMemoryFallback(presence))
-            name = personalMemoryStore.GetName(ResolveTenantScope(turn));
-
-        // Fall back to the robot's loop roster firstName when personal memory is empty —
-        // same path greetings already use via ResolvePreferredGreetingName.
-        if (string.IsNullOrWhiteSpace(name) &&
-            CanUseLoopLevelNameMemoryFallback(presence) &&
+        string? name = null;
+        // Fall back to the robot's loop roster firstName — BEacon is the source of truth.
+        if (CanUseLoopLevelNameMemoryFallback(presence) &&
             !string.IsNullOrWhiteSpace(presence.PrimaryPersonId) &&
             presence.LoopUserFirstNames.TryGetValue(presence.PrimaryPersonId, out var loopFirstName) &&
             !string.IsNullOrWhiteSpace(loopFirstName))
@@ -49,12 +43,12 @@ public sealed partial class JiboInteractionService
         return string.IsNullOrWhiteSpace(name)
             ? new JiboInteractionDecision(
                 "memory_get_name",
-                "I do not know your name yet. You can say, my name is Alex.")
+                "I do not know your name yet. Add yourself in BEacon People on the robot.")
             : new JiboInteractionDecision(
                 "memory_get_name",
                 presence.HasKnownIdentity || !string.IsNullOrWhiteSpace(presence.PrimaryPersonId)
                     ? $"I think you are {name}."
-                    : $"You told me your name is {name}.");
+                    : $"I think your name is {name}.");
     }
 
     private static bool CanUseLoopLevelNameMemoryFallback(GreetingPresenceProfile? presence)
