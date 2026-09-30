@@ -338,19 +338,11 @@ public sealed partial class JiboInteractionService
                 _ => "chat"
             };
 
-        if (MatchesAny(
-                loweredTranscript,
-                "word of the day",
-                "word of a day",
-                "start word of the day",
-                "start word of a day",
-                "play word of the day",
-                "play word of a day",
-                "do word of the day",
-                "do word of a day",
-                "open word of the day",
-                "open word of a day"))
-            return "word_of_the_day";
+        if (UtteranceFrameParser.TryParsePreference(loweredTranscript) is { } preferenceIntent)
+            return preferenceIntent;
+
+        if (UtteranceFrameParser.TryParseWordOfTheDay(loweredTranscript) is { } wordOfDayIntent)
+            return wordOfDayIntent;
 
         if (wordOfDayPuzzleTurn && !string.IsNullOrWhiteSpace(loweredTranscript)) return "word_of_the_day_guess";
 
@@ -360,19 +352,6 @@ public sealed partial class JiboInteractionService
                 "do you think you are funny",
                 "are you a funny robot"))
             return "robot_is_funny";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite joke",
-                "what's your favorite joke",
-                "what s your favorite joke",
-                "what is your favourite joke",
-                "what's your favourite joke",
-                "what s your favourite joke",
-                "do you have a favorite joke",
-                "do you have a favourite joke",
-                "what joke do you like best"))
-            return "robot_favorite_joke";
 
         if (MatchesAny(
                 loweredTranscript,
@@ -437,19 +416,6 @@ public sealed partial class JiboInteractionService
 
         if (IsAffinityRecallQuestion(loweredTranscript) || IsAffinityRecallAttempt(loweredTranscript))
             return "memory_get_affinity";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite country musician",
-                "what's your favorite country musician",
-                "what s your favorite country musician",
-                "what is your favourite country musician",
-                "what's your favourite country musician",
-                "who is your favorite country musician",
-                "who is your favourite country musician",
-                "what country musician do you like",
-                "what country singer do you like"))
-            return "robot_favorite_country_musician";
 
         if (TryResolveRadioGenre(loweredTranscript) is not null) return "radio_genre";
 
@@ -1058,33 +1024,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite holiday song",
-                "what's your favorite holiday song",
-                "what s your favorite holiday song",
-                "what is your favourite holiday song",
-                "what's your favourite holiday song",
-                "what is your favorite christmas song",
-                "what's your favorite christmas song",
-                "what is your favourite christmas song",
-                "what holiday song do you like",
-                "what christmas song do you like"))
-            return "robot_favorite_holiday_song";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite thanksgiving food",
-                "what's your favorite thanksgiving food",
-                "what s your favorite thanksgiving food",
-                "what is your favourite thanksgiving food",
-                "what's your favourite thanksgiving food",
-                "what thanksgiving food do you like",
-                "what thanksgiving food do you like best",
-                "do you have a favorite thanksgiving food",
-                "do you have a favourite thanksgiving food"))
-            return "robot_favorite_thanksgiving_food";
-
-        if (MatchesAny(
-                loweredTranscript,
                 "do you like halloween",
                 "are you looking forward to halloween",
                 "do you like the halloween holiday"))
@@ -1162,17 +1101,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite president",
-                "what's your favorite president",
-                "what s your favorite president",
-                "what is your favourite president",
-                "what's your favourite president",
-                "what s your favourite president",
-                "who is your favorite president",
-                "who's your favorite president",
-                "who is your favourite president",
-                "do you have a favorite president",
-                "do you have a favourite president",
                 "do you like abraham lincoln",
                 "are you a fan of abraham lincoln"))
             return "robot_favorite_president";
@@ -1230,30 +1158,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite thing",
-                "what's your favorite thing",
-                "what s your favorite thing",
-                "what is your favourite thing",
-                "what's your favourite thing",
-                "what s your favourite thing",
-                "do you have a favorite thing",
-                "do you have a favourite thing",
-                "what thing do you like",
-                "what thing do you like best"))
-            return "robot_favorite_thing";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite book",
-                "what's your favorite book",
-                "what s your favorite book",
-                "what is your favourite book",
-                "what's your favourite book",
-                "what s your favourite book",
-                "do you have a favorite book",
-                "do you have a favourite book",
-                "what book do you like",
-                "what book do you like best",
                 "do you like books",
                 "do you like reading books",
                 "do you like instruction manuals"))
@@ -1261,63 +1165,24 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite candy",
-                "what's your favorite candy",
-                "what s your favorite candy",
-                "what is your favourite candy",
-                "what's your favourite candy",
-                "what s your favourite candy",
-                "do you have a favorite candy",
-                "do you have a favourite candy",
-                "what candy do you like",
-                "what kind of candy do you like",
                 "do you like lollipops",
                 "do you like lollipop"))
             return "robot_favorite_candy";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite flower",
-                "what's your favorite flower",
-                "what s your favorite flower",
-                "what is your favourite flower",
-                "what's your favourite flower",
-                "what s your favourite flower",
-                "do you have a favorite flower",
-                "do you have a favourite flower",
-                "what kind of flower do you like",
-                "what flower do you like",
                 "do you like sunflowers",
                 "do you like sunflower"))
             return "robot_favorite_flower";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite tv show",
-                "what's your favorite tv show",
-                "what s your favorite tv show",
-                "what is your favourite tv show",
-                "what's your favourite tv show",
-                "what s your favourite tv show",
-                "do you have a favorite tv show",
-                "do you have a favourite tv show",
-                "what tv show do you like",
                 "do you like tv",
                 "do you like tv shows"))
             return "robot_favorite_tv_show";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite scary movie",
-                "what's your favorite scary movie",
-                "what s your favorite scary movie",
-                "what is your favourite scary movie",
-                "what's your favourite scary movie",
-                "what s your favourite scary movie",
-                "do you have a favorite scary movie",
-                "do you have a favourite scary movie",
-                "what scary movie do you like",
-                "what scary movie do you like best",
                 "do you like scary movies",
                 "do you like titanic",
                 "do you like singing in the rain"))
@@ -1325,16 +1190,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite movie",
-                "what's your favorite movie",
-                "what s your favorite movie",
-                "what is your favourite movie",
-                "what's your favourite movie",
-                "what s your favourite movie",
-                "do you have a favorite movie",
-                "do you have a favourite movie",
-                "what movie do you like",
-                "what movie do you like best",
                 "do you like back to the future",
                 "do you like toy story",
                 "do you like star wars",
@@ -1347,16 +1202,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite shape",
-                "what's your favorite shape",
-                "what s your favorite shape",
-                "what is your favourite shape",
-                "what's your favourite shape",
-                "what s your favourite shape",
-                "do you have a favorite shape",
-                "do you have a favourite shape",
-                "what shape do you like",
-                "what kind of shape do you like",
                 "do you like shapes",
                 "do you like circles",
                 "do you enjoy circles",
@@ -1372,40 +1217,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite adjective",
-                "what's your least favorite adjective",
-                "what s your least favorite adjective",
-                "what is your least favourite adjective",
-                "what's your least favourite adjective",
-                "what s your least favourite adjective",
-                "what adjective do you like least",
-                "what adjective do you dislike"))
-            return "robot_least_favorite_adjective";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your least favorite word",
-                "what's your least favorite word",
-                "what s your least favorite word",
-                "what is your least favourite word",
-                "what's your least favourite word",
-                "what s your least favourite word",
-                "what word do you like least",
-                "what word do you dislike"))
-            return "robot_least_favorite_word";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite word",
-                "what's your favorite word",
-                "what s your favorite word",
-                "what is your favourite word",
-                "what's your favourite word",
-                "what s your favourite word",
-                "do you have a favorite word",
-                "do you have a favourite word",
-                "what word do you like",
-                "what word do you like best",
                 "do you like words",
                 "do you like turtle",
                 "do you like turtles",
@@ -1422,14 +1233,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite vegetable",
-                "what's your least favorite vegetable",
-                "what s your least favorite vegetable",
-                "what is your least favourite vegetable",
-                "what's your least favourite vegetable",
-                "what s your least favourite vegetable",
-                "what vegetable do you like least",
-                "what vegetable do you dislike",
                 "do you dislike onions",
                 "do you hate onions",
                 "do you like onions"))
@@ -1437,16 +1240,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite vegetable",
-                "what's your favorite vegetable",
-                "what s your favorite vegetable",
-                "what is your favourite vegetable",
-                "what's your favourite vegetable",
-                "what s your favourite vegetable",
-                "do you have a favorite vegetable",
-                "do you have a favourite vegetable",
-                "what vegetable do you like",
-                "what kind of vegetable do you like",
                 "do you like artichokes",
                 "do you enjoy artichokes",
                 "are you into artichokes",
@@ -1456,26 +1249,11 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite place",
-                "what's your least favorite place",
-                "what s your least favorite place",
-                "what is your least favourite place",
-                "what's your least favourite place",
-                "what s your least favourite place",
-                "what place do you like least",
                 "where do you like least"))
             return "robot_least_favorite_place";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite animal",
-                "what's your least favorite animal",
-                "what s your least favorite animal",
-                "what is your least favourite animal",
-                "what's your least favourite animal",
-                "what s your least favourite animal",
-                "what animal do you like least",
-                "what animal do you dislike",
                 "do you dislike hippos",
                 "do you hate hippos",
                 "do you like hippos"))
@@ -1483,17 +1261,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite place",
-                "what's your favorite place",
-                "what s your favorite place",
-                "what is your favourite place",
-                "what's your favourite place",
-                "what s your favourite place",
-                "do you have a favorite place",
-                "do you have a favourite place",
-                "what place do you like",
-                "where is your favorite place",
-                "where is your favourite place",
                 "do you like it here",
                 "do you enjoy it here",
                 "are you into being here",
@@ -1503,52 +1270,28 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite superhero",
-                "what's your favorite superhero",
-                "what s your favorite superhero",
-                "what is your favourite superhero",
-                "what's your favourite superhero",
-                "what s your favourite superhero",
-                "do you have a favorite superhero",
-                "do you have a favourite superhero",
                 "do you like superheroes",
                 "do you enjoy superheroes",
                 "are you into superheroes",
                 "are you a fan of superheroes",
-                "do you like super heroes",
-                "who is your favorite superhero",
-                "who is your favourite superhero"))
+                "do you like super heroes"
+                ))
             return "robot_favorite_superhero";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite actor",
-                "what's your favorite actor",
-                "what s your favorite actor",
-                "what is your favourite actor",
-                "what's your favourite actor",
-                "what actor do you like",
                 "do you like tom hanks",
                 "do you enjoy tom hanks",
                 "are you into tom hanks",
                 "are you a fan of tom hanks",
                 "do you like hanks",
                 "are you a fan of hanks",
-                "what do you think about tom hanks",
-                "who is your favorite actor",
-                "who is your favourite actor",
-                "do you have a favorite actor",
-                "do you have a favourite actor"))
+                "what do you think about tom hanks"
+                ))
             return "robot_favorite_actor";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite actress",
-                "what's your favorite actress",
-                "what s your favorite actress",
-                "what is your favourite actress",
-                "what's your favourite actress",
-                "what actress do you like",
                 "do you like julie andrews",
                 "do you enjoy julie andrews",
                 "are you into julie andrews",
@@ -1557,61 +1300,32 @@ public sealed partial class JiboInteractionService
                 "do you enjoy mary poppins",
                 "are you into mary poppins",
                 "are you a fan of mary poppins",
-                "what do you think about julie andrews",
-                "who is your favorite actress",
-                "who is your favourite actress",
-                "do you have a favorite actress",
-                "do you have a favourite actress"))
+                "what do you think about julie andrews"
+                ))
             return "robot_favorite_actress";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite robot",
-                "what's your favorite robot",
-                "what s your favorite robot",
-                "what is your favourite robot",
-                "what's your favourite robot",
-                "what robot do you like",
                 "do you like robots",
                 "do you enjoy robots",
                 "are you into robots",
-                "are you a fan of robots",
-                "who is your favorite robot",
-                "who is your favourite robot",
-                "do you have a favorite robot",
-                "do you have a favourite robot"))
+                "are you a fan of robots"
+                ))
             return "robot_favorite_robot";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite car",
-                "what's your favorite car",
-                "what s your favorite car",
-                "what is your favourite car",
-                "what's your favourite car",
-                "what car do you like",
-                "what kind of car do you like",
                 "do you like cars",
                 "do you enjoy cars",
                 "are you into cars",
                 "are you a fan of cars",
                 "do you like beetles",
-                "do you like beetle cars",
-                "do you have a favorite car",
-                "do you have a favourite car"))
+                "do you like beetle cars"
+                ))
             return "robot_favorite_car";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite weather",
-                "what's your favorite weather",
-                "what s your favorite weather",
-                "what is your favourite weather",
-                "what's your favourite weather",
-                "what weather do you like",
-                "what kind of weather do you like",
-                "do you have a favorite weather",
-                "do you have a favourite weather",
                 "do you like sunny weather",
                 "do you enjoy sunny weather",
                 "are you into sunny weather",
@@ -1621,14 +1335,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite weather",
-                "what's your least favorite weather",
-                "what s your least favorite weather",
-                "what is your least favourite weather",
-                "what's your least favourite weather",
-                "what weather do you like least",
-                "what weather do you dislike",
-                "what kind of weather do you dislike",
                 "do you dislike rain",
                 "do you hate rain",
                 "do you like rain",
@@ -1639,29 +1345,12 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite time of day",
-                "what's your least favorite time of day",
-                "what s your least favorite time of day",
-                "what is your least favourite time of day",
-                "what's your least favourite time of day",
-                "what time of day do you like least",
-                "what time of day do you dislike",
-                "what time do you like least",
                 "do you like midnight",
                 "do you like the middle of the night"))
             return "robot_least_favorite_time_of_day";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite time of day",
-                "what's your favorite time of day",
-                "what s your favorite time of day",
-                "what is your favourite time of day",
-                "what's your favourite time of day",
-                "what time of day do you like",
-                "what time do you like best",
-                "do you have a favorite time of day",
-                "do you have a favourite time of day",
                 "do you like daytime",
                 "do you enjoy daytime",
                 "are you into daytime",
@@ -1828,7 +1517,6 @@ public sealed partial class JiboInteractionService
                 "what's your worst fear"))
             return "robot_what_are_you_afraid_of";
 
-
         if (MatchesAny(
                 loweredTranscript,
                 "what are your super powers",
@@ -1898,9 +1586,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what's your favorite name",
-                "what is your favorite name",
-                "do you have a favorite name",
                 "do you like your name",
                 "do you like the name jibo"))
             return "robot_favorite_name";
@@ -1945,26 +1630,7 @@ public sealed partial class JiboInteractionService
         if (SeasonalHolidayRouteBuilder.TryResolveSemanticIntent(loweredTranscript, out var seasonalHolidayIntent))
             return seasonalHolidayIntent!;
 
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite color",
-                "what's your favorite color",
-                "what s your favorite color",
-                "what is your favourite color",
-                "what's your favourite color",
-                "what s your favourite color",
-                "what is your favorite colour",
-                "what's your favorite colour",
-                "what s your favorite colour",
-                "what is your favourite colour",
-                "what's your favourite colour",
-                "what s your favourite colour",
-                "do you have a favorite color",
-                "do you have a favourite color",
-                "do you have a favorite colour",
-                "do you have a favourite colour",
-                "what color do you like",
-                "what colour do you like") ||
+        if (
             NormalizeCommandPhrase(loweredTranscript) is
                 "do you like blue" or
                 "do you like the color blue" or
@@ -1975,41 +1641,14 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite color",
-                "what's your least favorite color",
-                "what s your least favorite color",
-                "what is your least favourite color",
-                "what's your least favourite color",
-                "what s your least favourite color",
-                "what is your least favorite colour",
-                "what's your least favorite colour",
-                "what is your least favourite colour",
-                "what color do you like least",
-                "what colour do you like least",
-                "what color do you dislike",
-                "what colour do you dislike",
                 "do you dislike colors",
                 "do you dislike colours",
                 "do you like all colors",
-                "do you like all colours") ||
-            NormalizeCommandPhrase(loweredTranscript) is
-                "do you have a least favorite color" or
-                "do you have a least favourite color" or
-                "do you have a least favorite colour" or
-                "do you have a least favourite colour")
+                "do you like all colours") )
             return "robot_least_favorite_color";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite season",
-                "what's your favorite season",
-                "what s your favorite season",
-                "what is your favourite season",
-                "what's your favourite season",
-                "what s your favourite season",
-                "what season do you like best",
-                "do you have a favorite season",
-                "do you have a favourite season",
                 "do you like winter",
                 "do you like summer",
                 "do you like spring",
@@ -2019,28 +1658,12 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite author",
-                "what's your favorite author",
-                "what s your favorite author",
-                "what is your favourite author",
-                "what's your favourite author",
-                "who is your favorite author",
-                "who is your favourite author",
-                "what author do you like best",
                 "do you like doctor seuss",
                 "do you like dr seuss"))
             return "robot_favorite_author";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite artist",
-                "what's your favorite artist",
-                "what s your favorite artist",
-                "what is your favourite artist",
-                "what's your favourite artist",
-                "who is your favorite artist",
-                "who is your favourite artist",
-                "what artist do you like",
                 "do you like art",
                 "do you enjoy art",
                 "do you like painting",
@@ -2049,45 +1672,11 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite singer",
-                "what's your favorite singer",
-                "what s your favorite singer",
-                "what is your favourite singer",
-                "what's your favourite singer",
-                "who is your favorite singer",
-                "who is your favourite singer",
-                "what singer do you like"))
-            return "robot_favorite_singer";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "who is your favorite celebrity",
-                "who is your favourite celebrity",
-                "what is your favorite celebrity",
-                "what's your favorite celebrity",
-                "what is your favourite celebrity",
-                "what celebrity do you like"))
-            return "robot_favorite_celebrity";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite hobby",
-                "what's your favorite hobby",
-                "what s your favorite hobby",
-                "what is your favourite hobby",
-                "what's your favourite hobby",
-                "what hobby do you like",
                 "what do you do for a hobby"))
             return "robot_favorite_hobby";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite smell",
-                "what's your favorite smell",
-                "what s your favorite smell",
-                "what is your favourite smell",
-                "what's your favourite smell",
-                "what smell do you like",
                 "do you like bacon",
                 "do you like roses",
                 "do you like bacon and roses"))
@@ -2095,15 +1684,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite smell",
-                "what's your least favorite smell",
-                "what s your least favorite smell",
-                "what is your least favourite smell",
-                "what's your least favourite smell",
-                "what s your least favourite smell",
-                "what smell do you like least",
-                "what smell do you dislike",
-                "what smells do you dislike",
                 "do you dislike sour milk",
                 "do you hate sour milk",
                 "do you like sour milk",
@@ -2112,38 +1692,12 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite fish",
-                "what's your favorite fish",
-                "what s your favorite fish",
-                "what is your favourite fish",
-                "what's your favourite fish",
-                "what fish do you like",
                 "do you like fish",
                 "do you like blowfish"))
             return "robot_favorite_fish";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite food",
-                "what's your least favorite food",
-                "what s your least favorite food",
-                "what is your least favourite food",
-                "what's your least favourite food",
-                "what s your least favourite food",
-                "what food do you like least",
-                "what food do you dislike"))
-            return "robot_least_favorite_food";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite food",
-                "what's your favorite food",
-                "what s your favorite food",
-                "what is your favourite food",
-                "what's your favourite food",
-                "what s your favourite food",
-                "what food do you like",
-                "what kind of food do you like",
                 "do you like macaroni",
                 "do you enjoy macaroni",
                 "are you into macaroni",
@@ -2157,14 +1711,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite movie",
-                "what's your least favorite movie",
-                "what s your least favorite movie",
-                "what is your least favourite movie",
-                "what's your least favourite movie",
-                "what s your least favourite movie",
-                "what movie do you like least",
-                "what movie do you dislike",
                 "do you dislike waterworld",
                 "do you hate waterworld",
                 "do you like waterworld"))
@@ -2172,14 +1718,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite video game",
-                "what's your least favorite video game",
-                "what s your least favorite video game",
-                "what is your least favourite video game",
-                "what's your least favourite video game",
-                "what s your least favourite video game",
-                "what video game do you like least",
-                "what video game do you dislike",
                 "do you dislike violent games",
                 "do you hate violent games",
                 "do you like violent games",
@@ -2188,14 +1726,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite car",
-                "what's your least favorite car",
-                "what s your least favorite car",
-                "what is your least favourite car",
-                "what's your least favourite car",
-                "what s your least favourite car",
-                "what car do you like least",
-                "what car do you dislike",
                 "do you dislike cars",
                 "do you hate cars",
                 "do you like every car",
@@ -2204,14 +1734,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite artist",
-                "what's your least favorite artist",
-                "what s your least favorite artist",
-                "what is your least favourite artist",
-                "what's your least favourite artist",
-                "what s your least favourite artist",
-                "what artist do you like least",
-                "what artist do you dislike",
                 "do you dislike art",
                 "do you hate art",
                 "do you dislike artists",
@@ -2220,28 +1742,12 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite band",
-                "what's your least favorite band",
-                "what s your least favorite band",
-                "what is your least favourite band",
-                "what's your least favourite band",
-                "what s your least favourite band",
-                "what band do you like least",
-                "what band do you dislike",
                 "do you dislike bands",
                 "do you hate bands"))
             return "robot_least_favorite_band";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite author",
-                "what's your least favorite author",
-                "what s your least favorite author",
-                "what is your least favourite author",
-                "what's your least favourite author",
-                "what s your least favourite author",
-                "what author do you like least",
-                "what author do you dislike",
                 "do you dislike trash compactors",
                 "do you hate trash compactors",
                 "do you like trash compactors"))
@@ -2249,14 +1755,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite celebrity",
-                "what's your least favorite celebrity",
-                "what s your least favorite celebrity",
-                "what is your least favourite celebrity",
-                "what's your least favourite celebrity",
-                "what s your least favourite celebrity",
-                "what celebrity do you like least",
-                "what celebrity do you dislike",
                 "do you dislike megatron",
                 "do you hate megatron",
                 "do you like megatron",
@@ -2265,73 +1763,19 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite president",
-                "what's your least favorite president",
-                "what s your least favorite president",
-                "what is your least favourite president",
-                "what's your least favourite president",
-                "what s your least favourite president",
-                "who is your least favorite president",
-                "who's your least favorite president",
-                "who is your least favourite president",
-                "who's your least favourite president",
-                "what president do you like least",
-                "what president do you dislike",
                 "do you dislike any president",
                 "do you hate any president"))
             return "robot_least_favorite_president";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite kind of music",
-                "what's your favorite kind of music",
-                "what s your favorite kind of music",
-                "what is your favourite kind of music",
-                "what's your favourite kind of music",
-                "what is your favorite music genre",
-                "what's your favorite music genre",
-                "what is your favourite music genre",
-                "what kind of music is your favorite",
-                "what kind of music is your favourite",
-                "what music genre do you like",
                 "do you like music",
                 "do you enjoy music",
                 "are you into music"))
             return "robot_favorite_music_genre";
 
-
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite reindeer",
-                "what's your favorite reindeer",
-                "what s your favorite reindeer",
-                "what is your favourite reindeer",
-                "who is your favorite reindeer",
-                "who is your favourite reindeer",
-                "what reindeer do you like",
-                "do you have a favorite reindeer",
-                "do you have a favourite reindeer"))
-            return "robot_favorite_reindeer";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite christmas movie",
-                "what's your favorite christmas movie",
-                "what s your favorite christmas movie",
-                "what is your favourite christmas movie",
-                "what christmas movie do you like",
-                "what holiday movie do you like",
-                "do you have a favorite christmas movie",
-                "do you have a favourite christmas movie"))
-            return "robot_favorite_christmas_movie";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite halloween candy",
-                "what's your favorite halloween candy",
-                "what s your favorite halloween candy",
-                "what is your favourite halloween candy",
-                "what halloween candy do you like",
                 "do you like lollipops",
                 "do you enjoy lollipops",
                 "are you into lollipops",
@@ -2339,35 +1783,12 @@ public sealed partial class JiboInteractionService
                 "do you like candy corn",
                 "do you enjoy candy corn",
                 "are you into candy corn",
-                "are you a fan of candy corn",
-                "do you have a favorite halloween candy",
-                "do you have a favourite halloween candy"))
+                "are you a fan of candy corn"
+                ))
             return "robot_favorite_halloween_candy";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite human",
-                "what's your favorite human",
-                "what s your favorite human",
-                "what is your favourite human",
-                "who is your favorite human",
-                "who is your favourite human",
-                "what human do you like",
-                "who is your favorite person",
-                "who is your favourite person",
-                "what person do you like"))
-            return "robot_favorite_human";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite ice cream flavor",
-                "what's your favorite ice cream flavor",
-                "what s your favorite ice cream flavor",
-                "what is your favourite ice cream flavor",
-                "what's your favourite ice cream flavor",
-                "what is your favourite ice cream flavour",
-                "what ice cream flavor do you like",
-                "what ice cream flavour do you like",
                 "do you like ice cream",
                 "do you like ice cream flavors",
                 "do you like ice cream flavours",
@@ -2375,20 +1796,12 @@ public sealed partial class JiboInteractionService
                 "do you like mint chocolate chip ice cream",
                 "do you enjoy mint chocolate chip",
                 "are you into mint chocolate chip",
-                "are you a fan of mint chocolate chip",
-                "do you have a favorite ice cream flavor",
-                "do you have a favourite ice cream flavour"))
+                "are you a fan of mint chocolate chip"
+                ))
             return "robot_favorite_ice_cream_flavor";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite rapper",
-                "what's your favorite rapper",
-                "what s your favorite rapper",
-                "what is your favourite rapper",
-                "what rapper do you like",
-                "do you have a favorite rapper",
-                "do you have a favourite rapper",
                 "do you like rap",
                 "do you like rappers",
                 "do you like snoop dogg"))
@@ -2396,13 +1809,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite rock band",
-                "what's your favorite rock band",
-                "what s your favorite rock band",
-                "what is your favourite rock band",
-                "what rock band do you like",
-                "do you have a favorite rock band",
-                "do you have a favourite rock band",
                 "do you like rock bands",
                 "do you like ac dc",
                 "do you like acdc"))
@@ -2410,62 +1816,12 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite country musician",
-                "what's your favorite country musician",
-                "what s your favorite country musician",
-                "what is your favourite country musician",
-                "who is your favorite country musician",
-                "who is your favourite country musician",
-                "what country musician do you like",
-                "what country singer do you like",
-                "do you have a favorite country musician",
-                "do you have a favourite country musician"))
-            return "robot_favorite_country_musician";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite holiday song",
-                "what's your favorite holiday song",
-                "what s your favorite holiday song",
-                "what is your favourite holiday song",
-                "what is your favorite christmas song",
-                "what's your favorite christmas song",
-                "what s your favorite christmas song",
-                "what christmas song do you like",
-                "what holiday song do you like",
-                "do you have a favorite holiday song",
-                "do you have a favourite holiday song"))
-            return "robot_favorite_holiday_song";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite music",
-                "what's your favorite music",
-                "what s your favorite music",
-                "what is your favourite music",
-                "what's your favourite music",
-                "what s your favourite music",
-                "what music do you like",
-                "what kind of music do you like"))
-            return "robot_favorite_music";
-
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite part of ces",
-                "what's your favorite part of ces",
-                "what s your favorite part of ces",
-                "what is your favourite part of ces",
                 "what do you like about ces",
                 "what do you like best about ces"))
             return "robot_favorite_part_of_ces";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite part of vegas",
-                "what's your favorite part of vegas",
-                "what s your favorite part of vegas",
-                "what is your favourite part of vegas",
                 "what do you like about vegas",
                 "what do you like best about vegas",
                 "what do you like about las vegas"))
@@ -2473,21 +1829,12 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite part of the today show",
-                "what's your favorite part of the today show",
-                "what s your favorite part of the today show",
-                "what is your favourite part of the today show",
                 "what do you like about the today show",
                 "what do you like best about the today show"))
             return "robot_favorite_part_of_today_show";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite pastime",
-                "what's your favorite pastime",
-                "what s your favorite pastime",
-                "what is your favourite pastime",
-                "what pastime do you like",
                 "what do you like to do for fun",
                 "do you like socializing",
                 "do you like daydreaming"))
@@ -2495,41 +1842,12 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite band",
-                "what's your favorite band",
-                "what s your favorite band",
-                "what is your favourite band",
-                "what band do you like",
-                "do you have a favorite band",
-                "do you have a favourite band"))
-            return "robot_favorite_various_styles_band";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite song",
-                "what's your favorite song",
-                "what s your favorite song",
-                "what is your favourite song",
-                "what's your favourite song",
-                "what s your favourite song",
-                "what song do you like",
-                "what song do you like best",
-                "do you have a favorite song",
-                "do you have a favourite song",
                 "do you like dancing songs",
                 "do you like songs you can dance to"))
             return "robot_favorite_song";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite drink",
-                "what's your favorite drink",
-                "what s your favorite drink",
-                "what is your favourite drink",
-                "what's your favourite drink",
-                "what s your favourite drink",
-                "what drink do you like",
-                "what kind of drink do you like",
                 "do you like hot cocoa",
                 "do you enjoy hot cocoa",
                 "are you into hot cocoa",
@@ -2542,14 +1860,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite sport",
-                "what's your favorite sport",
-                "what s your favorite sport",
-                "what is your favourite sport",
-                "what's your favourite sport",
-                "what s your favourite sport",
-                "what sport do you like",
-                "what sport do you like best",
                 "do you like golf",
                 "do you enjoy golf",
                 "are you into golf",
@@ -2567,110 +1877,51 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite hockey team",
-                "what's your favorite hockey team",
-                "what s your favorite hockey team",
-                "what is your favourite hockey team",
-                "what's your favourite hockey team",
-                "what hockey team do you like",
-                "do you have a favorite hockey team",
-                "do you have a favourite hockey team",
                 "do you like hockey",
                 "do you like hockey teams"))
             return "robot_favorite_hockey_team";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite basketball team",
-                "what's your favorite basketball team",
-                "what s your favorite basketball team",
-                "what is your favourite basketball team",
-                "what's your favourite basketball team",
-                "what basketball team do you like",
-                "do you have a favorite basketball team",
-                "do you have a favourite basketball team",
                 "do you like basketball",
                 "do you like basketball teams"))
             return "robot_favorite_basketball_team";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite pizza topping",
-                "what's your favorite pizza topping",
-                "what s your favorite pizza topping",
-                "what is your favourite pizza topping",
-                "what's your favourite pizza topping",
-                "what pizza topping do you like",
-                "what kind of pizza topping do you like",
                 "do you like olives",
                 "do you like sliced olives",
-                "do you like olives on pizza",
-                "do you have a favorite pizza topping",
-                "do you have a favourite pizza topping"))
+                "do you like olives on pizza"
+                ))
             return "robot_favorite_pizza_topping";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite pizza topping",
-                "what's your least favorite pizza topping",
-                "what s your least favorite pizza topping",
-                "what is your least favourite pizza topping",
-                "what's your least favourite pizza topping",
-                "what s your least favourite pizza topping",
-                "what pizza topping do you like least",
-                "what pizza topping do you dislike",
                 "do you dislike onions on pizza",
                 "do you hate onions on pizza",
                 "do you like onions on pizza"))
             return "robot_least_favorite_pizza_topping";
 
-
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite baseball team",
-                "what's your favorite baseball team",
-                "what s your favorite baseball team",
-                "what is your favourite baseball team",
-                "what baseball team do you like",
-                "do you have a favorite baseball team",
-                "do you have a favourite baseball team",
                 "do you like baseball",
                 "do you like baseball teams"))
             return "robot_favorite_baseball_team";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite football team",
-                "what's your favorite football team",
-                "what s your favorite football team",
-                "what is your favourite football team",
-                "what football team do you like",
-                "do you have a favorite football team",
-                "do you have a favourite football team",
                 "do you like football",
                 "do you like football teams"))
             return "robot_favorite_football_team";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite number",
-                "what's your least favorite number",
-                "what s your least favorite number",
-                "what is your least favourite number",
-                "what number do you like least",
-                "what number do you dislike",
                 "do you like 1423754492",
                 "do you like one billion four hundred twenty three million seven hundred fifty four thousand four hundred ninety two"))
             return "robot_least_favorite_number";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite bird",
-                "what's your least favorite bird",
-                "what s your least favorite bird",
-                "what is your least favourite bird",
-                "what bird do you like least",
-                "what bird do you dislike",
                 "do you dislike woodpeckers",
                 "do you hate woodpeckers",
                 "do you like woodpeckers"))
@@ -2678,87 +1929,12 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite olympic ring",
-                "what's your favorite olympic ring",
-                "what s your favorite olympic ring",
-                "what is your favourite olympic ring",
-                "what olympic ring do you like",
-                "do you have a favorite olympic ring",
-                "do you have a favourite olympic ring",
                 "do you like the blue olympic ring",
                 "do you like blue olympic rings"))
             return "robot_favorite_olympic_ring";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what was your favorite super bowl commercial",
-                "what was your favourite super bowl commercial",
-                "what is your favorite super bowl commercial",
-                "what is your favourite super bowl commercial",
-                "what's your favorite super bowl commercial",
-                "what's your favourite super bowl commercial",
-                "what s your favorite super bowl commercial",
-                "what s your favourite super bowl commercial",
-                "what super bowl commercial do you like",
-                "what super bowl commercial did you like",
-                "do you have a favorite super bowl commercial",
-                "do you have a favourite super bowl commercial"))
-            return "robot_favorite_super_bowl_commercial";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite olympic event",
-                "what's your favorite olympic event",
-                "what s your favorite olympic event",
-                "what is your favourite olympic event",
-                "what's your favourite olympic event",
-                "what olympic event do you like",
-                "what olympic event do you like best",
-                "do you have a favorite olympic event",
-                "do you have a favourite olympic event"))
-            return "robot_favorite_olympic_event";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite winter olympics event",
-                "what's your favorite winter olympics event",
-                "what s your favorite winter olympics event",
-                "what is your favourite winter olympics event",
-                "what's your favourite winter olympics event",
-                "what winter olympics event do you like",
-                "what winter olympics event do you like best",
-                "do you have a favorite winter olympics event",
-                "do you have a favourite winter olympics event"))
-            return "robot_favorite_winter_olympics_event";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite winter x games event",
-                "what's your favorite winter x games event",
-                "what s your favorite winter x games event",
-                "what is your favourite winter x games event",
-                "what's your favourite winter x games event",
-                "what winter x games event do you like",
-                "what winter x games event do you like best",
-                "do you have a favorite winter x games event",
-                "do you have a favourite winter x games event"))
-            return "robot_favorite_winter_x_games_event";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite video game",
-                "what's your favorite video game",
-                "what s your favorite video game",
-                "what is your favourite video game",
-                "what's your favourite video game",
-                "what s your favourite video game",
-                "what video game do you like",
-                "what video game do you like best",
-                "do you have a favorite video game",
-                "do you have a favourite video game",
-                "what is your favorite game",
-                "what's your favorite game",
-                "what game do you like best",
                 "do you like video games",
                 "do you like games",
                 "do you like pong"))
@@ -2766,51 +1942,16 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite fruit",
-                "what's your favorite fruit",
-                "what s your favorite fruit",
-                "what is your favourite fruit",
-                "what's your favourite fruit",
-                "what s your favourite fruit",
-                "what fruit do you like",
-                "what kind of fruit do you like",
                 "do you like blueberries",
                 "do you like blueberry",
                 "do you enjoy blueberries",
                 "are you into blueberries",
-                "are you a fan of blueberries",
-                "do you have a favorite fruit",
-                "do you have a favourite fruit"))
+                "are you a fan of blueberries"
+                ))
             return "robot_favorite_fruit";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite adjective",
-                "what's your least favorite adjective",
-                "what s your least favorite adjective",
-                "what is your least favourite adjective",
-                "what adjective do you like least",
-                "what adjective do you dislike"))
-            return "robot_least_favorite_adjective";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your least favorite noun",
-                "what's your least favorite noun",
-                "what s your least favorite noun",
-                "what is your least favourite noun",
-                "what noun do you like least",
-                "what noun do you dislike"))
-            return "robot_least_favorite_noun";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your least favorite verb",
-                "what's your least favorite verb",
-                "what s your least favorite verb",
-                "what is your least favourite verb",
-                "what verb do you like least",
-                "what verb do you dislike",
                 "do you dislike spilling",
                 "do you hate spilling",
                 "do you like spilling",
@@ -2819,86 +1960,18 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite adjective",
-                "what's your favorite adjective",
-                "what s your favorite adjective",
-                "what is your favourite adjective",
-                "what adjective do you like",
-                "what adjective do you like best",
-                "do you have a favorite adjective",
-                "do you have a favourite adjective"))
-            return "robot_favorite_adjective";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite noun",
-                "what's your favorite noun",
-                "what s your favorite noun",
-                "what is your favourite noun",
-                "what noun do you like",
-                "what noun do you like best",
-                "do you have a favorite noun",
-                "do you have a favourite noun"))
-            return "robot_favorite_noun";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite verb",
-                "what's your favorite verb",
-                "what s your favorite verb",
-                "what is your favourite verb",
-                "what verb do you like",
-                "what verb do you like best",
-                "do you have a favorite verb",
-                "do you have a favourite verb"))
-            return "robot_favorite_verb";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "who is your favorite painter",
-                "who is your favourite painter",
-                "what is your favorite painter",
-                "what's your favorite painter",
-                "what is your favourite painter",
-                "what painter do you like",
-                "what painter do you like best",
-                "do you have a favorite painter",
-                "do you have a favourite painter"))
-            return "robot_favorite_painter";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite dessert",
-                "what's your favorite dessert",
-                "what s your favorite dessert",
-                "what is your favourite dessert",
-                "what's your favourite dessert",
-                "what s your favourite dessert",
-                "what dessert do you like",
-                "what kind of dessert do you like",
                 "do you like dessert",
                 "do you like desserts",
                 "do you like pie",
                 "do you like blueberry pie",
                 "do you enjoy blueberry pie",
                 "are you into blueberry pie",
-                "are you a fan of blueberry pie",
-                "do you have a favorite dessert",
-                "do you have a favourite dessert"))
+                "are you a fan of blueberry pie"
+                ))
             return "robot_favorite_dessert";
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite planet",
-                "what's your favorite planet",
-                "what s your favorite planet",
-                "what is your favourite planet",
-                "what's your favourite planet",
-                "what s your favourite planet",
-                "what planet do you like",
-                "what planet do you like best",
-                "do you have a favorite planet",
-                "do you have a favourite planet",
                 "do you like earth",
                 "do you like the earth",
                 "do you like globes"))
@@ -2906,28 +1979,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your least favorite number",
-                "what's your least favorite number",
-                "what s your least favorite number",
-                "what is your least favourite number",
-                "what's your least favourite number",
-                "what s your least favourite number",
-                "what number do you like least",
-                "what number do you dislike"))
-            return "robot_least_favorite_number";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite number",
-                "what's your favorite number",
-                "what s your favorite number",
-                "what is your favourite number",
-                "what's your favourite number",
-                "what s your favourite number",
-                "what number do you like",
-                "what number do you like best",
-                "do you have a favorite number",
-                "do you have a favourite number",
                 "do you like zero",
                 "do you like the number zero",
                 "do you like one",
@@ -2938,48 +1989,13 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite pet",
-                "what's your favorite pet",
-                "what s your favorite pet",
-                "what is your favourite pet",
-                "what's your favourite pet",
-                "what s your favourite pet",
-                "what pet do you like",
-                "what kind of pet do you like",
                 "do you like pets",
                 "do you like groundhogs",
                 "do you enjoy groundhogs",
                 "are you into groundhogs",
-                "are you a fan of groundhogs",
-                "do you have a favorite pet",
-                "do you have a favourite pet"))
+                "are you a fan of groundhogs"
+                ))
             return "robot_favorite_pet";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite mammal",
-                "what's your favorite mammal",
-                "what s your favorite mammal",
-                "what is your favourite mammal",
-                "what's your favourite mammal",
-                "what s your favourite mammal",
-                "what mammal do you like",
-                "what mammal do you like best",
-                "do you have a favorite mammal",
-                "do you have a favourite mammal"))
-            return "robot_favorite_mammal";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your least favorite mammal",
-                "what's your least favorite mammal",
-                "what s your least favorite mammal",
-                "what is your least favourite mammal",
-                "what's your least favourite mammal",
-                "what s your least favourite mammal",
-                "what mammal do you like least",
-                "what mammal do you dislike"))
-            return "robot_least_favorite_mammal";
 
         if (MatchesAny(
                 loweredTranscript,
@@ -3025,33 +2041,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
-                "what is your favorite bird",
-                "what's your favorite bird",
-                "what s your favorite bird"))
-            return "robot_favorite_bird";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your least favorite bird",
-                "what's your least favorite bird",
-                "what s your least favorite bird",
-                "what is your least favourite bird",
-                "what's your least favourite bird",
-                "what s your least favourite bird",
-                "what bird do you like least",
-                "what bird do you dislike"))
-            return "robot_least_favorite_bird";
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite animal",
-                "what's your favorite animal",
-                "what s your favorite animal",
-                "what is your favourite animal",
-                "what's your favourite animal",
-                "what s your favourite animal",
-                "what animal do you like",
-                "what kind of animal do you like",
                 "what do you think about penguins",
                 "what do you think about animals",
                 "what do you think about birds"))
@@ -3887,28 +2876,6 @@ public sealed partial class JiboInteractionService
             return true;
         }
 
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite star wars character",
-                "what's your favorite star wars character",
-                "who is your favorite star wars character",
-                "what star wars character do you like"))
-        {
-            semanticIntent = "robot_favorite_star_wars_character";
-            return true;
-        }
-
-        if (MatchesAny(
-                loweredTranscript,
-                "what is your favorite star wars movie",
-                "what's your favorite star wars movie",
-                "what star wars movie do you like",
-                "what is your favorite movie from star wars"))
-        {
-            semanticIntent = "robot_favorite_star_wars_movie";
-            return true;
-        }
-
         if (TryResolvePastFavoriteIntent(loweredTranscript, out var pastFavoriteIntent))
         {
             semanticIntent = pastFavoriteIntent;
@@ -4015,56 +2982,8 @@ public sealed partial class JiboInteractionService
         string loweredTranscript,
         out string? semanticIntent)
     {
-        semanticIntent = null;
-        var normalized = NormalizeCommandPhrase(loweredTranscript);
-        if (!Regex.IsMatch(
-                normalized,
-                @"^(what|which|who) was your favorite(?:\s+.+)?$",
-                RegexOptions.CultureInvariant))
-            return false;
-
-        var favoriteMarker = normalized.IndexOf(" your favorite ", StringComparison.Ordinal);
-        if (favoriteMarker < 0) return false;
-
-        var subject = normalized[(favoriteMarker + " your favorite ".Length)..];
-        semanticIntent = subject switch
-        {
-            "animal" => "robot_favorite_animal",
-            "bird" => "robot_favorite_bird",
-            "book" => "robot_favorite_book",
-            "car" => "robot_favorite_car",
-            "celebrity" => "robot_favorite_celebrity",
-            "color" or "colour" => "robot_favorite_color",
-            "country musician" => "robot_favorite_country_musician",
-            "dance" => "robot_favorite_dance",
-            "dessert" => "robot_favorite_dessert",
-            "drink" => "robot_favorite_drink",
-            "food" => "robot_favorite_food",
-            "fruit" => "robot_favorite_fruit",
-            "hobby" => "robot_favorite_hobby",
-            "holiday" => "robot_favorite_holiday",
-            "ice cream flavor" => "robot_favorite_ice_cream_flavor",
-            "joke" => "robot_favorite_joke",
-            "movie" => "robot_favorite_movie",
-            "music" => "robot_favorite_music",
-            "music genre" => "robot_favorite_music_genre",
-            "number" => "robot_favorite_number",
-            "pastime" => "robot_favorite_pastime",
-            "pet" => "robot_favorite_pet",
-            "planet" => "robot_favorite_planet",
-            "president" => "robot_favorite_president",
-            "rapper" => "robot_favorite_rapper",
-            "reindeer" => "robot_favorite_reindeer",
-            "rock band" => "robot_favorite_rock_band",
-            "season" => "robot_favorite_season",
-            "singer" => "robot_favorite_singer",
-            "song" => "robot_favorite_song",
-            "sport" => "robot_favorite_sport",
-            "video game" => "robot_favorite_video_game",
-            "weather" => "robot_favorite_weather",
-            _ => "robot_did_you_have_a_favorite"
-        };
-        return true;
+        semanticIntent = UtteranceFrameParser.TryParsePastPreference(loweredTranscript);
+        return semanticIntent is not null;
     }
 
     private static bool IsInlineHouseholdListRequest(string loweredTranscript)
