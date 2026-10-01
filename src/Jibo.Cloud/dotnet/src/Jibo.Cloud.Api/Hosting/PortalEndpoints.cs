@@ -281,55 +281,6 @@ internal static class PortalEndpoints
                 fileName);
         });
 
-        app.MapPost("/api/portal/account/register", (
-            [FromBody] PortalAccountRegisterRequest request,
-            PortalSessionService portalSessionService,
-            ICloudStateStore cloudStateStore) =>
-        {
-            if (!IsValidEmail(request.Email))
-                return Results.BadRequest(new { error = "A valid email address is required." });
-            if (!IsValidPortalPassword(request.Password))
-                return Results.BadRequest(new { error = "Password must be between 8 and 32 characters." });
-
-            var user = cloudStateStore.CreateUser(request.Email!.Trim(), request.Password!,
-                null, null);
-            if (user is null)
-                return Results.Conflict(new { error = "An account with this email already exists." });
-
-            return Results.Json(BuildAccountSessionPayload(portalSessionService, cloudStateStore, user));
-        });
-
-        app.MapPost("/api/portal/account/login", (
-            [FromBody] PortalAccountLoginRequest request,
-            PortalSessionService portalSessionService,
-            ICloudStateStore cloudStateStore) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password))
-                return Results.BadRequest(new { error = "Email and password are required." });
-
-            var user = cloudStateStore.AuthenticateUser(request.Email.Trim(), request.Password);
-            if (user is null)
-                return Results.Unauthorized();
-
-            return Results.Json(BuildAccountSessionPayload(portalSessionService, cloudStateStore, user));
-        });
-
-        app.MapGet("/api/portal/account", (
-            HttpRequest request,
-            PortalSessionService portalSessionService,
-            ICloudStateStore cloudStateStore) =>
-        {
-            var session = ResolvePortalSession(request, null, portalSessionService);
-            if (session?.UserId is null)
-                return Results.Unauthorized();
-
-            var user = cloudStateStore.GetUserById(session.UserId);
-            if (user is null)
-                return Results.Unauthorized();
-
-            return Results.Json(BuildAccountPayload(user, cloudStateStore));
-        });
-
         app.MapPost("/api/portal/robots/pair", (
             [FromBody] PairPortalRobotRequest request,
             HttpRequest httpRequest,

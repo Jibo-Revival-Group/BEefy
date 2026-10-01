@@ -8,6 +8,8 @@ public sealed class ProtocolDispatchResult
     public string ContentType { get; init; } = "application/x-amz-json-1.1";
     public string BodyText { get; init; } = "{}";
 
+    public byte[]? BodyBytes { get; init; }
+
     public IDictionary<string, string> Headers { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 

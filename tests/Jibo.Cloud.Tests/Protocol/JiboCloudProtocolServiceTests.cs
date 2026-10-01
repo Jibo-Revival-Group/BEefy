@@ -2796,14 +2796,26 @@ public sealed class JiboCloudProtocolServiceTests
             Method = "POST",
             ServicePrefix = "Backup_20170222",
             Operation = "New",
-            BodyText = """{"loopId":"loop-123"}"""
+            BodyText = """{"loopId":"loop-backup-blob"}"""
         });
 
         using var createPayload = JsonDocument.Parse(create.BodyText);
         Assert.Equal(200, create.StatusCode);
         var uploadUrl = createPayload.RootElement.GetProperty("uploadUrl").GetString();
         Assert.NotNull(uploadUrl);
-        Assert.Contains("/upload/backup/", uploadUrl);
+        Assert.Contains("/backup/blob", uploadUrl);
+        var upload = new Uri(uploadUrl);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(upload.Query);
+        await _service.DispatchAsync(new ProtocolEnvelope
+        {
+            HostName = "api.jibo.com",
+            Method = "PUT",
+            Path = "/backup/blob",
+            QueryParameters = query.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(),
+                StringComparer.OrdinalIgnoreCase),
+            BodyBytes = "robot-backup"u8.ToArray(),
+            BodyText = "robot-backup"
+        });
 
         var list = await _service.DispatchAsync(new ProtocolEnvelope
         {
@@ -2811,7 +2823,7 @@ public sealed class JiboCloudProtocolServiceTests
             Method = "POST",
             ServicePrefix = "Backup_20170222",
             Operation = "List",
-            BodyText = """{"loopId":"loop-123"}"""
+            BodyText = """{"loopId":"loop-backup-blob"}"""
         });
 
         using var listPayload = JsonDocument.Parse(list.BodyText);

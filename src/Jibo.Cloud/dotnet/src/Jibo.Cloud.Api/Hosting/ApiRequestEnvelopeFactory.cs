@@ -33,11 +33,19 @@ internal static class ApiRequestEnvelopeFactory
             ApplicationVersion = context.Request.Headers["X-OpenJibo-AppVersion"].ToString(),
             BodyText = bodyText,
             BodyBytes = bodyBytes,
-            Headers = context.Request.Headers.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(),
-                StringComparer.OrdinalIgnoreCase),
+            Headers = CaptureHeaders(context),
             QueryParameters = context.Request.Query.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(),
                 StringComparer.OrdinalIgnoreCase)
         };
+    }
+
+    private static Dictionary<string, string> CaptureHeaders(HttpContext context)
+    {
+        var headers = context.Request.Headers.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(),
+            StringComparer.OrdinalIgnoreCase);
+        if (!headers.TryGetValue("X-Forwarded-Proto", out var proto) || string.IsNullOrWhiteSpace(proto))
+            headers["X-Forwarded-Proto"] = context.Request.Scheme;
+        return headers;
     }
 
     private static string ResolveHostName(HttpContext context)

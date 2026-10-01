@@ -46,6 +46,8 @@ public sealed class JiboCloudProtocolService(
     private readonly ProtocolRobotIdentityResolver _identityResolver = new(stateStore);
 
     private readonly IMediaContentStore _mediaContentStore = mediaContentStore ?? new NullMediaContentStore();
+    private readonly RobotBackupStore _backups = new(configuration);
+    private readonly UgcKeyRelay _keys = new(configuration);
     private readonly RobotNotificationRegistry? _robotNotificationRegistry = robotNotificationRegistry;
     private readonly LoopUpdatedPushService? _loopUpdatedPushService = loopUpdatedPushService;
     private readonly ConcurrentDictionary<string, OobeTokenState> _oobeTokens = new(StringComparer.Ordinal);
@@ -113,6 +115,9 @@ public sealed class JiboCloudProtocolService(
         if (envelope.Method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
             envelope.Path.Equals("/health", StringComparison.OrdinalIgnoreCase))
             return Task.FromResult(ProtocolDispatchResult.Ok(new { ok = true, host = envelope.HostName }));
+
+        if (envelope.Path.StartsWith("/backup/blob", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(HandleBackupBlob(envelope));
 
         if (envelope.Method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
             envelope.Path.StartsWith("/media/", StringComparison.OrdinalIgnoreCase))
@@ -1472,14 +1477,16 @@ public sealed class JiboCloudProtocolService(
             return ProtocolDispatchResult.Ok(stateStore.ListMedia(
                 ReadStringArray(body, "loopIds"),
                 ReadLong(body, "after"),
-                ReadLong(body, "before")).Select(MapMedia).ToArray());
+                ReadLong(body, "before")).Select(item => MapMedia(item, envelope)).ToArray());
 
         if (operation.Equals("Get", StringComparison.OrdinalIgnoreCase))
-            return ProtocolDispatchResult.Ok(stateStore.GetMedia(ReadStringArray(body, "paths")).Select(MapMedia)
+            return ProtocolDispatchResult.Ok(stateStore.GetMedia(ReadStringArray(body, "paths"))
+                .Select(item => MapMedia(item, envelope))
                 .ToArray());
 
         if (operation.Equals("Remove", StringComparison.OrdinalIgnoreCase))
-            return ProtocolDispatchResult.Ok(stateStore.RemoveMedia(ReadStringArray(body, "paths")).Select(MapMedia)
+            return ProtocolDispatchResult.Ok(stateStore.RemoveMedia(ReadStringArray(body, "paths"))
+                .Select(item => MapMedia(item, envelope))
                 .ToArray());
 
         if (!operation.Equals("Create", StringComparison.OrdinalIgnoreCase))
@@ -1513,7 +1520,7 @@ public sealed class JiboCloudProtocolService(
             meta as IReadOnlyDictionary<string, object?>, CancellationToken.None).GetAwaiter().GetResult();
 
         return ProtocolDispatchResult.Ok(
-            MapMedia(stateStore.CreateMedia(loopId, path, type, reference, isEncrypted, meta)));
+            MapMedia(stateStore.CreateMedia(loopId, path, type, reference, isEncrypted, meta), envelope));
     }
 
     private static byte[] ReadBodyBytes(ProtocolEnvelope envelope) =>
@@ -1565,18 +1572,27 @@ public sealed class JiboCloudProtocolService(
     private ProtocolDispatchResult HandleBackup(string operation, ProtocolEnvelope envelope)
     {
         if (operation.Equals("List", StringComparison.OrdinalIgnoreCase))
-            return ProtocolDispatchResult.Ok(stateStore.GetBackups().Select(MapBackup).ToArray());
+        {
+            var listBody = envelope.TryParseBody();
+            var listLoopId = ReadString(listBody, "loopId");
+            if (string.IsNullOrWhiteSpace(listLoopId))
+                return ProtocolDispatchResult.Raw(400,
+                    "{\"__type\":\"ValidationException\",\"message\":\"loopId required\"}",
+                    "application/x-amz-json-1.1");
+            return ProtocolDispatchResult.Ok(_backups.List(listLoopId, PublicBase(envelope)));
+        }
 
         if (operation.Equals("New", StringComparison.OrdinalIgnoreCase))
         {
             var body = envelope.TryParseBody();
-            var loopId = ReadString(body, "loopId") ?? stateStore.GetLoops()[0].LoopId;
-            var backupName = ReadString(body, "name") ?? ReadString(body, "backupName")
-                ?? $"backup-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
-            var backup = stateStore.CreateBackup(loopId, backupName);
+            var loopId = ReadString(body, "loopId");
+            if (string.IsNullOrWhiteSpace(loopId))
+                return ProtocolDispatchResult.Raw(400,
+                    "{\"__type\":\"ValidationException\",\"message\":\"loopId required\"}",
+                    "application/x-amz-json-1.1");
             return ProtocolDispatchResult.Ok(new
             {
-                uploadUrl = $"https://api.jibo.com/upload/backup/{backup.BackupId}"
+                uploadUrl = _backups.CreateUploadUrl(loopId, PublicBase(envelope))
             });
         }
 
@@ -1614,7 +1630,7 @@ public sealed class JiboCloudProtocolService(
         if (operation.Equals("ShouldCreate", StringComparison.OrdinalIgnoreCase))
             return ProtocolDispatchResult.Ok(new
             {
-                shouldCreate = stateStore.ShouldCreateSymmetricKey(loopId)
+                shouldCreate = _keys.ShouldCreate(loopId)
             });
 
         string? symmetricKey;
@@ -1631,27 +1647,56 @@ public sealed class JiboCloudProtocolService(
         }
 
         if (operation is "CreateRequest" or "RequestSymmetricKey")
-        {
-            var record = stateStore.CreateKeyRequest(loopId, ReadString(body, "publicKey") ?? string.Empty);
-            return ProtocolDispatchResult.Ok(new
-            {
-                id = record.RequestId,
-                loopId = record.LoopId
-            });
-        }
+            return ProtocolDispatchResult.Ok(_keys.CreateRequest(loopId, ReadString(body, "publicKey") ?? string.Empty));
 
         if (operation.Equals("GetRequest", StringComparison.OrdinalIgnoreCase))
-            return ProtocolDispatchResult.Ok(stateStore.GetKeyRequest(loopId, ReadString(body, "id"),
-                ReadString(body, "publicKey")));
+        {
+            var shared = _keys.GetRequest(ReadString(body, "id"));
+            return shared is null
+                ? ProtocolDispatchResult.Raw(404,
+                    "{\"__type\":\"KEY_NOT_FOUND\",\"message\":\"request not found\"}",
+                    "application/x-amz-json-1.1")
+                : ProtocolDispatchResult.Ok(shared);
+        }
 
         if (operation.Equals("ListIncomingRequests", StringComparison.OrdinalIgnoreCase))
-            return ProtocolDispatchResult.Ok(stateStore.GetIncomingKeyRequests());
+            return ProtocolDispatchResult.Ok(_keys.Incoming(loopId));
+
+        if (operation.Equals("Backup", StringComparison.OrdinalIgnoreCase))
+        {
+            var encryptedKey = ReadString(body, "encryptedKey");
+            if (encryptedKey is null)
+                return ProtocolDispatchResult.Raw(400,
+                    "{\"__type\":\"ValidationException\",\"message\":\"encryptedKey required\"}",
+                    "application/x-amz-json-1.1");
+            return ProtocolDispatchResult.Ok(_keys.Backup(loopId, encryptedKey));
+        }
+
+        if (operation.Equals("Restore", StringComparison.OrdinalIgnoreCase))
+        {
+            var restored = _keys.Restore(loopId);
+            return restored is null
+                ? ProtocolDispatchResult.Raw(404,
+                    "{\"__type\":\"BACKUP_NOT_FOUND\",\"message\":\"key backup not found\"}",
+                    "application/x-amz-json-1.1")
+                : ProtocolDispatchResult.Ok(restored);
+        }
 
         if (operation.Equals("ListBinaryRequests", StringComparison.OrdinalIgnoreCase))
             return ProtocolDispatchResult.Ok(stateStore.GetBinaryRequests());
 
-        if (operation is "Share" or "ShareSymmetricKey" or "ShareBinary")
+        if (operation.Equals("ShareBinary", StringComparison.OrdinalIgnoreCase))
             return ProtocolDispatchResult.Ok(new { ok = true });
+
+        if (operation is "Share" or "ShareSymmetricKey")
+        {
+            var shared = _keys.Share(ReadString(body, "id"), ReadString(body, "encryptedKey"));
+            return shared is null
+                ? ProtocolDispatchResult.Raw(400,
+                    "{\"__type\":\"ValidationException\",\"message\":\"id and encryptedKey required\"}",
+                    "application/x-amz-json-1.1")
+                : ProtocolDispatchResult.Ok(shared);
+        }
 
         if (!operation.Equals("LoadSymmetricKey", StringComparison.OrdinalIgnoreCase))
             return ProtocolDispatchResult.Ok(new { ok = true, operation });
@@ -1772,11 +1817,82 @@ public sealed class JiboCloudProtocolService(
         var storedContent = _mediaContentStore.LoadAsync(media.Path, CancellationToken.None).GetAwaiter().GetResult();
         var contentType = storedContent?.ContentType ?? TryReadMetaString(media.Meta, "contentType") ??
             "application/octet-stream";
-        var bodyText = storedContent is not null
-            ? Encoding.UTF8.GetString(storedContent.Content)
-            : TryReadMetaString(media.Meta, "bodyText") ?? string.Empty;
-        return ProtocolDispatchResult.Raw(200, bodyText, contentType);
+        var bytes = storedContent?.Content ??
+                    Encoding.UTF8.GetBytes(TryReadMetaString(media.Meta, "bodyText") ?? string.Empty);
+        return new ProtocolDispatchResult
+        {
+            StatusCode = 200,
+            ContentType = contentType,
+            BodyBytes = bytes,
+            BodyText = Encoding.UTF8.GetString(bytes)
+        };
     }
+
+    private ProtocolDispatchResult HandleBackupBlob(ProtocolEnvelope envelope)
+    {
+        var loopId = Query(envelope, "loopId");
+        var key = Query(envelope, "key");
+        var expires = Query(envelope, "expires");
+        var signature = Query(envelope, "signature");
+        if (envelope.Method.Equals("PUT", StringComparison.OrdinalIgnoreCase) ||
+            envelope.Method.Equals("POST", StringComparison.OrdinalIgnoreCase))
+        {
+            var stored = _backups.Store(loopId, key, expires, signature, ReadBodyBytes(envelope));
+            if (stored.StatusCode != 200)
+                return ProtocolDispatchResult.Raw(stored.StatusCode, stored.Message);
+
+            return new ProtocolDispatchResult
+            {
+                StatusCode = 200,
+                BodyText = string.Empty,
+                ContentType = "text/plain",
+                Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["ETag"] = stored.Etag ?? string.Empty
+                }
+            };
+        }
+
+        if (!envelope.Method.Equals("GET", StringComparison.OrdinalIgnoreCase))
+            return ProtocolDispatchResult.Raw(405, "method not allowed");
+
+        var opened = _backups.Open(loopId, key, expires, signature);
+        if (opened.StatusCode != 200 || opened.Body is null)
+            return ProtocolDispatchResult.Raw(opened.StatusCode, opened.Message);
+
+        return new ProtocolDispatchResult
+        {
+            StatusCode = 200,
+            ContentType = "application/octet-stream",
+            BodyBytes = opened.Body,
+            BodyText = string.Empty,
+            Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Cache-Control"] = "private, no-store"
+            }
+        };
+    }
+
+    private string PublicBase(ProtocolEnvelope envelope)
+    {
+        if (!string.IsNullOrWhiteSpace(_canonicalApiBaseUrl))
+            return _canonicalApiBaseUrl.TrimEnd('/');
+
+        var proto = Header(envelope, "X-Forwarded-Proto");
+        if (string.IsNullOrWhiteSpace(proto)) proto = "https";
+        var host = Header(envelope, "X-Forwarded-Host");
+        if (string.IsNullOrWhiteSpace(host)) host = Header(envelope, "Host");
+        if (string.IsNullOrWhiteSpace(host)) host = envelope.HostName;
+        return $"{proto}://{host}".TrimEnd('/');
+    }
+
+    private static string? Header(ProtocolEnvelope envelope, string name) =>
+        envelope.Headers.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
+
+    private static string? Query(ProtocolEnvelope envelope, string name) =>
+        envelope.QueryParameters.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : null;
 
     private ProtocolDispatchResult HandleGetUpdateFrom(string? subsystem, string? fromVersion, string? filter)
     {
@@ -2251,8 +2367,9 @@ public sealed class JiboCloudProtocolService(
         };
     }
 
-    private static object MapMedia(MediaRecord item)
+    private object MapMedia(MediaRecord item, ProtocolEnvelope envelope)
     {
+        var url = $"{PublicBase(envelope)}/media/{Uri.EscapeDataString(item.Path)}";
         return new
         {
             path = item.Path,
@@ -2261,9 +2378,9 @@ public sealed class JiboCloudProtocolService(
             reference = item.Reference,
             accountId = item.AccountId,
             loopId = item.LoopId,
-            url = item.Url,
-            thumbnailUrl = item.Url,
-            originalUrl = item.Url,
+            url,
+            thumbnailUrl = url,
+            originalUrl = url,
             isEncrypted = item.IsEncrypted,
             isDeleted = item.IsDeleted,
             meta = item.Meta

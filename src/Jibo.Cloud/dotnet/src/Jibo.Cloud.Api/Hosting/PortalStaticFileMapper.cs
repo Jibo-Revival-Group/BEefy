@@ -2,6 +2,27 @@ namespace Jibo.Cloud.Api.Hosting;
 
 internal static class PortalStaticFileMapper
 {
+    internal static void MapAdminPanelStaticFiles(this WebApplication app)
+    {
+        var portalDirectory = ResolveStaticDirectory(app.Environment.WebRootPath, app.Environment.ContentRootPath,
+            "portal", Path.Combine("status", "index.html"));
+
+        app.MapGet("/portal/status", () => Results.Redirect("/portal/status/index.html"));
+        app.MapGet("/portal/status.html", () => Results.Redirect("/portal/status/index.html"));
+        app.MapGet("/portal/status/index.html",
+            () => Serve(portalDirectory, "status/index.html", "text/html; charset=utf-8"));
+        app.MapGet("/portal/status/status.css",
+            () => Serve(portalDirectory, "status/status.css", "text/css; charset=utf-8"));
+        app.MapGet("/portal/status/status.js",
+            () => Serve(portalDirectory, "status/status.js", "application/javascript; charset=utf-8"));
+        app.MapGet("/portal/portal.css", () => Serve(portalDirectory, "portal.css", "text/css; charset=utf-8"));
+        app.MapGet("/portal/admin/config", () => Results.Redirect("/portal/admin/config/index.html"));
+        app.MapGet("/portal/admin/config/index.html",
+            () => Serve(portalDirectory, "admin/config/index.html", "text/html; charset=utf-8"));
+        app.MapGet("/portal/admin/config/config.js",
+            () => Serve(portalDirectory, "admin/config/config.js", "application/javascript; charset=utf-8"));
+    }
+
     internal static void MapPortalStaticFiles(this WebApplication app)
     {
         var portalDirectory = ResolveStaticDirectory(app.Environment.WebRootPath, app.Environment.ContentRootPath, "portal", "index.html");

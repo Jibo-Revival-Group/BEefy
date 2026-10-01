@@ -77,6 +77,12 @@ builder.Services.AddSingleton<WebSocketTransportPolicy>();
 builder.Services.AddSingleton<WebSocketRequestCoordinator>();
 builder.Services.AddHostedService<PhoenixConversationHost>();
 builder.Services.AddHttpClient("PhoenixConversation", client => client.Timeout = TimeSpan.FromSeconds(4));
+builder.Services.AddHttpClient(JoapUpdateProxy.ClientName, client =>
+{
+    client.BaseAddress = new Uri(JoapUpdateProxy.BaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(8);
+});
+builder.Services.AddSingleton<JoapUpdateProxy>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddSingleton<RobotDiagnosticBeaconStore>();
@@ -187,12 +193,21 @@ app.MapGet("/health", () => Results.Json(new
 }));
 
 app.MapLoopMemberPhotoEndpoints();
+app.MapAdminPanelStaticFiles();
+app.MapPortalEndpoints();
 
 app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, JiboCloudProtocolService service,
+    JoapUpdateProxy joapUpdateProxy,
     IProtocolTelemetrySink telemetrySink, ITransportMetrics transportMetrics,
     CancellationToken cancellationToken) =>
 {
     var envelope = await ApiRequestEnvelopeFactory.CreateAsync(context, cancellationToken);
+    if (envelope.ServicePrefix?.StartsWith("Update_", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        await joapUpdateProxy.ForwardAsync(context, cancellationToken);
+        return;
+    }
+
     app.Logger.LogInformation(
         "Protocol request received requestId={RequestId} traceId={TraceId} method={Method} host={Host} path={Path} " +
         "servicePrefix={ServicePrefix} operation={Operation} deviceId={DeviceId} firmwareVersion={FirmwareVersion} " +
@@ -209,8 +224,8 @@ app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, 
         envelope.ApplicationVersion);
     var result = await service.DispatchAsync(envelope);
     transportMetrics.HttpPayload("in", "protocol", envelope.Method, result.StatusCode, envelope.BodyBytes?.Length ?? 0);
-    transportMetrics.HttpPayload("out", "protocol", envelope.Method, result.StatusCode,
-        Encoding.UTF8.GetByteCount(result.BodyText ?? string.Empty));
+    var responseBytes = result.BodyBytes?.Length ?? Encoding.UTF8.GetByteCount(result.BodyText ?? string.Empty);
+    transportMetrics.HttpPayload("out", "protocol", envelope.Method, result.StatusCode, responseBytes);
     try
     {
         await telemetrySink.RecordAsync(envelope, result, cancellationToken);
@@ -236,11 +251,14 @@ app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, 
         envelope.DeviceId,
         result.StatusCode,
         result.ContentType,
-        result.BodyText?.Length ?? 0);
+        responseBytes);
 
     foreach (var header in result.Headers) context.Response.Headers[header.Key] = header.Value;
 
-    if (!string.IsNullOrEmpty(result.BodyText)) await context.Response.WriteAsync(result.BodyText, cancellationToken);
+    if (result.BodyBytes is not null)
+        await context.Response.Body.WriteAsync(result.BodyBytes, cancellationToken);
+    else if (!string.IsNullOrEmpty(result.BodyText))
+        await context.Response.WriteAsync(result.BodyText, cancellationToken);
 });
 
 app.Run();
