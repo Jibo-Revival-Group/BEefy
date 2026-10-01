@@ -26,6 +26,7 @@ public sealed partial class JiboInteractionService(
     HomeAssistantCommandService? homeAssistantCommandService = null,
     HomeAssistantPendingClimateStore? homeAssistantPendingClimateStore = null,
     RepeatLastCommandStore? repeatLastCommandStore = null,
+    IPhoenixConversationClient? phoenixConversation = null,
     ILogger<JiboInteractionService>? logger = null)
 {
     private const string GreetingRouteMetadataKey = "greetingsRoute";

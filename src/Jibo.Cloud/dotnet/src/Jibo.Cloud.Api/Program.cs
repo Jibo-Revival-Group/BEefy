@@ -68,14 +68,15 @@ builder.Host.UseSerilog((context, _, loggerConfiguration) =>
             "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
 });
 
+builder.Services.AddSingleton<IPhoenixConversationClient, PhoenixConversationClient>();
 builder.Services.AddOpenJiboCloud(builder.Configuration);
 builder.Services.AddSingleton<AdminConfigOverlayStore>();
 builder.Services.AddSingleton<HomeAssistantWebSocketHandler>();
 builder.Services.AddSingleton<SingleRobotHttpHubAccessGuard>();
 builder.Services.AddSingleton<WebSocketTransportPolicy>();
 builder.Services.AddSingleton<WebSocketRequestCoordinator>();
-builder.Services.AddHttpClient("OpenJiboFleetPeerSync", client => client.Timeout = TimeSpan.FromSeconds(10));
-builder.Services.AddHostedService<FleetPeerSyncService>();
+builder.Services.AddHostedService<PhoenixConversationHost>();
+builder.Services.AddHttpClient("PhoenixConversation", client => client.Timeout = TimeSpan.FromSeconds(4));
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddSingleton<RobotDiagnosticBeaconStore>();
@@ -85,7 +86,7 @@ var app = builder.Build();
 PortalLogPollingDiagnosticsState.DisableServerLogsEndpointLogging =
     bool.TryParse(builder.Configuration["OpenJibo:Logging:DisableServerLogsEndpointLogging"], out var disableLogs) && disableLogs;
 
-app.Logger.LogInformation("Starting Open Jibo Cloud Api version {Version}", OpenJiboCloudBuildInfo.Version);
+app.Logger.LogInformation("Starting BEefy version {Version}", OpenJiboCloudBuildInfo.Version);
 app.Logger.LogInformation(
     "Protocol auth diagnostics effectiveEnabled={Enabled} containerAppRevision={Revision}",
     bool.TryParse(builder.Configuration["OpenJibo:ProtocolAuthDiagnostics:Enabled"], out var protocolAuthDiagnosticsEnabled) &&
@@ -181,44 +182,16 @@ app.Use(async (context, next) =>
 app.MapGet("/health", () => Results.Json(new
 {
     ok = true,
-    service = "OpenJibo Cloud Api",
+    service = "BEefy",
     version = OpenJiboCloudBuildInfo.Version
 }));
 
-app.MapGet("/health/replica", (HttpContext context, ReleaseSmokeAuthorizationOptions authorization) =>
-{
-    if (!authorization.Enabled) return Results.NotFound();
-    if (!authorization.IsSecretAuthorized(
-            context.Request.Headers[ReleaseSmokeAuthorizationOptions.SecretHeaderName].ToString()))
-        return Results.StatusCode(StatusCodes.Status403Forbidden);
-
-    context.Response.Headers.CacheControl = "no-store";
-    var revision = Environment.GetEnvironmentVariable("CONTAINER_APP_REVISION") ?? "local";
-    var replica = Environment.GetEnvironmentVariable("HOSTNAME") ?? Environment.MachineName;
-    return Results.Json(new
-    {
-        ok = true,
-        revision,
-        replica,
-        instanceId = $"{revision}/{replica}"
-    });
-});
-
-app.MapPortalStaticFiles();
-app.MapPortalEndpoints();
 app.MapLoopMemberPhotoEndpoints();
 
 app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, JiboCloudProtocolService service,
     IProtocolTelemetrySink telemetrySink, ITransportMetrics transportMetrics,
-    ReleaseSmokeAuthorizationOptions releaseSmokeAuthorization, CancellationToken cancellationToken) =>
+    CancellationToken cancellationToken) =>
 {
-    if (PortalStaticFileMapper.IsPortalPath(context.Request.Path))
-    {
-        context.Response.StatusCode = StatusCodes.Status404NotFound;
-        await context.Response.WriteAsync("Not found", cancellationToken);
-        return;
-    }
-
     var envelope = await ApiRequestEnvelopeFactory.CreateAsync(context, cancellationToken);
     app.Logger.LogInformation(
         "Protocol request received requestId={RequestId} traceId={TraceId} method={Method} host={Host} path={Path} " +
@@ -253,15 +226,6 @@ app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, 
 
     context.Response.StatusCode = result.StatusCode;
     context.Response.ContentType = result.ContentType;
-    if (releaseSmokeAuthorization.IsSecretAuthorized(
-            context.Request.Headers[ReleaseSmokeAuthorizationOptions.SecretHeaderName].ToString()))
-    {
-        var revision = Environment.GetEnvironmentVariable("CONTAINER_APP_REVISION") ?? "local";
-        var replica = Environment.GetEnvironmentVariable("HOSTNAME") ?? Environment.MachineName;
-        context.Response.Headers[ReleaseSmokeAuthorizationOptions.ReplicaInstanceHeaderName] =
-            $"{revision}/{replica}";
-        context.Response.Headers[ReleaseSmokeAuthorizationOptions.ReplicaRevisionHeaderName] = revision;
-    }
 
     app.Logger.LogInformation(
         "Protocol request completed requestId={RequestId} traceId={TraceId} operation={Operation} " +

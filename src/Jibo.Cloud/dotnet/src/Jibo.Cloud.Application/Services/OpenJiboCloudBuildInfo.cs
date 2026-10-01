@@ -10,8 +10,8 @@ public static class OpenJiboCloudBuildInfo
     public static string VersionWords => Version.Replace(".", " dot ");
     public static string PersonaBirthdayWords => PersonaBirthday.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
 
-    public static string SpokenVersion => $"Cloud version {VersionWords}.";
+    public static string SpokenVersion => $"BEefy cloud version {VersionWords}.";
 
     public static string EsmlVersion =>
-        $"Cloud version<break time='10ms'/> {VersionWords.Replace(" ", "<break time='10ms' />")}.";
+        $"BEefy cloud version<break time='10ms'/> {VersionWords.Replace(" ", "<break time='10ms' />")}.";
 }

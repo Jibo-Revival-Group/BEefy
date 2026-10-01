@@ -18,7 +18,7 @@ The current execution truth still lives in:
 
 ## North Star
 
-Bring Jibo back in a way that preserves his original skills, design language, and charm, while layering in a modern hosted cloud, safer updates, and eventually a richer on-device and orchestration stack.
+Bring Jibo back by giving him one conversation server, BEefy, and the rest of the BE family around it: BEach, BEetle, BEaker, BEam, and BEnch.
 
 ## Guiding Principles
 
@@ -27,7 +27,7 @@ Bring Jibo back in a way that preserves his original skills, design language, an
 - Use OTA to reduce friction after the cloud is proven.
 - Keep every migration reversible.
 - Favor small, source-backed slices over speculative rewrites.
-- Let Jibo remain the face of the experience, even if other systems help orchestrate the work behind him.
+- Let Jibo remain the face of the experience. BEefy answers. BEam runs the on-robot skills.
 
 ## Roadmap At A Glance
 
@@ -36,9 +36,8 @@ Bring Jibo back in a way that preserves his original skills, design language, an
 | 1 | Working hosted cloud | Restores the services Jibo already expects and gives us the current platform truth. |
 | 2 | OTA-assisted recovery and updates | Makes ownership easier by turning the cloud into the delivery path for recovery and upgrades. |
 | 3 | Open Jibo OS / mode conversion | Creates an owned runtime and configuration layer while preserving the original experience. |
-| 4 | Tiered brain | Separates reflexes, memory, personality, and higher-level orchestration. |
-| 5 | CoffeeBreak orchestration | Provides a place for multi-step agent workflows and external tools without flattening Jibo's personality. |
-| 6 | Ecosystem expansion | Grows the platform into household, productivity, and multi-device use cases. |
+| 4 | BE family | BEach, BEetle, BEaker, BEam, and BEnch stay pointed at this server and at BEaker. |
+| 5 | Household skills | Calendar, weather, news, and the skills already on the robot. |
 
 ## Phase 1: Working Hosted Cloud
 
@@ -90,33 +89,9 @@ This is where the breadcrumbs in the repo become important:
 - a reversible path back to stock
 - the hosted sites and support docs on `api.5x1.com` and `openjibo.ai` that explain the transition clearly
 
-## Phase 4: Tiered Brain
+## The BE family
 
-A single monolithic "AI brain" is not the best fit for Jibo. A tiered model is better.
-
-Suggested tiers:
-
-- Tier 0: original Jibo reflexes, stock skills, and local charm
-- Tier 1: hosted cloud routing and compatibility
-- Tier 2: memory, personality, and proactivity
-- Tier 3: richer reasoning and multi-step planning
-- Tier 4: external agent orchestration and task delegation
-- Tier 5: multi-device and household coordination
-
-The point of the tiers is not to make Jibo feel bigger at every turn. It is to keep simple interactions fast and charming while reserving more complex work for the layers that can actually support it.
-
-## CoffeeBreak (`coffeebreakai.dev`) As An Orchestration Layer
-
-CoffeeBreak fits naturally above the tiered brain as a coordination plane.
-
-The intended relationship is:
-
-- Jibo keeps the voice, personality, and local interaction style
-- BEefy routes simple and medium-complexity tasks itself
-- CoffeeBreak can take over when a task needs multiple tools, agents, or steps
-- the result comes back to Jibo in a form that still feels native to him
-
-That makes CoffeeBreak a close cousin to the tiered brain rather than a separate product line. The brain decides, CoffeeBreak orchestrates, and Jibo remains the face of the interaction.
+BEefy is the conversation server. BEach, BEetle, BEaker, BEam, and BEnch are the rest of the same system: point the robot, flash credentials, serve updates, run on-robot skills, and ship the services image. There is no separate orchestration product and no account portal.
 
 ## Phase 5: Ecosystem Expansion
 

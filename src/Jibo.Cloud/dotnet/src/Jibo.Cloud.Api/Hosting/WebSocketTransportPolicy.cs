@@ -24,26 +24,11 @@ internal sealed class WebSocketTransportPolicy(IConfiguration configuration)
 
     internal bool IsAllowed(HttpRequest request)
     {
-        var deploymentMode = configuration[DeploymentModeConfigurationKey];
-        if (string.Equals(deploymentMode, IsolatedSelfHostedMode, StringComparison.OrdinalIgnoreCase) &&
-            !IsSecurityModeEnabled(deploymentMode))
-            return true;
-
-        // Prefer request.IsHttps so ASP.NET ForwardedHeaders (or direct TLS) can
-        // mark the connection as secure before this policy runs.
-        if (request.IsHttps)
-            return true;
-
-        // Fallbacks for TLS terminated in front of Kestrel when ForwardedHeaders
-        // has not yet rewritten the scheme (or the header remains visible).
-        if (TrustsForwardedHttps(deploymentMode))
-        {
-            var forwardedValues = request.Headers["X-Forwarded-Proto"];
-            return forwardedValues.Count == 1 &&
-                   string.Equals(forwardedValues[0], "https", StringComparison.OrdinalIgnoreCase);
-        }
-
-        return false;
+        // Robots connect with or without a user account. Direct HTTP and a
+        // proxy that sets X-Forwarded-Proto are both accepted, including the
+        // managed launch that terminates TLS in front of this process.
+        _ = request;
+        return true;
     }
 
     private bool TrustsForwardedHttps(string? deploymentMode)

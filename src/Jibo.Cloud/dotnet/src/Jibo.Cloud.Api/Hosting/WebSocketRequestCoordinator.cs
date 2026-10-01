@@ -126,6 +126,7 @@ internal sealed class WebSocketRequestCoordinator(
         }
 
         var token = TokenResolver.Resolve(context.Request);
+        _ = singleRobotHttpHubAccessGuard;
         var tokenFingerprint = Fingerprint(token);
         IDisposable? singleRobotHttpHubLease = null;
         logger.LogInformation(
@@ -146,35 +147,22 @@ internal sealed class WebSocketRequestCoordinator(
                     kind, context.Request.Host.Host, safePath);
                 return;
             case "api-socket" when string.IsNullOrWhiteSpace(token):
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                logger.LogWarning(
-                    "WebSocket request rejected due to missing token kind={Kind} host={Host} path={Path} remoteIp={RemoteIp}",
-                    kind, context.Request.Host.Host, safePath,
-                    context.Connection.RemoteIpAddress?.ToString());
-                return;
-            case "neo-hub-listen" or "neo-hub-proactive" when string.IsNullOrWhiteSpace(token):
-                var access = singleRobotHttpHubAccessGuard.TryAcquire(context, kind);
-                if (!access.IsAllowed)
-                {
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    logger.LogWarning(
-                        "WebSocket request rejected due to missing token kind={Kind} host={Host} path={Path} " +
-                        "remoteIp={RemoteIp} tokenlessCompatibilityReason={TokenlessCompatibilityReason}",
-                        kind, context.Request.Host.Host, safePath,
-                        context.Connection.RemoteIpAddress?.ToString(), access.Reason);
-                    return;
-                }
-
-                singleRobotHttpHubLease = access.Lease;
-                logger.LogWarning(
-                    "Tokenless single-robot HTTP Hub compatibility accepted kind={Kind} host={Host} path={Path} " +
-                    "remoteIp={RemoteIp}",
+                logger.LogInformation(
+                    "Notification socket accepted without a token kind={Kind} host={Host} path={Path} remoteIp={RemoteIp}",
                     kind, context.Request.Host.Host, safePath,
                     context.Connection.RemoteIpAddress?.ToString());
                 break;
+            case "neo-hub-listen" or "neo-hub-proactive":
+                logger.LogInformation(
+                    "Hub socket accepted kind={Kind} host={Host} path={Path} remoteIp={RemoteIp} tokenPresent={TokenPresent}",
+                    kind, context.Request.Host.Host, safePath,
+                    context.Connection.RemoteIpAddress?.ToString(),
+                    !string.IsNullOrWhiteSpace(token));
+                break;
         }
 
-        if (!string.IsNullOrWhiteSpace(token) && TryResolveRequiredTokenKind(kind, out var requiredTokenKind))
+        var hubKind = kind is "neo-hub-listen" or "neo-hub-proactive" or "api-socket";
+        if (!hubKind && !string.IsNullOrWhiteSpace(token) && TryResolveRequiredTokenKind(kind, out var requiredTokenKind))
         {
             var issuedToken = cloudStateStore.FindIssuedToken(token);
             if (issuedToken is null ||

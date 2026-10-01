@@ -53,6 +53,16 @@ public sealed partial class JiboInteractionService
 
         var isTimerValueTurn = IsClockTimerValueTurn(clientRules, listenRules);
         var isAlarmValueTurn = IsClockAlarmValueTurn(clientRules, listenRules);
+
+        if (!isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
+            !string.IsNullOrWhiteSpace(transcript) &&
+            phoenixConversation is not null)
+        {
+            var phoenixDecision = await phoenixConversation.TryDecideAsync(transcript, cancellationToken);
+            if (phoenixDecision is not null)
+                return phoenixDecision;
+        }
+
         var semanticIntent = ResolveSemanticIntent(
             lowered,
             referenceLocalTime,
@@ -154,12 +164,9 @@ public sealed partial class JiboInteractionService
 
     private bool RequiresLinkedUser(TurnContext turn)
     {
-        if (!IsUserRequiredLoginEnabled() || cloudStateStore is null)
-            return false;
-
-        var (deviceId, _) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
-        return string.IsNullOrWhiteSpace(deviceId) ||
-               string.IsNullOrWhiteSpace(cloudStateStore.GetUserIdForDevice(deviceId));
+        // A connected robot is enough. There is no account or portal gate.
+        _ = turn;
+        return false;
     }
 
     private static bool IsUserRequiredLoginEnabled()

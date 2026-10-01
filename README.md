@@ -1,135 +1,44 @@
 # BEefy
 
-BEefy is the BEam-focused cloud and tooling fork for bringing Jibo back online.
+BEefy is the conversation server a Jibo connects to. There is no account, no portal, and no Docker setup. A robot opens the hub socket, BEefy transcribes with Sherpa, and the Hey Jibo path answers.
 
-We are rebuilding the hosted cloud first, then using that foundation for OTA, Open Jibo OS, and a tiered brain that can eventually hand higher-order work to CoffeeBreak without losing Jibo's original charm. The production host is `api.5x1.com:443`.
+The other BE repos are the rest of that system:
 
-## Current Focus
+- BEach points a running robot at this server and at BEaker
+- BEetle writes the same hub and OTA credentials when it flashes
+- BEaker serves BEam and BEnch updates
+- BEam is the on-robot skills those replies hand off to
+- BEnch is the services image the client comes from
 
-- ship a stable Azure-hosted replacement cloud
-- keep the Node prototype as the protocol oracle and capture harness
-- port the production path to .NET
-- support real devices through repeatable bootstrap steps first
-- use OTA later to reduce recovery friction once the cloud is trustworthy
-- keep durable architecture decisions in `docs/architecture/` so turn/state, storage, and trust choices do not drift out of the active docs
+The hub robots use is `api.5x1.com:443`. This process listens on port 24667 behind that proxy. Updates are `http://joap.5x1.com:80`.
 
-Current release truth lives in [docs/development-plan.md](docs/development-plan.md). The current cloud release constant is `1.0.20`.
+## Run
 
-## Running Locally
-
-For local setup, use [docs/local-cloud-quickstart.md](docs/local-cloud-quickstart.md).
-
-To self-host the Docker Compose stack on your own hardware, start with [docs/self-hosted-runbook.md](docs/self-hosted-runbook.md).
-
-For device bootstrap and OOBE QR setup, use:
-
-- [docs/device-bootstrap.md](docs/device-bootstrap.md)
-- [docs/wifi-qr-oobe.md](docs/wifi-qr-oobe.md)
-
-It covers:
-
-- the current `.NET` BEefy cloud
-- the legacy Node protocol oracle
-- the Playground direct-to-Jibo ASR/TTS demo
-
-## Roadmap
-
-The long-range plan is summarized in [docs/roadmap.md](docs/roadmap.md). In short:
-
-1. Working hosted cloud.
-2. OTA-assisted recovery and updates.
-3. Open Jibo OS / `open-jibo` mode conversion.
-4. Tiered brain and CoffeeBreak orchestration.
-5. Broader ecosystem expansion.
-
-## Current Architecture
-
-The repo now has three distinct lanes:
-
-- `src/Jibo.Cloud/node`
-  Protocol oracle, discovery server, fixture source, and rapid reverse-engineering lab.
-- `src/Jibo.Cloud/dotnet`
-  Production-oriented hosted implementation intended for Azure deployment and long-term maintenance.
-- `src/Jibo.Runtime.Abstractions`
-  The seam between robot/cloud traffic and higher-level runtime and capability logic.
-
-The core shape is:
-
-```text
-Jibo device -> BEefy cloud -> normalized runtime contracts -> capabilities and planning
+```bash
+env \
+  OpenJibo__State__Backend=Sqlite \
+  OpenJibo__State__PersistencePath=/var/lib/5x1/cloud-state.json \
+  OpenJibo__Stt__EnableStreamingSherpa=true \
+  CONTAINER_APP_REVISION=5x1 \
+  OpenJibo__Deployment__Mode=managed \
+  OpenJibo__PersonalMemory__Backend=Sqlite \
+  OpenJibo__PersonalMemory__PersistencePath=/var/lib/5x1/personal-memory.json \
+  ASPNETCORE_URLS=http://0.0.0.0:24667 \
+  dotnet run \
+  --project src/Jibo.Cloud/dotnet/src/Jibo.Cloud.Api/Jibo.Cloud.Api.csproj \
+  --no-launch-profile
 ```
 
-## First Supported Device Path
+Those environment names stay as they are so an existing launch keeps working. `OpenJibo__Deployment__Mode=managed` does not turn on a separate product tier. Sqlite files stay at the paths above.
 
-The first supported recovery path is enthusiast-friendly, not zero-touch:
+`GET /health` returns `ok: true`. Hub sockets are `/v1/listen`, `/listen`, `/v1/proactive`, and `/proactive`, with or without a token. The HTTP `X-Amz-Target` calls the robot already makes stay on this same port.
 
-```text
-QR Wi-Fi -> inject BEefy region config -> set robot region ->
-RCM/device patch for TLS and host acceptance -> BEefy cloud on api.5x1.com:443
+## Hey Jibo
+
+`conversation/` is the Phoenix parser and skills (nlu, skills, history, data). The API starts them on `127.0.0.1` when `node` and `conversation/node_modules` are present. They are not a second public port. If they are missing, the server still listens and the current turn handler answers.
+
+Install the local packages once:
+
+```bash
+npm install --prefix conversation
 ```
-
-That path is documented in [docs/device-bootstrap.md](docs/device-bootstrap.md).
-
-## Design Principles
-
-- Preserve the original skills and visual design.
-- Build the hosted cloud before making OTA the default recovery path.
-- Keep every migration reversible whenever possible.
-- Prefer source-backed slices over speculative rewrites.
-- Let Jibo remain the face of the experience, even when higher-level orchestration sits behind him.
-
-## Repo Map
-
-```text
-BEefy/
-  docs/
-    architecture/
-    cloud-deployment-topology-plan.md
-    roadmap.md
-    development-plan.md
-    device-bootstrap.md
-    feature-backlog.md
-    open-jibo-mode-conversion-plan.md
-    public-site-plan.md
-    regression-test-plan.md
-    release-1.0.19-plan.md
-    release-1.0.20-plan.md
-    support-tiers.md
-    system-diagram-alignment.md
-
-  scripts/bootstrap/
-    Discover-JiboHosts.ps1
-    Generate-JiboDnsOverrides.ps1
-    Test-OpenJiboRouting.ps1
-
-  src/
-  Jibo.Cloud/
-      node/
-      dotnet/
-    Jibo.Runtime.Abstractions/
-    Jibo WiFi QR Generator/   ← standalone HTML tool for generating OOBE QR codes
-    Playground/
-    OpenJibo.Site/
-```
-
-## Living Docs
-
-Use these when you want the active technical truth:
-
-- [Development plan](docs/development-plan.md)
-- [Cloud deployment and topology plan](docs/cloud-deployment-topology-plan.md)
-- [Storage trust and consensus plan](docs/storage-trust-consensus-plan.md)
-- [Architecture decisions](docs/architecture/README.md)
-- [Local cloud quickstart](docs/local-cloud-quickstart.md)
-- [Device bootstrap](docs/device-bootstrap.md)
-- [WiFi QR OOBE flow](docs/wifi-qr-oobe.md)
-- [OOBE / wipe / BE audit](docs/oobe-wipe-be-flow-audit.md)
-- [Feature backlog](docs/feature-backlog.md)
-- [Open Jibo mode conversion plan](docs/open-jibo-mode-conversion-plan.md)
-- [Release 1.0.19 closeout](docs/release-1.0.19-plan.md)
-- [Release 1.0.20 plan](docs/release-1.0.20-plan.md)
-- [Support tiers](docs/support-tiers.md)
-- [System diagram alignment](docs/system-diagram-alignment.md)
-- [Public site plan](docs/public-site-plan.md)
-
-If you only read one document for the long view, make it [docs/roadmap.md](docs/roadmap.md).
