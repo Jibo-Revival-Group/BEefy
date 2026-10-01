@@ -18,7 +18,7 @@ public sealed class JiboVerificationService
     private readonly ConcurrentDictionary<string, IssuedJiboVerificationToken> _tokens =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public string IssueCodeForDevice(string? friendlyId, string? deviceId)
+    public string IssueCodeForDevice(string? friendlyId, string? deviceId, bool presentedCredentials = false)
     {
         if (string.IsNullOrWhiteSpace(friendlyId) && string.IsNullOrWhiteSpace(deviceId))
             throw new InvalidOperationException("Cannot issue Jibo verification code without device identity.");
@@ -41,7 +41,8 @@ public sealed class JiboVerificationService
             code,
             resolvedDeviceId,
             resolvedFriendlyId,
-            DateTimeOffset.UtcNow.Add(CodeLifetime));
+            DateTimeOffset.UtcNow.Add(CodeLifetime),
+            presentedCredentials);
 
         _codesByCode[code] = pending;
         _latestCodeByLookupId[resolvedFriendlyId] = code;
@@ -58,7 +59,7 @@ public sealed class JiboVerificationService
         if (!_codesByCode.TryGetValue(normalized, out var pending) || pending.ExpiresAtUtc <= DateTimeOffset.UtcNow)
             return null;
 
-        return new JiboVerificationPending(pending.DeviceId, pending.FriendlyId);
+        return new JiboVerificationPending(pending.DeviceId, pending.FriendlyId, pending.PresentedCredentials);
     }
 
     public JiboVerificationConfirmResult TryConfirmByCode(string code)
@@ -146,7 +147,8 @@ public sealed class JiboVerificationService
         string Code,
         string DeviceId,
         string FriendlyId,
-        DateTimeOffset ExpiresAtUtc);
+        DateTimeOffset ExpiresAtUtc,
+        bool PresentedCredentials);
 
     public sealed record IssuedJiboVerificationToken(
         string Token,
@@ -154,7 +156,7 @@ public sealed class JiboVerificationService
         string FriendlyId,
         DateTimeOffset ExpiresAtUtc);
 
-    public sealed record JiboVerificationPending(string DeviceId, string FriendlyId);
+    public sealed record JiboVerificationPending(string DeviceId, string FriendlyId, bool PresentedCredentials = false);
 
     public sealed record JiboVerificationConfirmResult(
         bool Ok,

@@ -106,6 +106,7 @@ public sealed class JiboCloudProtocolService(
     public Task<ProtocolDispatchResult> DispatchAsync(ProtocolEnvelope envelope)
     {
         ObserveIdentityCandidates(envelope);
+        RememberPresentedCredential(envelope);
 
         if (envelope.Method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
             envelope.Path == "/" &&
@@ -218,6 +219,33 @@ public sealed class JiboCloudProtocolService(
             : $"{envelope.Transport}:{operation}";
         foreach (var candidate in candidates)
             identitySuggestionStore.Observe(associatedDeviceId, candidate.Value, source, candidate.Field);
+    }
+
+    private void RememberPresentedCredential(ProtocolEnvelope envelope)
+    {
+        var accessKeyId = AwsRequestAccessKey.Read(envelope);
+        var deviceId = envelope.DeviceId?.Trim();
+        if (string.IsNullOrWhiteSpace(accessKeyId) || string.IsNullOrWhiteSpace(deviceId))
+            return;
+
+        var owner = stateStore.GetAccount();
+        var knownKey = stateStore.FindUserByAccessKeyId(accessKeyId) is not null ||
+                       accessKeyId.Equals(owner.AccessKeyId, StringComparison.Ordinal);
+        if (!knownKey)
+            return;
+
+        try
+        {
+            stateStore.GetOrCreateDevice(deviceId, envelope.FirmwareVersion, envelope.ApplicationVersion);
+            stateStore.BindAwsCredentialFingerprint(deviceId, AwsRequestAccessKey.Fingerprint(accessKeyId),
+                "robot-auth");
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (KeyNotFoundException)
+        {
+        }
     }
 
     private static bool TryHandleLegacyRestRequest(ProtocolEnvelope envelope,

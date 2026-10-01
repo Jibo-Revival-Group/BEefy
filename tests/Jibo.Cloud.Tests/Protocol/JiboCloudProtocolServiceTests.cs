@@ -4001,6 +4001,41 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.True(verification.TryConfirmByCode(code).Ok);
     }
 
+    [Fact]
+    public async Task SignedRobotRequest_RecordsCredentialProofForALaterClaim()
+    {
+        var store = new InMemoryCloudStateStore();
+        var service = new JiboCloudProtocolService(store);
+        var verification = new JiboVerificationService();
+
+        await service.DispatchAsync(new ProtocolEnvelope
+        {
+            HostName = "api.5x1.com",
+            ServicePrefix = "Account_20160715",
+            Operation = "Get",
+            DeviceId = "BOJW-SIGNED",
+            Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Authorization"] = "AWS3 AWSAccessKeyId=openjibo-access-key"
+            },
+            BodyText = "{}"
+        });
+
+        var code = verification.IssueCodeForDevice("Signed Robot", "BOJW-SIGNED");
+        Assert.Null(PortalRobotClaim.RejectIfUnproven(verification, store, code));
+    }
+
+    [Fact]
+    public void ClaimCode_AcceptsACodeSpokenByTheConnectedRobot()
+    {
+        var store = new InMemoryCloudStateStore();
+        var verification = new JiboVerificationService();
+        var code = verification.IssueCodeForDevice("Friendly Claim", "BOJW-CLAIM", presentedCredentials: true);
+
+        Assert.Null(PortalRobotClaim.RejectIfUnproven(verification, store, code));
+        Assert.True(verification.TryConfirmByCode(code).Ok);
+    }
+
     private static ProtocolEnvelope AccountEnvelope(string accessKeyId, string body) =>
         new()
         {

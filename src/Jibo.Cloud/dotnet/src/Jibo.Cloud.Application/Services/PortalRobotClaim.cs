@@ -13,7 +13,7 @@ public static class PortalRobotClaim
         if (pending is null)
             return "That verification code is invalid or has expired.";
 
-        var presented = store.GetRobotCredentialBindings().Any(binding =>
+        var presented = pending.PresentedCredentials || store.GetRobotCredentialBindings().Any(binding =>
             binding.DeviceId.Equals(pending.DeviceId, StringComparison.OrdinalIgnoreCase));
         if (!presented)
             return "That robot has not presented its credentials.";

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Jibo.Cloud.Domain.Models;
 
@@ -18,6 +20,9 @@ public static class AwsRequestAccessKey
         var accessKeyId = credential?.Split('/', 2)[0] ?? ExtractAws3AccessKeyId(authorization);
         return string.IsNullOrWhiteSpace(accessKeyId) ? null : accessKeyId.Trim();
     }
+
+    public static string Fingerprint(string accessKeyId) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(accessKeyId))).ToLowerInvariant()[..16];
 
     private static string? ExtractCredential(string? authorization)
     {

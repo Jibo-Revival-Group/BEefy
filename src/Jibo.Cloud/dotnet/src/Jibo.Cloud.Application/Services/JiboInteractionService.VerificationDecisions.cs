@@ -21,7 +21,7 @@ public sealed partial class JiboInteractionService
                 "verify_me",
                 "I can't determine which Jibo is speaking right now.");
 
-        var code = jiboVerificationService.IssueCodeForDevice(friendlyId, deviceId);
+        var code = jiboVerificationService.IssueCodeForDevice(friendlyId, deviceId, presentedCredentials: true);
         var spokenCode = SpokenDigitFormatter.Format(code);
         return new JiboInteractionDecision(
             "verify_me",
