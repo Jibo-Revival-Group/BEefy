@@ -65,6 +65,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
     private readonly Lock _syncRoot = new();
     private readonly List<UpdateManifest> _updates;
     private readonly List<UserRecord> _users;
+    private readonly List<OobeSetupRecord> _oobeSetups = [];
 
     private AccountProfile _account = new();
     private DateTimeOffset? _lastLoadedUtc;
@@ -938,12 +939,175 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
                 AccessKeyId = existing.AccessKeyId,
                 SecretAccessKey = existing.SecretAccessKey,
                 IsActive = existing.IsActive,
+                IsAdmin = existing.IsAdmin,
+                PasswordResetCode = existing.PasswordResetCode,
+                PasswordResetExpiresUtc = existing.PasswordResetExpiresUtc,
                 CreatedUtc = existing.CreatedUtc
             };
         }
 
         TouchState();
         return _users.First(u => u.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public UserRecord? FindUserByAccessKeyId(string accessKeyId)
+    {
+        if (string.IsNullOrWhiteSpace(accessKeyId)) return null;
+        lock (_syncRoot)
+            return _users.FirstOrDefault(user =>
+                user.AccessKeyId.Equals(accessKeyId.Trim(), StringComparison.Ordinal));
+    }
+
+    public UserRecord ChangeUserPassword(string userId, string newPassword)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword))
+            throw new ArgumentException("A password is required.", nameof(newPassword));
+
+        lock (_syncRoot)
+        {
+            var index = _users.FindIndex(user => user.Id.Equals(userId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) throw new InvalidOperationException($"User '{userId}' not found.");
+
+            var existing = _users[index];
+            var salt = GenerateSalt();
+            _users[index] = CopyUser(existing, passwordHash: HashPassword(newPassword, salt), salt: salt,
+                clearResetCode: true);
+        }
+
+        TouchState();
+        return _users.First(user => user.Id.Equals(userId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public UserRecord RotateUserKeys(string userId)
+    {
+        lock (_syncRoot)
+        {
+            var index = _users.FindIndex(user => user.Id.Equals(userId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) throw new InvalidOperationException($"User '{userId}' not found.");
+
+            _users[index] = CopyUser(_users[index], accessKeyId: $"ak-{Guid.NewGuid():N}",
+                secretAccessKey: $"sk-{Guid.NewGuid():N}");
+        }
+
+        TouchState();
+        return _users.First(user => user.Id.Equals(userId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public void SetPasswordResetCode(string userId, string code, DateTimeOffset expiresUtc)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            throw new ArgumentException("A reset code is required.", nameof(code));
+
+        lock (_syncRoot)
+        {
+            var index = _users.FindIndex(user => user.Id.Equals(userId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) throw new InvalidOperationException($"User '{userId}' not found.");
+            _users[index] = CopyUser(_users[index], resetCode: code.Trim(), resetExpiresUtc: expiresUtc);
+        }
+
+        TouchState();
+    }
+
+    public UserRecord? RedeemPasswordReset(string code, string newPassword)
+    {
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(newPassword))
+            return null;
+
+        string? redeemedId;
+        lock (_syncRoot)
+        {
+            var index = _users.FindIndex(user =>
+                string.Equals(user.PasswordResetCode, code.Trim(), StringComparison.Ordinal) &&
+                user.PasswordResetExpiresUtc is not null &&
+                user.PasswordResetExpiresUtc > DateTimeOffset.UtcNow);
+            if (index < 0) return null;
+
+            var existing = _users[index];
+            var salt = GenerateSalt();
+            _users[index] = CopyUser(existing, passwordHash: HashPassword(newPassword, salt), salt: salt,
+                clearResetCode: true);
+            redeemedId = existing.Id;
+        }
+
+        TouchState();
+        return _users.First(user => user.Id.Equals(redeemedId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public string IssueAccountAccessToken(string accountId)
+    {
+        if (string.IsNullOrWhiteSpace(accountId))
+            throw new ArgumentException("An account id is required.", nameof(accountId));
+
+        var token = $"access-{accountId.Trim()}-{Guid.NewGuid():N}";
+        RegisterIssuedSession(token, new CloudSession
+        {
+            Kind = "account-access",
+            AccountId = accountId.Trim(),
+            Token = token,
+            ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1)
+        });
+        TouchState();
+        return token;
+    }
+
+    public string? FindAccountAccessTokenOwnerId(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return null;
+        var session = FindIssuedToken(token.Trim());
+        if (session is null ||
+            !string.Equals(session.Kind, "account-access", StringComparison.OrdinalIgnoreCase) ||
+            session.ExpiresUtc is null ||
+            session.ExpiresUtc <= DateTimeOffset.UtcNow ||
+            string.IsNullOrWhiteSpace(session.AccountId))
+            return null;
+
+        return session.AccountId;
+    }
+
+    public void SaveOobeSetup(OobeSetupRecord setup)
+    {
+        ArgumentNullException.ThrowIfNull(setup);
+        if (string.IsNullOrWhiteSpace(setup.Token))
+            throw new ArgumentException("An OOBE token is required.", nameof(setup));
+
+        lock (_syncRoot)
+        {
+            _oobeSetups.RemoveAll(item => item.Token.Equals(setup.Token, StringComparison.Ordinal));
+            _oobeSetups.Add(setup);
+        }
+
+        TouchState();
+    }
+
+    public OobeSetupRecord? FindOobeSetup(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return null;
+        lock (_syncRoot)
+            return _oobeSetups.FirstOrDefault(item => item.Token.Equals(token.Trim(), StringComparison.Ordinal));
+    }
+
+    private static UserRecord CopyUser(UserRecord existing, string? passwordHash = null, string? salt = null,
+        string? accessKeyId = null, string? secretAccessKey = null, string? resetCode = null,
+        DateTimeOffset? resetExpiresUtc = null, bool clearResetCode = false)
+    {
+        return new UserRecord
+        {
+            Id = existing.Id,
+            Email = existing.Email,
+            PasswordHash = passwordHash ?? existing.PasswordHash,
+            Salt = salt ?? existing.Salt,
+            FirstName = existing.FirstName,
+            LastName = existing.LastName,
+            Gender = existing.Gender,
+            Birthday = existing.Birthday,
+            AccessKeyId = accessKeyId ?? existing.AccessKeyId,
+            SecretAccessKey = secretAccessKey ?? existing.SecretAccessKey,
+            IsActive = existing.IsActive,
+            IsAdmin = existing.IsAdmin,
+            PasswordResetCode = clearResetCode ? null : resetCode ?? existing.PasswordResetCode,
+            PasswordResetExpiresUtc = clearResetCode ? null : resetExpiresUtc ?? existing.PasswordResetExpiresUtc,
+            CreatedUtc = existing.CreatedUtc
+        };
     }
 
     public UserDeviceLink LinkUserToDevice(string userId, string deviceId, string claimSource)
@@ -3715,6 +3879,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
             LoopMembers = _loopMembers.ToArray(),
             People = _people.ToArray(),
             Users = _users.ToArray(),
+            OobeSetups = _oobeSetups.ToArray(),
             RecognitionObservations = _recognitionObservations.ToArray(),
             RevokedIdentityGraphAnchors = _revokedIdentityGraphAnchors.ToArray(),
             TrustedServerAdmissions = _trustedServerAdmissions.ToArray(),
@@ -3823,6 +3988,9 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
 
         _users.Clear();
         _users.AddRange(snapshot.Users ?? []);
+
+        _oobeSetups.Clear();
+        _oobeSetups.AddRange(snapshot.OobeSetups ?? []);
 
         _userDeviceLinks.Clear();
         foreach (var link in snapshot.UserDeviceLinks ?? [])
@@ -4173,6 +4341,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
         public LoopMemberRecord[]? LoopMembers { get; init; }
         public PersonRecord[]? People { get; init; }
         public UserRecord[]? Users { get; init; }
+        public OobeSetupRecord[]? OobeSetups { get; init; }
         public RecognitionObservationRecord[]? RecognitionObservations { get; init; }
         public string[]? RevokedIdentityGraphAnchors { get; init; }
         public TrustedServerAdmissionRecord[]? TrustedServerAdmissions { get; init; }

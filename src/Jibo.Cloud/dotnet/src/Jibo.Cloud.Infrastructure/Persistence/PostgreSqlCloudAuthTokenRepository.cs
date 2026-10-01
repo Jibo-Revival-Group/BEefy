@@ -9,7 +9,7 @@ public sealed class PostgreSqlCloudAuthTokenRepository(PostgreSqlCloudStateDataS
 {
     private static readonly HashSet<string> SupportedKinds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "hub", "robot", "access"
+        "hub", "robot", "access", "oobe"
     };
 
     public async Task<CloudAuthTokenRecord> IssueAsync(string token, string tokenKind, string? accountId,
@@ -18,7 +18,7 @@ public sealed class PostgreSqlCloudAuthTokenRepository(PostgreSqlCloudStateDataS
     {
         var normalizedKind = tokenKind?.Trim().ToLowerInvariant() ?? string.Empty;
         if (!SupportedKinds.Contains(normalizedKind))
-            throw new ArgumentException("Token kind must be hub, robot, or access.", nameof(tokenKind));
+            throw new ArgumentException("Token kind must be hub, robot, access, or oobe.", nameof(tokenKind));
         if (expiresUtc <= DateTimeOffset.UtcNow)
             throw new ArgumentOutOfRangeException(nameof(expiresUtc), "Token expiry must be in the future.");
 
@@ -119,7 +119,7 @@ public sealed class PostgreSqlCloudAuthTokenRepository(PostgreSqlCloudStateDataS
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenKind);
         var normalizedKind = tokenKind.Trim().ToLowerInvariant();
         if (!SupportedKinds.Contains(normalizedKind))
-            throw new ArgumentException("Token kind must be hub, robot, or access.", nameof(tokenKind));
+            throw new ArgumentException("Token kind must be hub, robot, access, or oobe.", nameof(tokenKind));
         await using var connection = await dataSource.Value.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""

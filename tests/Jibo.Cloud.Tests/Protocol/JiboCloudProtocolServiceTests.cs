@@ -3852,6 +3852,165 @@ public sealed class JiboCloudProtocolServiceTests
             person => string.Equals(person.LoopId, store.GetLoops()[0].LoopId, StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void ChangePassword_RejectsTheOldPasswordThenStoresTheNewOne()
+    {
+        var store = new InMemoryCloudStateStore();
+        var handler = new CloudAuthProtocolHandler(store);
+        var created = handler.HandleAccount("Create", new ProtocolEnvelope
+        {
+            BodyText = """{"email":"ada@example.com","password":"secret","firstName":"Ada","lastName":"Lovelace"}"""
+        });
+        using var createdPayload = JsonDocument.Parse(created.BodyText);
+        var accessKeyId = createdPayload.RootElement.GetProperty("accessKeyId").GetString()!;
+
+        var rejected = handler.HandleAccount("ChangePassword", AccountEnvelope(accessKeyId,
+            """{"oldPassword":"wrong-password","newPassword":"replacement"}"""));
+        Assert.Equal(401, rejected.StatusCode);
+
+        var changed = handler.HandleAccount("ChangePassword", AccountEnvelope(accessKeyId,
+            """{"oldPassword":"secret","newPassword":"replacement"}"""));
+        Assert.Equal(200, changed.StatusCode);
+
+        var oldLogin = handler.HandleAccount("Login", new ProtocolEnvelope
+        {
+            BodyText = """{"email":"ada@example.com","password":"secret"}"""
+        });
+        var newLogin = handler.HandleAccount("Login", new ProtocolEnvelope
+        {
+            BodyText = """{"email":"ada@example.com","password":"replacement"}"""
+        });
+        Assert.Equal(401, oldLogin.StatusCode);
+        Assert.Equal(200, newLogin.StatusCode);
+    }
+
+    [Fact]
+    public void ResetKeys_StopsThePreviousAccessKeyFromAuthenticating()
+    {
+        var store = new InMemoryCloudStateStore();
+        var handler = new CloudAuthProtocolHandler(store);
+        var created = handler.HandleAccount("Create", new ProtocolEnvelope
+        {
+            BodyText = """{"email":"grace@example.com","password":"secret","firstName":"Grace","lastName":"Hopper"}"""
+        });
+        using var createdPayload = JsonDocument.Parse(created.BodyText);
+        var accessKeyId = createdPayload.RootElement.GetProperty("accessKeyId").GetString()!;
+
+        var rotated = handler.HandleAccount("ResetKeys", AccountEnvelope(accessKeyId, "{}"));
+        using var rotatedPayload = JsonDocument.Parse(rotated.BodyText);
+        var newAccessKeyId = rotatedPayload.RootElement.GetProperty("accessKeyId").GetString()!;
+        Assert.NotEqual(accessKeyId, newAccessKeyId);
+
+        var denied = handler.HandleAccount("Update", AccountEnvelope(accessKeyId,
+            """{"firstName":"Old"}"""));
+        var allowed = handler.HandleAccount("Update", AccountEnvelope(newAccessKeyId,
+            """{"firstName":"Grace"}"""));
+        Assert.Equal(401, denied.StatusCode);
+        Assert.Equal(200, allowed.StatusCode);
+        using var allowedPayload = JsonDocument.Parse(allowed.BodyText);
+        Assert.Equal("Grace", allowedPayload.RootElement.GetProperty("firstName").GetString());
+    }
+
+    [Fact]
+    public async Task PreparedSetup_ReturnsThePreparingUsersKeysAfterReload()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"beefy-oobe-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new InMemoryCloudStateStore(path);
+            var service = new JiboCloudProtocolService(store);
+            var created = await service.DispatchAsync(new ProtocolEnvelope
+            {
+                ServicePrefix = "Account_20160715",
+                Operation = "Create",
+                BodyText = """{"email":"owner@example.com","password":"secret","firstName":"Owner","lastName":"One"}"""
+            });
+            var other = await service.DispatchAsync(new ProtocolEnvelope
+            {
+                ServicePrefix = "Account_20160715",
+                Operation = "Create",
+                BodyText = """{"email":"other@example.com","password":"secret","firstName":"Other","lastName":"Two"}"""
+            });
+            using var createdPayload = JsonDocument.Parse(created.BodyText);
+            using var otherPayload = JsonDocument.Parse(other.BodyText);
+            var userId = createdPayload.RootElement.GetProperty("id").GetString()!;
+            var otherUserId = otherPayload.RootElement.GetProperty("id").GetString()!;
+            var accessKeyId = createdPayload.RootElement.GetProperty("accessKeyId").GetString()!;
+            var secretAccessKey = createdPayload.RootElement.GetProperty("secretAccessKey").GetString()!;
+
+            var prepare = await service.DispatchAsync(new ProtocolEnvelope
+            {
+                HostName = "api.5x1.com",
+                ServicePrefix = "OOBE_20161026",
+                Operation = "PrepareRobot",
+                Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["Authorization"] = $"AWS3 AWSAccessKeyId={accessKeyId}"
+                },
+                BodyText = """{"rollbackSnapshotId":"household-setup"}"""
+            });
+            using var preparePayload = JsonDocument.Parse(prepare.BodyText);
+            var token = preparePayload.RootElement.GetProperty("token").GetString()!;
+
+            var resumed = new JiboCloudProtocolService(new InMemoryCloudStateStore(path));
+            var setup = await resumed.DispatchAsync(new ProtocolEnvelope
+            {
+                HostName = "api.5x1.com",
+                ServicePrefix = "OOBE_20161026",
+                Operation = "SetupRobot",
+                BodyText = $$"""{"token":"{{token}}","id":"robot-household"}"""
+            });
+            using var setupPayload = JsonDocument.Parse(setup.BodyText);
+            Assert.Equal(200, setup.StatusCode);
+            Assert.Equal(accessKeyId, setupPayload.RootElement.GetProperty("accessKeyId").GetString());
+            Assert.Equal(secretAccessKey, setupPayload.RootElement.GetProperty("secretAccessKey").GetString());
+
+            var status = await resumed.DispatchAsync(new ProtocolEnvelope
+            {
+                HostName = "api.5x1.com",
+                ServicePrefix = "OOBE_20161026",
+                Operation = "GetStatus",
+                BodyText = $$"""{"token":"{{token}}"}"""
+            });
+            using var statusPayload = JsonDocument.Parse(status.BodyText);
+            Assert.True(statusPayload.RootElement.GetProperty("complete").GetBoolean());
+
+            var reloaded = new InMemoryCloudStateStore(path);
+            Assert.Contains(reloaded.GetDevicesForUser(userId), device => device.DeviceId == "robot-household");
+            Assert.Empty(reloaded.GetDevicesForUser(otherUserId));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ClaimCode_RequiresTheRobotCredential()
+    {
+        var store = new InMemoryCloudStateStore();
+        var verification = new JiboVerificationService();
+        store.GetOrCreateDevice("BOJW-CLAIM", null, null);
+        var code = verification.IssueCodeForDevice("Friendly Claim", "BOJW-CLAIM");
+
+        Assert.Equal("That robot has not presented its credentials.",
+            PortalRobotClaim.RejectIfUnproven(verification, store, code));
+
+        store.BindAwsCredentialFingerprint("BOJW-CLAIM", "fingerprint-claim-1", "robot-auth");
+        Assert.Null(PortalRobotClaim.RejectIfUnproven(verification, store, code));
+        Assert.True(verification.TryConfirmByCode(code).Ok);
+    }
+
+    private static ProtocolEnvelope AccountEnvelope(string accessKeyId, string body) =>
+        new()
+        {
+            Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Authorization"] = $"AWS3 AWSAccessKeyId={accessKeyId}"
+            },
+            BodyText = body
+        };
+
     private async Task<JsonElement> WaitForSchedulerDownloadDataKindAsync(JsonValueKind expectedKind)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));

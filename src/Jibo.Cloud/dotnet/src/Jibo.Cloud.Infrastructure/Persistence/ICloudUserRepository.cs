@@ -12,4 +12,8 @@ public interface ICloudUserRepository
     Task<UserRecord?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<UserRecord> UpdateProfileAsync(string userId, string? firstName, string? lastName,
         string? gender, long? birthday, CancellationToken cancellationToken = default);
+    Task<UserRecord?> GetByAccessKeyIdAsync(string accessKeyId, CancellationToken cancellationToken = default);
+    Task<UserRecord> ChangePasswordAsync(string userId, string newPassword,
+        CancellationToken cancellationToken = default);
+    Task<UserRecord> RotateKeysAsync(string userId, CancellationToken cancellationToken = default);
 }

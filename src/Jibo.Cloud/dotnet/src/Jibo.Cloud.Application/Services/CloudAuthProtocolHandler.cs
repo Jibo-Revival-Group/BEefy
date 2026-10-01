@@ -60,11 +60,18 @@ public sealed class CloudAuthProtocolHandler(
         }
 
         if (operation.Equals("CreateAccessToken", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryResolveAccountCaller(envelope, out var accessUser, out var accessOwner, out var accessDenied))
+                return accessDenied!;
+
+            var accountId = accessUser?.Id ?? accessOwner.AccountId;
+            var expires = DateTimeOffset.UtcNow.AddHours(1);
             return ProtocolDispatchResult.Ok(new
             {
-                token = $"access-{account.AccountId}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
-                expires = DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeMilliseconds()
+                token = stateStore.IssueAccountAccessToken(accountId),
+                expires = expires.ToUnixTimeMilliseconds()
             });
+        }
 
         if (operation.Equals("CheckEmail", StringComparison.OrdinalIgnoreCase))
         {
@@ -112,7 +119,14 @@ public sealed class CloudAuthProtocolHandler(
         {
             var ids = ReadStringArray(body, "ids");
             if (ids.Count == 0)
-                return ProtocolDispatchResult.Ok(new[] { BuildAccountResponse(account) });
+            {
+                if (!TryResolveAccountCaller(envelope, out var getUser, out var getOwner, out var getDenied))
+                    return getDenied!;
+                return ProtocolDispatchResult.Ok(new[]
+                {
+                    getUser is null ? BuildAccountResponse(getOwner) : BuildAccountResponse(getUser)
+                });
+            }
 
             var results = ids
                 .Select(id =>
@@ -129,37 +143,125 @@ public sealed class CloudAuthProtocolHandler(
             return ProtocolDispatchResult.Ok(results);
         }
 
-        switch (operation)
+        if (operation.Equals("Update", StringComparison.OrdinalIgnoreCase))
         {
-            case "Update" or "ResetKeys" or "Remove" or "ActivateByCode" or "ResendActivationCode" or
-                "ChangePassword" or "SendPasswordReset" or "PasswordResetByCode" or "UpdatePhoto" or "RemovePhoto" or
-                "VerifyPhoneByCode" or "AcceptTerms" or "FacebookConnect" or "FacebookMobileConnect":
-                return ProtocolDispatchResult.Ok(new
-                {
-                    id = account.AccountId,
-                    email = account.Email,
-                    firstName = account.FirstName,
-                    lastName = account.LastName,
-                    accessKeyId = account.AccessKeyId,
-                    secretAccessKey = account.SecretAccessKey
-                });
-            case "ChangeEmail" or "SendPhoneVerificationCode":
-                return ProtocolDispatchResult.Ok(new
-                {
-                    id = account.AccountId
-                });
+            if (!TryResolveAccountCaller(envelope, out var updateUser, out var updateOwner, out var updateDenied))
+                return updateDenied!;
+            if (updateUser is null)
+                return ProtocolDispatchResult.Ok(BuildAccountResponse(updateOwner));
+
+            var updated = stateStore.UpdateUser(updateUser.Id, ReadString(body, "firstName"),
+                ReadString(body, "lastName"), ReadString(body, "gender"), ReadInt64(body, "birthday"));
+            return ProtocolDispatchResult.Ok(BuildAccountResponse(updated));
         }
 
+        if (operation.Equals("ChangePassword", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryResolveAccountCaller(envelope, out var passwordUser, out _, out var passwordDenied))
+                return passwordDenied!;
+            if (passwordUser is null)
+                return ProtocolDispatchResult.Raw(400,
+                    "{\"message\":\"The owner account has no password to change.\"}", "application/json");
+
+            var oldPassword = ReadString(body, "oldPassword") ?? string.Empty;
+            var newPassword = ReadString(body, "newPassword") ?? string.Empty;
+            if (stateStore.AuthenticateUser(passwordUser.Email, oldPassword) is null)
+                return ProtocolDispatchResult.Raw(401, "{\"message\":\"Invalid email or password\"}",
+                    "application/json");
+            if (string.IsNullOrWhiteSpace(newPassword))
+                return ProtocolDispatchResult.Raw(400, "{\"message\":\"Email and password are required\"}",
+                    "application/json");
+
+            var changed = stateStore.ChangeUserPassword(passwordUser.Id, newPassword);
+            return ProtocolDispatchResult.Ok(BuildAccountResponse(changed));
+        }
+
+        if (operation.Equals("ResetKeys", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryResolveAccountCaller(envelope, out var keyUser, out var keyOwner, out var keyDenied))
+                return keyDenied!;
+            if (keyUser is null)
+                return ProtocolDispatchResult.Ok(BuildAccountResponse(keyOwner));
+
+            var rotated = stateStore.RotateUserKeys(keyUser.Id);
+            return ProtocolDispatchResult.Ok(BuildAccountResponse(rotated));
+        }
+
+        if (operation.Equals("SendPasswordReset", StringComparison.OrdinalIgnoreCase))
+        {
+            var email = ReadString(body, "email") ?? string.Empty;
+            var user = stateStore.GetUserByEmail(email);
+            if (user is null)
+                return ProtocolDispatchResult.Ok(new { email });
+
+            stateStore.SetPasswordResetCode(user.Id, CreatePasswordResetCode(),
+                DateTimeOffset.UtcNow.AddHours(1));
+            return ProtocolDispatchResult.Ok(BuildAccountResponse(user));
+        }
+
+        if (operation.Equals("PasswordResetByCode", StringComparison.OrdinalIgnoreCase))
+        {
+            var code = ReadString(body, "code") ?? string.Empty;
+            var password = ReadString(body, "password") ?? string.Empty;
+            var reset = stateStore.RedeemPasswordReset(code, password);
+            if (reset is null)
+                return ProtocolDispatchResult.Raw(400, "{\"message\":\"That reset code is invalid or has expired.\"}",
+                    "application/json");
+            return ProtocolDispatchResult.Ok(BuildAccountResponse(reset));
+        }
+
+        if (operation is "Remove" or "ActivateByCode" or "ResendActivationCode" or "ChangeEmail" or
+            "ConfirmEmailReset" or "UpdatePhoto" or "RemovePhoto" or "VerifyPhoneByCode" or
+            "SendPhoneVerificationCode" or "AcceptTerms" or "FacebookConnect" or "FacebookMobileConnect" or
+            "FacebookPrepareLogin")
+            return UnsupportedAccountOperation();
+
         if (operation.Equals("GetAccountByAccessToken", StringComparison.OrdinalIgnoreCase))
+        {
+            var accessToken = ReadString(body, "token") ?? string.Empty;
+            var ownerId = stateStore.FindAccountAccessTokenOwnerId(accessToken);
+            if (string.IsNullOrWhiteSpace(ownerId))
+                return ProtocolDispatchResult.Raw(401, "{\"message\":\"Invalid access key\"}", "application/json");
+
+            var tokenUser = stateStore.GetUserById(ownerId);
+            var namedRobot = ReadString(body, "friendlyId") ?? ReadString(body, "robotId") ??
+                             ReadString(body, "deviceId");
+            if (tokenUser is not null)
+            {
+                string? friendlyId = null;
+                if (!string.IsNullOrWhiteSpace(namedRobot))
+                {
+                    var match = stateStore.GetDevicesForUser(tokenUser.Id).FirstOrDefault(device =>
+                        device.DeviceId.Equals(namedRobot, StringComparison.OrdinalIgnoreCase) ||
+                        device.RobotId.Equals(namedRobot, StringComparison.OrdinalIgnoreCase) ||
+                        device.FriendlyName.Equals(namedRobot, StringComparison.OrdinalIgnoreCase));
+                    friendlyId = match?.RobotId;
+                }
+
+                return ProtocolDispatchResult.Ok(new
+                {
+                    id = tokenUser.Id,
+                    accessKeyId = tokenUser.AccessKeyId,
+                    secretAccessKey = tokenUser.SecretAccessKey,
+                    email = tokenUser.Email,
+                    friendlyId,
+                    payload = ReadObject(body, "payload")
+                });
+            }
+
+            if (!ownerId.Equals(account.AccountId, StringComparison.OrdinalIgnoreCase))
+                return ProtocolDispatchResult.Raw(401, "{\"message\":\"Invalid access key\"}", "application/json");
+
             return ProtocolDispatchResult.Ok(new
             {
                 id = account.AccountId,
                 accessKeyId = account.AccessKeyId,
                 secretAccessKey = account.SecretAccessKey,
                 email = account.Email,
-                friendlyId = stateStore.GetRobot().RobotId,
+                friendlyId = string.IsNullOrWhiteSpace(namedRobot) ? stateStore.GetRobot().RobotId : namedRobot,
                 payload = ReadObject(body, "payload")
             });
+        }
 
         if (operation.Equals("Search", StringComparison.OrdinalIgnoreCase))
         {
@@ -174,20 +276,6 @@ public sealed class CloudAuthProtocolHandler(
                 ]
                 : Array.Empty<object>());
         }
-
-        if (operation.Equals("FacebookPrepareLogin", StringComparison.OrdinalIgnoreCase))
-            return ProtocolDispatchResult.Ok(new
-            {
-                url = "https://example.com/facebook-login",
-                client_id = "fake-client-id",
-                scope = "email",
-                response_type = "token",
-                state = $"fb-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
-                redirect_uri = "https://api.jibo.com/facebook/callback"
-            });
-
-        if (operation.Equals("ConfirmEmailReset", StringComparison.OrdinalIgnoreCase))
-            return ProtocolDispatchResult.Ok(new { });
 
         return ProtocolDispatchResult.Ok(new
         {
@@ -309,6 +397,49 @@ public sealed class CloudAuthProtocolHandler(
             expires = DateTimeOffset.UtcNow.AddMinutes(15).ToUnixTimeMilliseconds()
         });
     }
+    private bool TryResolveAccountCaller(ProtocolEnvelope envelope, out UserRecord? user, out AccountProfile owner,
+        out ProtocolDispatchResult? denied)
+    {
+        owner = stateStore.GetAccount();
+        user = null;
+        denied = null;
+        var accessKeyId = AwsRequestAccessKey.Read(envelope);
+        if (string.IsNullOrWhiteSpace(accessKeyId))
+            return true;
+
+        user = stateStore.FindUserByAccessKeyId(accessKeyId);
+        if (user is not null)
+            return true;
+        if (accessKeyId.Equals(owner.AccessKeyId, StringComparison.Ordinal))
+            return true;
+
+        denied = ProtocolDispatchResult.Raw(401, "{\"message\":\"Invalid access key\"}", "application/json");
+        return false;
+    }
+
+    private static ProtocolDispatchResult UnsupportedAccountOperation() =>
+        ProtocolDispatchResult.Raw(400, "{\"message\":\"This account operation is not supported.\"}",
+            "application/json");
+
+    private static string CreatePasswordResetCode()
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        return $"reset-{Convert.ToHexString(bytes).ToLowerInvariant()}";
+    }
+
+    private static long? ReadInt64(JsonElement? body, string propertyName)
+    {
+        if (body is not { ValueKind: JsonValueKind.Object } element ||
+            !element.TryGetProperty(propertyName, out var property))
+            return null;
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var number))
+            return number;
+        return property.ValueKind == JsonValueKind.String && long.TryParse(property.GetString(), out var parsed)
+            ? parsed
+            : null;
+    }
+
     private static string? ReadString(JsonElement? body, string propertyName)
     {
         return body is { ValueKind: JsonValueKind.Object } element &&

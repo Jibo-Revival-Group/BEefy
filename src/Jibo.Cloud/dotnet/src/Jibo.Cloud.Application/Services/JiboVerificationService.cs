@@ -51,6 +51,16 @@ public sealed class JiboVerificationService
         return code;
     }
 
+    public JiboVerificationPending? InspectCode(string code)
+    {
+        PurgeExpired();
+        var normalized = NormalizeCode(code);
+        if (!_codesByCode.TryGetValue(normalized, out var pending) || pending.ExpiresAtUtc <= DateTimeOffset.UtcNow)
+            return null;
+
+        return new JiboVerificationPending(pending.DeviceId, pending.FriendlyId);
+    }
+
     public JiboVerificationConfirmResult TryConfirmByCode(string code)
     {
         PurgeExpired();
@@ -143,6 +153,8 @@ public sealed class JiboVerificationService
         string DeviceId,
         string FriendlyId,
         DateTimeOffset ExpiresAtUtc);
+
+    public sealed record JiboVerificationPending(string DeviceId, string FriendlyId);
 
     public sealed record JiboVerificationConfirmResult(
         bool Ok,

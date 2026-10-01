@@ -395,6 +395,14 @@ select:focus {
   transform: translateY(-1px);
 }
 
+.setup-qr svg {
+  width: min(240px, 100%);
+  height: auto;
+  background: #fff;
+  padding: 8px;
+  border-radius: 8px;
+}
+
 .button.danger {
   background: var(--danger-soft);
   color: var(--danger);

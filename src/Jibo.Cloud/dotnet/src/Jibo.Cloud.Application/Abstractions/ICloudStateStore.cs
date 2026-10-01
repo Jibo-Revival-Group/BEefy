@@ -138,4 +138,13 @@ public interface ICloudStateStore
     IReadOnlyList<GreetingPresenceRecord> GetGreetingPresences(string? loopId = null);
     GreetingPresenceRecord UpsertGreetingPresence(GreetingPresenceRecord greetingPresence);
     void UpdateRobot(DeviceRegistration registration);
+    UserRecord? FindUserByAccessKeyId(string accessKeyId);
+    UserRecord ChangeUserPassword(string userId, string newPassword);
+    UserRecord RotateUserKeys(string userId);
+    void SetPasswordResetCode(string userId, string code, DateTimeOffset expiresUtc);
+    UserRecord? RedeemPasswordReset(string code, string newPassword);
+    string IssueAccountAccessToken(string accountId);
+    string? FindAccountAccessTokenOwnerId(string token);
+    void SaveOobeSetup(OobeSetupRecord setup);
+    OobeSetupRecord? FindOobeSetup(string token);
 }

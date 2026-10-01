@@ -13,5 +13,8 @@ public sealed class UserRecord
     public string AccessKeyId { get; init; } = $"ak-{Guid.NewGuid():N}";
     public string SecretAccessKey { get; init; } = $"sk-{Guid.NewGuid():N}";
     public bool IsActive { get; init; } = true;
+    public bool IsAdmin { get; init; }
+    public string? PasswordResetCode { get; init; }
+    public DateTimeOffset? PasswordResetExpiresUtc { get; init; }
     public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
 }

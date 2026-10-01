@@ -515,6 +515,27 @@ public sealed partial class PostgreSqlCloudStateStoreTests
             return Task.FromResult(User);
         }
 
+        public Task<UserRecord?> GetByAccessKeyIdAsync(string accessKeyId,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult<UserRecord?>(
+                User.AccessKeyId.Equals(accessKeyId, StringComparison.Ordinal) ? User : null);
+        }
+
+        public Task<UserRecord> ChangePasswordAsync(string userId, string newPassword,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(User);
+        }
+
+        public Task<UserRecord> RotateKeysAsync(string userId, CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(User);
+        }
+
         private Task<UserRecord?> Return()
         {
             CallCount++;

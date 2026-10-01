@@ -132,6 +132,85 @@ public sealed class PostgreSqlCloudUserRepository(
                ?? throw new InvalidOperationException($"User '{resolvedId}' disappeared after update.");
     }
 
+    public Task<UserRecord?> GetByAccessKeyIdAsync(string accessKeyId,
+        CancellationToken cancellationToken = default) =>
+        string.IsNullOrWhiteSpace(accessKeyId)
+            ? Task.FromResult<UserRecord?>(null)
+            : ReadOneAsync("LOWER(AccessKeyId) = LOWER(@value)", accessKeyId.Trim(), cancellationToken);
+
+    public async Task<UserRecord> ChangePasswordAsync(string userId, string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("A user ID is required.", nameof(userId));
+        if (string.IsNullOrWhiteSpace(newPassword))
+            throw new ArgumentException("A password is required.", nameof(newPassword));
+
+        var salt = CloudUserPasswordHasher.GenerateSalt();
+        var hash = CloudUserPasswordHasher.Hash(newPassword, salt);
+        await using var connection = await dataSource.Value.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        string? resolvedId;
+        await using (var command = new NpgsqlCommand("""
+                                                     UPDATE Users
+                                                     SET PasswordHash = @passwordHash,
+                                                         PasswordSalt = @passwordSalt,
+                                                         UpdatedUtc = NOW()
+                                                     WHERE LOWER(UserId) = LOWER(@userId)
+                                                     RETURNING UserId
+                                                     """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("userId", userId.Trim());
+            command.Parameters.AddWithValue("passwordHash", hash);
+            command.Parameters.AddWithValue("passwordSalt", salt);
+            resolvedId = (string?)await command.ExecuteScalarAsync(cancellationToken);
+        }
+
+        if (resolvedId is null)
+            throw new InvalidOperationException($"User '{userId}' not found.");
+
+        await CloudStateRevision.BumpAsync(connection, transaction, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return await GetByIdAsync(resolvedId, cancellationToken)
+               ?? throw new InvalidOperationException($"User '{resolvedId}' disappeared after password change.");
+    }
+
+    public async Task<UserRecord> RotateKeysAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("A user ID is required.", nameof(userId));
+
+        var accessKeyId = $"ak-{Guid.NewGuid():N}";
+        var secretAccessKey = $"sk-{Guid.NewGuid():N}";
+        await using var connection = await dataSource.Value.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        string? resolvedId;
+        await using (var command = new NpgsqlCommand("""
+                                                     UPDATE Users
+                                                     SET AccessKeyId = @accessKeyId,
+                                                         SecretAccessKeyCiphertext = @secret,
+                                                         SecretWrappingKeyId = @keyId,
+                                                         UpdatedUtc = NOW()
+                                                     WHERE LOWER(UserId) = LOWER(@userId)
+                                                     RETURNING UserId
+                                                     """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("userId", userId.Trim());
+            command.Parameters.AddWithValue("accessKeyId", accessKeyId);
+            command.Parameters.AddWithValue("secret", secretProtector.Protect(secretAccessKey));
+            command.Parameters.AddWithValue("keyId", secretProtector.KeyId);
+            resolvedId = (string?)await command.ExecuteScalarAsync(cancellationToken);
+        }
+
+        if (resolvedId is null)
+            throw new InvalidOperationException($"User '{userId}' not found.");
+
+        await CloudStateRevision.BumpAsync(connection, transaction, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return await GetByIdAsync(resolvedId, cancellationToken)
+               ?? throw new InvalidOperationException($"User '{resolvedId}' disappeared after key rotation.");
+    }
+
     private async Task<UserRecord?> ReadOneAsync(string predicate, string value,
         CancellationToken cancellationToken)
     {

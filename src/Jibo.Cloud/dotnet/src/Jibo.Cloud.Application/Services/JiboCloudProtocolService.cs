@@ -302,9 +302,10 @@ public sealed class JiboCloudProtocolService(
                 RollbackSnapshotId = ReadString(body, "rollbackSnapshotId") ?? ReadString(body, "rollbackSnapshot"),
                 BaselineEvidence = ReadBaselineEvidence(body, envelope),
                 VerifiedSerialEvidence = ReadVerifiedSerialEvidence(body),
-                ExpiresUtc = expiresUtc
+                ExpiresUtc = expiresUtc,
+                UserId = ReadPreparingUserId(envelope)
             };
-            _oobeTokens[issuedToken] = preparedState;
+            RememberOobe(issuedToken, preparedState);
             var prepareReadiness = EvaluateConversionReadiness(preparedState, false, envelope.HostName);
 
             return ProtocolDispatchResult.Ok(new
@@ -328,7 +329,7 @@ public sealed class JiboCloudProtocolService(
         if (operation.Equals("GetStatus", StringComparison.OrdinalIgnoreCase))
         {
             OobeTokenState? current = null;
-            var hasTokenState = token is not null && _oobeTokens.TryGetValue(token, out current);
+            var hasTokenState = token is not null && TryGetOobe(token, out current);
             var expired = hasTokenState && current!.ExpiresUtc <= DateTimeOffset.UtcNow;
             long? expires = hasTokenState ? current!.ExpiresUtc.ToUnixTimeMilliseconds() : null;
             var requestedTargetMode =
@@ -363,7 +364,7 @@ public sealed class JiboCloudProtocolService(
             operation.Equals("ConnectionProof", StringComparison.OrdinalIgnoreCase))
         {
             OobeTokenState? current = null;
-            var hasTokenState = token is not null && _oobeTokens.TryGetValue(token, out current);
+            var hasTokenState = token is not null && TryGetOobe(token, out current);
             var expired = hasTokenState && current!.ExpiresUtc <= DateTimeOffset.UtcNow;
             // OOBE verification is scoped to its prepared robot. Do not read the service-wide
             // primary registration here: deployment smoke must not take ownership of it.
@@ -471,17 +472,21 @@ public sealed class JiboCloudProtocolService(
                 "{\"message\":\"Deployment smoke identities cannot be created through OOBE.\"}",
                 "application/x-amz-json-1.1");
 
-        var state = _oobeTokens.GetOrAdd(token ?? $"oobe-implicit-{robotId}", _ => new OobeTokenState
-        {
-            DeviceId = robotId,
-            LoopId = ReadString(body, "loopId"),
-            TargetMode = ResolveOpenJiboTargetMode(ReadString(body, "targetMode") ?? ReadString(body, "mode")),
-            TargetHost = ReadTargetHost(body),
-            RollbackSnapshotId = ReadString(body, "rollbackSnapshotId") ?? ReadString(body, "rollbackSnapshot"),
-            BaselineEvidence = ReadBaselineEvidence(body, envelope),
-            VerifiedSerialEvidence = ReadVerifiedSerialEvidence(body),
-            ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1)
-        });
+        OobeTokenState state;
+        if (token is not null && TryGetOobe(token, out var loadedSetup))
+            state = loadedSetup!;
+        else
+            state = _oobeTokens.GetOrAdd(token ?? $"oobe-implicit-{robotId}", _ => new OobeTokenState
+            {
+                DeviceId = robotId,
+                LoopId = ReadString(body, "loopId"),
+                TargetMode = ResolveOpenJiboTargetMode(ReadString(body, "targetMode") ?? ReadString(body, "mode")),
+                TargetHost = ReadTargetHost(body),
+                RollbackSnapshotId = ReadString(body, "rollbackSnapshotId") ?? ReadString(body, "rollbackSnapshot"),
+                BaselineEvidence = ReadBaselineEvidence(body, envelope),
+                VerifiedSerialEvidence = ReadVerifiedSerialEvidence(body),
+                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1)
+            });
         if (state.ExpiresUtc <= DateTimeOffset.UtcNow)
             return ProtocolDispatchResult.Raw(410, "{\"error\":\"oobe token expired\"}", "application/json");
 
@@ -559,6 +564,8 @@ public sealed class JiboCloudProtocolService(
         var acceptedReadiness = EvaluateConversionReadiness(state, false, envelope.HostName);
         var acceptedTargetHost = ResolveOpenJiboTargetHost(state.TargetMode, state.TargetHost, envelope.HostName);
         var acceptedHostMappings = BuildRobotHostMappings(state.TargetMode, state.TargetHost, envelope.HostName);
+        if (token is not null)
+            RememberOobe(token, state);
 
         if (operation.Equals("ReconnectRobot", StringComparison.OrdinalIgnoreCase))
             return ProtocolDispatchResult.Ok(new
@@ -577,10 +584,15 @@ public sealed class JiboCloudProtocolService(
             });
 
         var account = stateStore.GetAccount();
+        var pairedUser = string.IsNullOrWhiteSpace(state.UserId) ? null : stateStore.GetUserById(state.UserId);
+        if (pairedUser is not null)
+            stateStore.LinkUserToDevice(pairedUser.Id, updatedRegistration.DeviceId, "oobe-setup");
+        var issuedAccessKeyId = pairedUser?.AccessKeyId ?? account.AccessKeyId;
+        var issuedSecretAccessKey = pairedUser?.SecretAccessKey ?? account.SecretAccessKey;
         return ProtocolDispatchResult.Ok(new
         {
-            accessKeyId = account.AccessKeyId,
-            secretAccessKey = account.SecretAccessKey,
+            accessKeyId = issuedAccessKeyId,
+            secretAccessKey = issuedSecretAccessKey,
             serviceMode = false,
             robotId,
             deviceId = state.DeviceId,
@@ -2505,6 +2517,60 @@ public sealed class JiboCloudProtocolService(
         return envelope.Headers.TryGetValue(headerName, out var value) ? value : null;
     }
 
+    private string? ReadPreparingUserId(ProtocolEnvelope envelope)
+    {
+        var accessKeyId = AwsRequestAccessKey.Read(envelope);
+        if (string.IsNullOrWhiteSpace(accessKeyId)) return null;
+        return stateStore.FindUserByAccessKeyId(accessKeyId)?.Id;
+    }
+
+    private void RememberOobe(string token, OobeTokenState state)
+    {
+        _oobeTokens[token] = state;
+        stateStore.SaveOobeSetup(new OobeSetupRecord
+        {
+            Token = token,
+            UserId = state.UserId,
+            DeviceId = state.DeviceId,
+            LoopId = state.LoopId,
+            TargetMode = state.TargetMode,
+            TargetHost = state.TargetHost,
+            RollbackSnapshotId = state.RollbackSnapshotId,
+            Complete = state.Complete,
+            ExpiresUtc = state.ExpiresUtc
+        });
+    }
+
+    private bool TryGetOobe(string token, out OobeTokenState? current)
+    {
+        if (_oobeTokens.TryGetValue(token, out var cached))
+        {
+            current = cached;
+            return true;
+        }
+
+        var stored = stateStore.FindOobeSetup(token);
+        if (stored is null)
+        {
+            current = null;
+            return false;
+        }
+
+        current = new OobeTokenState
+        {
+            DeviceId = stored.DeviceId,
+            LoopId = stored.LoopId,
+            TargetMode = string.IsNullOrWhiteSpace(stored.TargetMode) ? "open-jibo" : stored.TargetMode,
+            TargetHost = stored.TargetHost,
+            RollbackSnapshotId = stored.RollbackSnapshotId,
+            Complete = stored.Complete,
+            UserId = stored.UserId,
+            ExpiresUtc = stored.ExpiresUtc
+        };
+        _oobeTokens[token] = current;
+        return true;
+    }
+
     private static string CreateOobeToken()
     {
         Span<byte> bytes = stackalloc byte[6];
@@ -2629,6 +2695,7 @@ public sealed class JiboCloudProtocolService(
         public bool Complete { get; set; }
         public string? OnboardingNonce { get; set; }
         public string? OnboardingState { get; set; }
+        public string? UserId { get; set; }
         public DateTimeOffset ExpiresUtc { get; init; }
     }
 

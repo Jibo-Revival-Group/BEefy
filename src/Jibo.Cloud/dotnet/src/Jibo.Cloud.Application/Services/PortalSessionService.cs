@@ -35,7 +35,7 @@ public sealed class PortalSessionService
         _timeProvider = timeProvider;
     }
 
-    public PortalSession CreateSession(string deviceId, string friendlyId, string? userId = null)
+    public PortalSession CreateSession(string deviceId, string friendlyId, string? userId = null, bool isAdmin = false)
     {
         PurgeRevocations();
 
@@ -47,10 +47,12 @@ public sealed class PortalSessionService
             now.ToUnixTimeSeconds(),
             expiresAt.ToUnixTimeSeconds(),
             Guid.NewGuid().ToString("N"),
-            string.IsNullOrWhiteSpace(userId) ? null : userId.Trim());
+            string.IsNullOrWhiteSpace(userId) ? null : userId.Trim(),
+            isAdmin);
 
         var token = BuildToken(payload);
-        return new PortalSession(token, payload.DeviceId, payload.FriendlyId, expiresAt, payload.UserId);
+        return new PortalSession(token, payload.DeviceId, payload.FriendlyId, expiresAt, payload.UserId,
+            payload.IsAdmin);
     }
 
     public PortalSession? TryGetSession(string? token)
@@ -75,7 +77,8 @@ public sealed class PortalSessionService
             payload.DeviceId,
             payload.FriendlyId,
             DateTimeOffset.FromUnixTimeSeconds(payload.ExpiresAtUtc),
-            payload.UserId);
+            payload.UserId,
+            payload.IsAdmin);
     }
 
     public void RevokeSession(string? token)
@@ -242,7 +245,8 @@ public sealed class PortalSessionService
         long IssuedAtUtc,
         long ExpiresAtUtc,
         string Nonce,
-        string? UserId);
+        string? UserId,
+        bool IsAdmin = false);
 
     private sealed record RobotMergePreviewTokenPayload(
         string Kind,
@@ -266,5 +270,6 @@ public sealed class PortalSessionService
         string DeviceId,
         string FriendlyId,
         DateTimeOffset ExpiresAtUtc,
-        string? UserId = null);
+        string? UserId = null,
+        bool IsAdmin = false);
 }
