@@ -39,7 +39,7 @@ public sealed partial class JiboInteractionService
 
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
         var link = userIntegrationStore.FindLinkForJibo(deviceId, friendlyId);
-        if (link is null)
+        if (link is null && !HomeAssistantRobotRelay.IsLocal(turn))
             return new JiboInteractionDecision(
                 intentName,
                 "I don't have Home Assistant set up for my room yet.");
@@ -142,7 +142,7 @@ public sealed partial class JiboInteractionService
 
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
         var link = userIntegrationStore.FindLinkForJibo(deviceId, friendlyId);
-        if (link is null)
+        if (link is null && !HomeAssistantRobotRelay.IsLocal(turn))
             return new JiboInteractionDecision(
                 intentName,
                 "I don't have Home Assistant set up for my room yet.");
@@ -191,7 +191,7 @@ public sealed partial class JiboInteractionService
                 _ => "set_temperature"
             };
             homeAssistantPendingClimateStore.Set(
-                friendlyId ?? deviceId ?? link.JiboFriendlyName,
+                friendlyId ?? deviceId ?? link?.JiboFriendlyName ?? "ha-local",
                 new HomeAssistantPendingClimateStore.PendingClimateAction(
                     action,
                     result.Candidates.ToArray(),

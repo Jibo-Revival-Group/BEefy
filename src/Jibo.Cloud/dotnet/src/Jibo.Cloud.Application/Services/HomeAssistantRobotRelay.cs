@@ -17,7 +17,9 @@ public sealed class HomeAssistantRobotRelay
     private readonly ConcurrentDictionary<string, TaskCompletionSource<HomeAssistantCommandResult>> _pending =
         new(StringComparer.Ordinal);
 
-    public bool IsHaLocal(TurnContext turn)
+    public bool IsHaLocal(TurnContext turn) => IsLocal(turn);
+
+    public static bool IsLocal(TurnContext turn)
     {
         if (!turn.Attributes.TryGetValue("haLocal", out var value) || value is null)
             return false;

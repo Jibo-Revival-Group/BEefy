@@ -109,6 +109,27 @@ public sealed class HomeAssistantInteractionServiceTests
         Assert.Equal("I don't have Home Assistant set up for my room yet.", decision.ReplyText);
     }
 
+    [Fact]
+    public async Task BuildDecisionAsync_HaLightsOff_TreatsRobotPairingAsSetUp()
+    {
+        var snapshotStore = new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-ha-intent-{Guid.NewGuid():N}.json"),
+            new UserDataEncryptionService());
+        var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
+        var service = CreateService(integrationStore, CreateCloudStateStore());
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "turn off the lights",
+            NormalizedTranscript = "turn off the lights",
+            DeviceId = "Ghost-Instance-Onion-Silk",
+            Attributes = new Dictionary<string, object?> { ["haLocal"] = true }
+        });
+
+        Assert.Equal("ha_lights_off", decision.IntentName);
+        Assert.Equal("Okay, turning off the lights.", decision.ReplyText);
+    }
+
     [Theory]
     [InlineData("verify me")]
     [InlineData("what's my verification code")]

@@ -57,6 +57,9 @@ public sealed class ProtocolToTurnContextMapper
             !string.IsNullOrWhiteSpace(sleepStateText))
             attributes["sleepState"] = sleepStateText;
 
+        if (session.Metadata.TryGetValue("haLocal", out var haLocalFlag) && haLocalFlag is true)
+            attributes["haLocal"] = true;
+
         foreach (var pair in session.Metadata)
         {
             if ((!pair.Key.StartsWith("personalReport", StringComparison.OrdinalIgnoreCase) &&

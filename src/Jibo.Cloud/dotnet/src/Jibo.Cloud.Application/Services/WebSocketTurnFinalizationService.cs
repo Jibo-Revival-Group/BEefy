@@ -1031,6 +1031,15 @@ public sealed class WebSocketTurnFinalizationService(
 
             if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) return;
 
+            if (isListenMessage)
+            {
+                var haLocal = data.TryGetProperty("haLocal", out var haLocalElement) &&
+                              (haLocalElement.ValueKind == JsonValueKind.True ||
+                               (haLocalElement.ValueKind == JsonValueKind.String &&
+                                string.Equals(haLocalElement.GetString(), "true", StringComparison.OrdinalIgnoreCase)));
+                session.Metadata["haLocal"] = haLocal;
+            }
+
             if (data.TryGetProperty("rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
             {
                 turnState.ListenRules =
