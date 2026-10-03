@@ -310,18 +310,20 @@ public sealed class WebSocketRequestCoordinatorTests
             {
                 using var doc = JsonDocument.Parse(payload);
                 var root = doc.RootElement;
-                if (root.GetProperty("type").GetString() == "SKILL_ACTION")
+                if (root.GetProperty("type").GetString() == "HA_COMMAND")
                 {
-                    var data = root.GetProperty("data");
-                    if (data.GetProperty("skill").GetProperty("id").GetString() == HomeAssistantRobotRelay.RobotSkillId)
-                    {
-                        actionCount++;
-                        var action = data.GetProperty("action");
-                        Assert.Equal("lights_off_current_room", action.GetProperty("command").GetString());
-                        relay.TryComplete(action.GetProperty("callbackToken").GetString()!,
-                            new HomeAssistantCommandResult(action.GetProperty("requestId").GetString()!, "ok"));
-                    }
-                    else finished.TrySetResult(true);
+                    actionCount++;
+                    var action = root.GetProperty("data");
+                    Assert.False(action.TryGetProperty("skill", out _));
+                    Assert.Equal("lights_off_current_room", action.GetProperty("command").GetString());
+                    relay.TryComplete(action.GetProperty("callbackToken").GetString()!,
+                        new HomeAssistantCommandResult(action.GetProperty("requestId").GetString()!, "ok"));
+                }
+                else if (root.GetProperty("type").GetString() == "SKILL_ACTION")
+                {
+                    Assert.NotEqual(HomeAssistantRobotRelay.RobotSkillId,
+                        root.GetProperty("data").GetProperty("skill").GetProperty("id").GetString());
+                    finished.TrySetResult(true);
                 }
                 return Task.CompletedTask;
             }

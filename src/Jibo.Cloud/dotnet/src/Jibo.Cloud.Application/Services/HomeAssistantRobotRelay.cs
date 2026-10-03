@@ -74,20 +74,12 @@ public sealed class HomeAssistantRobotRelay(ILogger<HomeAssistantRobotRelay>? lo
                 data["callbackPath"] = CallbackPath;
             }
 
-            // Jetstream forwards SKILL_ACTION and drops message types it does not know.
-            // The robot treats this skill id as a Home Assistant command and does not play it.
+            // Current BEnch's hub client handles HA_COMMAND separately from playable cloud skills.
             var json = JsonSerializer.Serialize(new Dictionary<string, object?>
             {
-                ["type"] = "SKILL_ACTION",
-                ["data"] = new Dictionary<string, object?>
-                {
-                    ["skill"] = new Dictionary<string, object?>
-                    {
-                        ["id"] = RobotSkillId
-                    },
-                    ["action"] = data,
-                    ["final"] = false
-                }
+                ["type"] = "HA_COMMAND",
+                ["data"] = data,
+                ["final"] = false
             });
             logger?.LogInformation("Home Assistant robot relay command={Command} requestId={RequestId} waitForResult={WaitForResult}",
                 command, requestId, waitForResult);

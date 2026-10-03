@@ -342,7 +342,8 @@ public sealed class HomeAssistantEntityAwareTests
         public IDisposable Bind() => AmbientTurnProgressPublisher.Begin(async (reply, cancellationToken) =>
         {
             using var doc = JsonDocument.Parse(reply.Text!);
-            var action = doc.RootElement.GetProperty("data").GetProperty("action");
+            Assert.Equal("HA_COMMAND", doc.RootElement.GetProperty("type").GetString());
+            var action = doc.RootElement.GetProperty("data");
             var bytes = JsonSerializer.SerializeToUtf8Bytes(action);
             await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
             if (socket.LastResult is not null && action.TryGetProperty("callbackToken", out var token))
