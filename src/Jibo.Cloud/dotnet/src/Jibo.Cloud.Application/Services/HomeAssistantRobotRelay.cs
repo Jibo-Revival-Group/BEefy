@@ -12,6 +12,8 @@ namespace Jibo.Cloud.Application.Services;
 public sealed class HomeAssistantRobotRelay
 {
     public const string CallbackPath = "/v1/homeassistant/robot-result";
+    public const string LocalListenRule = "__ha_local";
+    public const string RobotSkillId = "@be/homeassistant";
     private static readonly TimeSpan ResultTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ConcurrentDictionary<string, TaskCompletionSource<HomeAssistantCommandResult>> _pending =
@@ -68,10 +70,20 @@ public sealed class HomeAssistantRobotRelay
                 data["callbackPath"] = CallbackPath;
             }
 
+            // Jetstream forwards SKILL_ACTION and drops message types it does not know.
+            // The robot treats this skill id as a Home Assistant command and does not play it.
             var json = JsonSerializer.Serialize(new Dictionary<string, object?>
             {
-                ["type"] = "HA_COMMAND",
-                ["data"] = data
+                ["type"] = "SKILL_ACTION",
+                ["data"] = new Dictionary<string, object?>
+                {
+                    ["skill"] = new Dictionary<string, object?>
+                    {
+                        ["id"] = RobotSkillId
+                    },
+                    ["action"] = data,
+                    ["final"] = false
+                }
             });
             await send(new WebSocketReply { Text = json }, cancellationToken);
 

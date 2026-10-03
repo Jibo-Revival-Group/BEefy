@@ -111,4 +111,43 @@ public sealed class ContextReleasePersistenceTests
         var canonical = Assert.Single(store.GetDevices(), device => device.DeviceId == "physical-device-001");
         Assert.Equal("12.10.0", canonical.FirmwareVersion);
     }
+
+    [Fact]
+    public void HandleListenSetup_TreatsPairingRuleAsLocalHomeAssistant()
+    {
+        var turnService = new WebSocketTurnFinalizationService(
+            Mock.Of<IConversationBroker>(),
+            Mock.Of<ISttStrategySelector>(),
+            Mock.Of<ITurnTelemetrySink>(),
+            NullLogger<WebSocketTurnFinalizationService>.Instance);
+        var session = new CloudSession();
+
+        turnService.HandleListenSetup(session, new WebSocketMessageEnvelope
+        {
+            Text =
+                """{"type":"LISTEN","data":{"hotphrase":true,"rules":["global","__ha_local"]}}"""
+        });
+
+        Assert.Equal(true, session.Metadata["haLocal"]);
+        Assert.Equal(["global"], session.TurnState.ListenRules);
+    }
+
+    [Fact]
+    public async Task HandleContextAsync_MarksLocalHomeAssistantFromContext()
+    {
+        var turnService = new WebSocketTurnFinalizationService(
+            Mock.Of<IConversationBroker>(),
+            Mock.Of<ISttStrategySelector>(),
+            Mock.Of<ITurnTelemetrySink>(),
+            NullLogger<WebSocketTurnFinalizationService>.Instance);
+        var session = new CloudSession();
+
+        await turnService.HandleContextAsync(session, new WebSocketMessageEnvelope
+        {
+            Text =
+                """{"type":"CONTEXT","data":{"general":{"haLocal":true,"release":"BEam.1.1.0"}}}"""
+        });
+
+        Assert.Equal(true, session.Metadata["haLocal"]);
+    }
 }

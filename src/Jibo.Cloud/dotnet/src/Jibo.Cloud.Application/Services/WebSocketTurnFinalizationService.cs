@@ -505,6 +505,8 @@ public sealed class WebSocketTurnFinalizationService(
             turnState.SawContext = true;
             turnState.ContextPayload = ExtractDataPayload(envelope.Text);
             session.Metadata["context"] = turnState.ContextPayload;
+            if (TryReadHomeAssistantLocal(envelope.Text))
+                session.Metadata["haLocal"] = true;
             var previouslyObservedDeviceId = session.Metadata.TryGetValue("registeredDeviceId", out var registeredValue)
                 ? registeredValue?.ToString()
                 : session.DeviceId;
@@ -1031,26 +1033,32 @@ public sealed class WebSocketTurnFinalizationService(
 
             if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) return;
 
-            if (isListenMessage)
-            {
-                var haLocal = data.TryGetProperty("haLocal", out var haLocalElement) &&
-                              (haLocalElement.ValueKind == JsonValueKind.True ||
-                               (haLocalElement.ValueKind == JsonValueKind.String &&
-                                string.Equals(haLocalElement.GetString(), "true", StringComparison.OrdinalIgnoreCase)));
-                session.Metadata["haLocal"] = haLocal;
-            }
-
+            var haLocalRule = false;
             if (data.TryGetProperty("rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
             {
-                turnState.ListenRules =
-                [
-                    .. rules.EnumerateArray()
-                        .Select(item =>
-                            item.ValueKind == JsonValueKind.String ? item.GetString() ?? string.Empty : item.ToString())
-                        .Where(rule => !string.IsNullOrWhiteSpace(rule))
-                ];
+                var listenRules = new List<string>();
+                foreach (var item in rules.EnumerateArray())
+                {
+                    var rule = item.ValueKind == JsonValueKind.String
+                        ? item.GetString() ?? string.Empty
+                        : item.ToString();
+                    if (string.IsNullOrWhiteSpace(rule))
+                        continue;
+                    if (string.Equals(rule, HomeAssistantRobotRelay.LocalListenRule, StringComparison.OrdinalIgnoreCase))
+                    {
+                        haLocalRule = true;
+                        continue;
+                    }
+
+                    listenRules.Add(rule);
+                }
+
+                turnState.ListenRules = listenRules;
                 session.Metadata["listenRules"] = turnState.ListenRules;
             }
+
+            if (isListenMessage)
+                session.Metadata["haLocal"] = haLocalRule || ProtocolToTurnContextMapper.HasHomeAssistantLocalMarker(data);
 
             if (data.TryGetProperty("asr", out var asr) &&
                 asr.ValueKind == JsonValueKind.Object)
@@ -2863,6 +2871,24 @@ public sealed class WebSocketTurnFinalizationService(
                     IsConstrainedYesNoRule(rule) ||
                     IsIntroductionsRule(rule) ||
                     rule.StartsWith("exercise/", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool TryReadHomeAssistantLocal(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            return document.RootElement.TryGetProperty("data", out var data) &&
+                   data.ValueKind == JsonValueKind.Object &&
+                   ProtocolToTurnContextMapper.HasHomeAssistantLocalMarker(data);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static string? ExtractDataPayload(string? text)

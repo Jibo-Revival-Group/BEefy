@@ -153,17 +153,16 @@ public sealed class ProtocolToTurnContextMapper
                 !string.IsNullOrWhiteSpace(triggerLooperId.GetString()))
                 attributes["triggerLooperId"] = triggerLooperId.GetString();
 
-            if (data.TryGetProperty("haLocal", out var haLocal) &&
-                (haLocal.ValueKind == JsonValueKind.True ||
-                 (haLocal.ValueKind == JsonValueKind.String &&
-                  string.Equals(haLocal.GetString(), "true", StringComparison.OrdinalIgnoreCase))))
+            if (HasHomeAssistantLocalMarker(data))
                 attributes["haLocal"] = true;
 
             if (data.TryGetProperty("rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
                 attributes["clientRules"] = rules.EnumerateArray()
                     .Where(item => item.ValueKind == JsonValueKind.String)
                     .Select(item => item.GetString() ?? string.Empty)
-                    .Where(rule => !string.IsNullOrWhiteSpace(rule))
+                    .Where(rule => !string.IsNullOrWhiteSpace(rule) &&
+                                   !string.Equals(rule, HomeAssistantRobotRelay.LocalListenRule,
+                                       StringComparison.OrdinalIgnoreCase))
                     .ToArray();
 
             if (data.TryGetProperty("entities", out var entities) && entities.ValueKind == JsonValueKind.Object)
@@ -188,5 +187,39 @@ public sealed class ProtocolToTurnContextMapper
         {
             return text;
         }
+    }
+
+    internal static bool HasHomeAssistantLocalMarker(JsonElement data)
+    {
+        if (IsTrue(data, "haLocal"))
+            return true;
+
+        if (data.TryGetProperty("general", out var general) &&
+            general.ValueKind == JsonValueKind.Object &&
+            IsTrue(general, "haLocal"))
+            return true;
+
+        if (!data.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var item in rules.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String &&
+                string.Equals(item.GetString(), HomeAssistantRobotRelay.LocalListenRule,
+                    StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsTrue(JsonElement parent, string propertyName)
+    {
+        if (!parent.TryGetProperty(propertyName, out var value))
+            return false;
+
+        return value.ValueKind == JsonValueKind.True ||
+               (value.ValueKind == JsonValueKind.String &&
+                string.Equals(value.GetString(), "true", StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -261,11 +261,13 @@ public sealed class HomeAssistantCommandServiceTests
 
         Assert.NotNull(sent);
         using var document = JsonDocument.Parse(sent!);
-        Assert.Equal("HA_COMMAND", document.RootElement.GetProperty("type").GetString());
+        Assert.Equal("SKILL_ACTION", document.RootElement.GetProperty("type").GetString());
         Assert.Equal(
-            "lights_on_current_room",
-            document.RootElement.GetProperty("data").GetProperty("command").GetString());
-        Assert.False(document.RootElement.GetProperty("data").TryGetProperty("callbackToken", out _));
+            HomeAssistantRobotRelay.RobotSkillId,
+            document.RootElement.GetProperty("data").GetProperty("skill").GetProperty("id").GetString());
+        var action = document.RootElement.GetProperty("data").GetProperty("action");
+        Assert.Equal("lights_on_current_room", action.GetProperty("command").GetString());
+        Assert.False(action.TryGetProperty("callbackToken", out _));
     }
 
     [Fact]
@@ -284,7 +286,8 @@ public sealed class HomeAssistantCommandServiceTests
         using (AmbientTurnProgressPublisher.Begin((reply, _) =>
                {
                    using var document = JsonDocument.Parse(reply.Text!);
-                   var token = document.RootElement.GetProperty("data").GetProperty("callbackToken").GetString();
+                   var token = document.RootElement.GetProperty("data").GetProperty("action")
+                       .GetProperty("callbackToken").GetString();
                    relay.TryComplete(token!, new HomeAssistantCommandResult("req", "ok", MatchedName: "Lamp"));
                    return Task.CompletedTask;
                }))
