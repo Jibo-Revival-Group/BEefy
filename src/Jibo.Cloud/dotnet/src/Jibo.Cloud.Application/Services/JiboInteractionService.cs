@@ -21,7 +21,6 @@ public sealed partial class JiboInteractionService(
     IKnowledgeSearchService? knowledgeSearchService = null,
     ITurnProgressPublisher? turnProgressPublisher = null,
     ICloudStateStore? cloudStateStore = null,
-    IUserIntegrationStore? userIntegrationStore = null,
     JiboVerificationService? jiboVerificationService = null,
     HomeAssistantCommandService? homeAssistantCommandService = null,
     HomeAssistantPendingClimateStore? homeAssistantPendingClimateStore = null,

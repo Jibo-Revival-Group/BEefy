@@ -93,7 +93,7 @@ public sealed class WebSocketRequestCoordinatorTests
 
         var service = CreateWebSocketService(out var store);
         var telemetrySink = new RecordingWebSocketTelemetrySink();
-        var haHandler = new HomeAssistantWebSocketHandler(new HomeAssistantConnectionRegistry());
+        var haHandler = new HomeAssistantWebSocketHandler();
         var coordinator = new WebSocketRequestCoordinator(
             service,
             haHandler,
@@ -179,7 +179,7 @@ public sealed class WebSocketRequestCoordinatorTests
         var telemetrySink = new RecordingWebSocketTelemetrySink();
         var pendingStore = new RobotPendingNotificationStore();
         var registry = new RobotNotificationRegistry(pendingStore);
-        var haHandler = new HomeAssistantWebSocketHandler(new HomeAssistantConnectionRegistry());
+        var haHandler = new HomeAssistantWebSocketHandler();
         var coordinator = new WebSocketRequestCoordinator(
             service,
             haHandler,
@@ -279,7 +279,7 @@ public sealed class WebSocketRequestCoordinatorTests
     {
         var service = CreateWebSocketService(out var store);
         telemetrySink = new RecordingWebSocketTelemetrySink();
-        var haHandler = new HomeAssistantWebSocketHandler(new HomeAssistantConnectionRegistry());
+        var haHandler = new HomeAssistantWebSocketHandler();
         return new WebSocketRequestCoordinator(service, haHandler, telemetrySink, store);
     }
 
@@ -289,7 +289,7 @@ public sealed class WebSocketRequestCoordinatorTests
     {
         var service = CreateWebSocketService(out store);
         telemetrySink = new RecordingWebSocketTelemetrySink();
-        var haHandler = new HomeAssistantWebSocketHandler(new HomeAssistantConnectionRegistry());
+        var haHandler = new HomeAssistantWebSocketHandler();
         return new WebSocketRequestCoordinator(service, haHandler, telemetrySink, store);
     }
 
@@ -298,7 +298,7 @@ public sealed class WebSocketRequestCoordinatorTests
         InMemoryCloudStateStore store)
     {
         var telemetrySink = new RecordingWebSocketTelemetrySink();
-        var haHandler = new HomeAssistantWebSocketHandler(new HomeAssistantConnectionRegistry());
+        var haHandler = new HomeAssistantWebSocketHandler();
         return new WebSocketRequestCoordinator(service, haHandler, telemetrySink, store);
     }
 

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Jibo.Cloud.Domain.Models;
+using Microsoft.Extensions.Logging;
 using Jibo.Runtime.Abstractions;
 
 namespace Jibo.Cloud.Application.Services;
@@ -9,7 +10,7 @@ namespace Jibo.Cloud.Application.Services;
 /// Delivers Home Assistant commands to a robot that paired locally, then waits
 /// for the robot to post the command result back when the turn needs it.
 /// </summary>
-public sealed class HomeAssistantRobotRelay
+public sealed class HomeAssistantRobotRelay(ILogger<HomeAssistantRobotRelay>? logger = null)
 {
     public const string CallbackPath = "/v1/homeassistant/robot-result";
     public const string LocalListenRule = "__ha_local";
@@ -85,6 +86,8 @@ public sealed class HomeAssistantRobotRelay
                     ["final"] = false
                 }
             });
+            logger?.LogInformation("Home Assistant robot relay command={Command} requestId={RequestId} waitForResult={WaitForResult}",
+                command, requestId, waitForResult);
             await send(new WebSocketReply { Text = json }, cancellationToken);
 
             if (!waitForResult)
@@ -96,6 +99,7 @@ public sealed class HomeAssistantRobotRelay
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            logger?.LogWarning("Home Assistant robot relay timed out requestId={RequestId}", requestId);
             return HomeAssistantCommandResult.Timeout(requestId);
         }
         finally
@@ -112,6 +116,8 @@ public sealed class HomeAssistantRobotRelay
         if (!_pending.TryRemove(callbackToken, out var pending))
             return false;
 
+        logger?.LogInformation("Home Assistant robot relay result requestId={RequestId} status={Status} message={Message}",
+            result.RequestId, result.Status, result.Message);
         pending.TrySetResult(result);
         return true;
     }

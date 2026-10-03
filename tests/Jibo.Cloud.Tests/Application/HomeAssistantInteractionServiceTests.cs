@@ -123,7 +123,7 @@ public sealed class HomeAssistantInteractionServiceTests
     }
 
     [Fact]
-    public async Task BuildDecisionAsync_HaLightsOff_RequiresRobotPairing()
+    public async Task BuildDecisionAsync_HaLightsOff_NoTransportReportsUnreachableInsteadOfCloudPairing()
     {
         var snapshotStore = new EncryptedUserDataSnapshotStore(
             Path.Combine(Path.GetTempPath(), $"openjibo-ha-intent-{Guid.NewGuid():N}.json"),
@@ -135,7 +135,7 @@ public sealed class HomeAssistantInteractionServiceTests
         registry.RegisterPairedConnection("ha-instance-a", new OpenSocket());
         registry.RegisterPairedConnection("ha-instance-b", new OpenSocket());
         var cloudStateStore = CreateCloudStateStore();
-        var commandService = new HomeAssistantCommandService(integrationStore, registry, cloudStateStore);
+        var commandService = new HomeAssistantCommandService(cloudStateStore, new HomeAssistantRobotRelay());
         var service = CreateService(integrationStore, cloudStateStore, commandService);
 
         var decision = await service.BuildDecisionAsync(new TurnContext
@@ -146,7 +146,7 @@ public sealed class HomeAssistantInteractionServiceTests
         });
 
         Assert.Equal("ha_lights_off", decision.IntentName);
-        Assert.Equal("I need to be paired with Home Assistant before I can control the lights.", decision.ReplyText);
+        Assert.Equal("I couldn't reach Home Assistant just now.", decision.ReplyText);
     }
 
     [Fact]
@@ -158,10 +158,7 @@ public sealed class HomeAssistantInteractionServiceTests
         var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
         integrationStore.AddHomeAssistantLink("105a4a1f-3577-4ce8-96d4-1be1ea637837", "Robot", "ha-instance-a");
         var cloudStateStore = CreateCloudStateStore();
-        var commandService = new HomeAssistantCommandService(
-            integrationStore,
-            new HomeAssistantConnectionRegistry(),
-            cloudStateStore);
+        var commandService = new HomeAssistantCommandService(cloudStateStore, new HomeAssistantRobotRelay());
         var service = CreateService(integrationStore, cloudStateStore, commandService);
 
         var decision = await service.BuildDecisionAsync(new TurnContext
@@ -261,7 +258,6 @@ public sealed class HomeAssistantInteractionServiceTests
             new FirstItemRandomizer(),
             new InMemoryPersonalMemoryStore(),
             cloudStateStore: cloudStateStore,
-            userIntegrationStore: integrationStore,
             homeAssistantCommandService: commandService);
     }
 

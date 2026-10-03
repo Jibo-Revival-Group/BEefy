@@ -1,26 +1,15 @@
 using System.Globalization;
 using Jibo.Cloud.Application.Abstractions;
-using Jibo.Cloud.Domain.Models;
 using Jibo.Runtime.Abstractions;
 using Microsoft.Extensions.Logging;
 
 namespace Jibo.Cloud.Application.Services;
 
 public sealed class HomeAssistantCommandService(
-    IUserIntegrationStore integrationStore,
-    HomeAssistantConnectionRegistry registry,
     ICloudStateStore cloudStateStore,
-    HomeAssistantRobotRelay? robotRelay = null,
+    HomeAssistantRobotRelay robotRelay,
     ILogger<HomeAssistantCommandService>? logger = null)
 {
-    public bool CanReachHomeAssistant(TurnContext turn)
-    {
-        if (robotRelay?.IsHaLocal(turn) == true)
-            return true;
-
-        return ResolveDispatchLinks(turn).Count > 0;
-    }
-
     public async Task<bool> TryDispatchLightCommandAsync(
         TurnContext turn,
         string intentName,
@@ -48,19 +37,8 @@ public sealed class HomeAssistantCommandService(
                 ["targetName"] = lightCommand.Value.TargetName
             };
 
-        if (robotRelay?.IsHaLocal(turn) == true)
-        {
-            LogDispatch(turn, intentName, [], robot: true);
-            return await robotRelay.SendAsync(command, parameters, waitForResult, cancellationToken);
-        }
-
-        return await DispatchToHomeAssistantAsync(
-            turn,
-            intentName,
-            command,
-            _ => parameters,
-            waitForResult,
-            cancellationToken);
+        LogDispatch(turn, intentName);
+        return await robotRelay.SendAsync(command, parameters, waitForResult, cancellationToken);
     }
 
     public async Task<bool> TryDispatchClimateCommandAsync(
@@ -82,23 +60,9 @@ public sealed class HomeAssistantCommandService(
         if (climateCommand is null) return null;
 
         var command = BuildHaClimateCommand(climateCommand.Value);
-        if (robotRelay?.IsHaLocal(turn) == true)
-        {
-            LogDispatch(turn, intentName, [], robot: true);
-            return await robotRelay.SendAsync(
-                command,
-                BuildHaClimateParameters(climateCommand.Value, link: null),
-                waitForResult,
-                cancellationToken);
-        }
-
-        return await DispatchToHomeAssistantAsync(
-            turn,
-            intentName,
-            command,
-            link => BuildHaClimateParameters(climateCommand.Value, link),
-            waitForResult,
-            cancellationToken);
+        LogDispatch(turn, intentName);
+        return await robotRelay.SendAsync(command, BuildHaClimateParameters(climateCommand.Value),
+            waitForResult, cancellationToken);
     }
 
     public async Task<HomeAssistantCommandResult?> DispatchClimateApplyEntityAsync(
@@ -114,42 +78,12 @@ public sealed class HomeAssistantCommandService(
             ["entityId"] = entityId,
             ["action"] = action
         };
-        if (robotRelay?.IsHaLocal(turn) == true)
-        {
-            parameters["blacklistHeat"] = "false";
-            parameters["blacklistCool"] = "false";
-            if (!string.IsNullOrWhiteSpace(temperature))
-                parameters["temperature"] = temperature;
-            if (!string.IsNullOrWhiteSpace(delta))
-                parameters["delta"] = delta;
-
-            LogDispatch(turn, "ha_climate_clarify", [], robot: true);
-            return await robotRelay.SendAsync(
-                "climate_apply_entity",
-                parameters,
-                waitForResult: true,
-                cancellationToken);
-        }
-
-        return await DispatchToHomeAssistantAsync(
-            turn,
-            "ha_climate_clarify",
-            "climate_apply_entity",
-            link =>
-            {
-                var linkParameters = new Dictionary<string, string>(parameters, StringComparer.OrdinalIgnoreCase)
-                {
-                    ["blacklistHeat"] = link.BlacklistHeat ? "true" : "false",
-                    ["blacklistCool"] = link.BlacklistCool ? "true" : "false"
-                };
-                if (!string.IsNullOrWhiteSpace(temperature))
-                    linkParameters["temperature"] = temperature;
-                if (!string.IsNullOrWhiteSpace(delta))
-                    linkParameters["delta"] = delta;
-                return linkParameters;
-            },
-            waitForResult: true,
-            cancellationToken);
+        parameters["blacklistHeat"] = "false";
+        parameters["blacklistCool"] = "false";
+        if (!string.IsNullOrWhiteSpace(temperature)) parameters["temperature"] = temperature;
+        if (!string.IsNullOrWhiteSpace(delta)) parameters["delta"] = delta;
+        LogDispatch(turn, "ha_climate_clarify");
+        return await robotRelay.SendAsync("climate_apply_entity", parameters, true, cancellationToken);
     }
 
     public bool IsNamedLightCommand(TurnContext turn, string intentName)
@@ -168,92 +102,12 @@ public sealed class HomeAssistantCommandService(
                    or HomeAssistantClimateCommandParser.ClimateAction.GetTemperature;
     }
 
-    private HomeAssistantLinkRecord? FindLink(TurnContext turn)
-    {
-        var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
-        return integrationStore.FindLinkForJibo(deviceId, friendlyId);
-    }
-
-    private IReadOnlyList<HomeAssistantLinkRecord> ResolveDispatchLinks(TurnContext turn)
-    {
-        var matched = FindLink(turn);
-        if (matched is not null && registry.IsInstanceConnected(matched.HaInstanceId))
-            return [matched];
-
-        return [];
-    }
-
-    private async Task<HomeAssistantCommandResult?> DispatchToHomeAssistantAsync(
-        TurnContext turn,
-        string intentName,
-        string command,
-        Func<HomeAssistantLinkRecord, IReadOnlyDictionary<string, string>?> parametersFor,
-        bool waitForResult,
-        CancellationToken cancellationToken)
-    {
-        var links = ResolveDispatchLinks(turn);
-        LogDispatch(turn, intentName, links, robot: false);
-        if (links.Count == 0)
-            return null;
-
-        if (waitForResult)
-        {
-            var primary = links[0];
-            var waited = await registry.SendCommandAndWaitAsync(
-                primary.HaInstanceId,
-                primary.LinkId,
-                primary.CommandSecret,
-                command,
-                parametersFor(primary),
-                cancellationToken);
-            for (var index = 1; index < links.Count; index++)
-            {
-                var link = links[index];
-                await registry.SendCommandAsync(
-                    link.HaInstanceId,
-                    link.LinkId,
-                    link.CommandSecret,
-                    command,
-                    parametersFor(link),
-                    cancellationToken);
-            }
-
-            return waited;
-        }
-
-        var anySent = false;
-        foreach (var link in links)
-        {
-            var sent = await registry.SendCommandAsync(
-                link.HaInstanceId,
-                link.LinkId,
-                link.CommandSecret,
-                command,
-                parametersFor(link),
-                cancellationToken);
-            anySent |= sent;
-        }
-
-        return anySent
-            ? new HomeAssistantCommandResult("fire-and-forget", "ok")
-            : null;
-    }
-
-    private void LogDispatch(
-        TurnContext turn,
-        string intentName,
-        IReadOnlyList<HomeAssistantLinkRecord> links,
-        bool robot)
+    private void LogDispatch(TurnContext turn, string intentName)
     {
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
         logger?.LogInformation(
-            "Home Assistant command dispatch transcript={Transcript} intent={Intent} haLocal={HaLocal} robotId={RobotId} friendlyId={FriendlyId} linkIds={LinkIds}",
-            turn.NormalizedTranscript ?? turn.RawTranscript,
-            intentName,
-            robot || HomeAssistantRobotRelay.IsLocal(turn),
-            deviceId,
-            friendlyId,
-            robot ? "robot" : string.Join(",", links.Select(link => link.LinkId)));
+            "Home Assistant command dispatch transcript={Transcript} intent={Intent} route=robot robotId={RobotId} friendlyId={FriendlyId}",
+            turn.NormalizedTranscript ?? turn.RawTranscript, intentName, deviceId, friendlyId);
     }
 
     private static HomeAssistantLightCommandParser.LightCommand? ResolveLightCommand(
@@ -350,8 +204,7 @@ public sealed class HomeAssistantCommandService(
     }
 
     private static IReadOnlyDictionary<string, string>? BuildHaClimateParameters(
-        HomeAssistantClimateCommandParser.ClimateCommand climateCommand,
-        HomeAssistantLinkRecord? link)
+        HomeAssistantClimateCommandParser.ClimateCommand climateCommand)
     {
         Dictionary<string, string>? parameters = null;
 
@@ -375,17 +228,8 @@ public sealed class HomeAssistantCommandService(
             parameters["delta"] = "2";
         }
 
-        if (link is not null)
-            AppendClimateBlacklist(link, ref parameters);
+
         return parameters;
     }
 
-    private static void AppendClimateBlacklist(
-        HomeAssistantLinkRecord link,
-        ref Dictionary<string, string>? parameters)
-    {
-        parameters ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        parameters["blacklistHeat"] = link.BlacklistHeat ? "true" : "false";
-        parameters["blacklistCool"] = link.BlacklistCool ? "true" : "false";
-    }
 }

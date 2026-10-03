@@ -258,7 +258,7 @@ public sealed class HomeAssistantEntityAwareTests
         var sends = 0;
         WebSocketTurnFinalizationService? finalizer = null;
         InMemoryCloudStateStore? state = null;
-        CreateServiceWithRespondingHa("ok", onCommand: _ => sends++,
+        var (harness, _) = CreateServiceWithRespondingHa("ok", onCommand: _ => sends++,
             inspect: (interaction, command, store) =>
             {
                 state = store;
@@ -269,6 +269,7 @@ public sealed class HomeAssistantEntityAwareTests
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<WebSocketTurnFinalizationService>.Instance,
                     command, store);
             });
+        using var relayScope = harness.Bind();
         var token = state!.IssueHubToken("Ghost-Instance-Onion-Silk");
         var session = state.OpenSession("neo-hub-listen", null, token, "neo-hub.jibo.com", "/listen");
         var text = JsonSerializer.Serialize(new { type = "TURN", transID = "light-turn",
@@ -282,7 +283,7 @@ public sealed class HomeAssistantEntityAwareTests
         Assert.Equal(1, sends);
     }
 
-    private static (JiboInteractionService Service, HomeAssistantPendingClimateStore PendingStore)
+    private static (RespondingHaService Service, HomeAssistantPendingClimateStore PendingStore)
         CreateServiceWithRespondingHa(
             string status,
             string? matchedName = null,
@@ -299,10 +300,6 @@ public sealed class HomeAssistantEntityAwareTests
             Path.Combine(Path.GetTempPath(), $"openjibo-ha-aware-{Guid.NewGuid():N}.json"),
             new UserDataEncryptionService());
         var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
-        integrationStore.AddHomeAssistantLink(
-            "BOJW-1000-0017-0820-0020",
-            "Ghost-Instance-Onion-Silk",
-            "ha-instance-1");
 
         var cloudStateStore = new InMemoryCloudStateStore();
         cloudStateStore.UpdateRobot(new DeviceRegistration
@@ -325,22 +322,43 @@ public sealed class HomeAssistantEntityAwareTests
         registry.RegisterPairedConnection("ha-instance-1", socket);
 
         var pendingStore = new HomeAssistantPendingClimateStore();
-        var commandService = new HomeAssistantCommandService(integrationStore, registry, cloudStateStore);
+        var relay = new HomeAssistantRobotRelay();
+        var commandService = new HomeAssistantCommandService(cloudStateStore, relay);
         var service = new JiboInteractionService(
             new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
             new FirstItemRandomizer(),
             new InMemoryPersonalMemoryStore(),
             cloudStateStore: cloudStateStore,
-            userIntegrationStore: integrationStore,
             homeAssistantCommandService: commandService,
             homeAssistantPendingClimateStore: pendingStore);
 
         inspect?.Invoke(service, commandService, cloudStateStore);
-        return (service, pendingStore);
+        return (new RespondingHaService(service, relay, socket), pendingStore);
+    }
+
+    private sealed class RespondingHaService(
+        JiboInteractionService service, HomeAssistantRobotRelay relay, CapturingWebSocket socket)
+    {
+        public IDisposable Bind() => AmbientTurnProgressPublisher.Begin(async (reply, cancellationToken) =>
+        {
+            using var doc = JsonDocument.Parse(reply.Text!);
+            var action = doc.RootElement.GetProperty("data").GetProperty("action");
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(action);
+            await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
+            if (socket.LastResult is not null && action.TryGetProperty("callbackToken", out var token))
+                relay.TryComplete(token.GetString()!, HomeAssistantCommandResult.FromJson(socket.LastResult.Value));
+        });
+
+        public async Task<JiboInteractionDecision> BuildDecisionAsync(TurnContext turn)
+        {
+            using var scope = Bind();
+            return await service.BuildDecisionAsync(turn);
+        }
     }
 
     private sealed class CapturingWebSocket : WebSocket
     {
+        public JsonElement? LastResult { get; private set; }
         private readonly HomeAssistantConnectionRegistry _registry;
         private readonly string _status;
         private readonly string? _matchedName;
@@ -451,7 +469,8 @@ public sealed class HomeAssistantEntityAwareTests
 
             var json = JsonSerializer.Serialize(payload);
             using var resultDoc = JsonDocument.Parse(json);
-            _registry.TryCompleteCommandResult(resultDoc.RootElement.Clone());
+            LastResult = resultDoc.RootElement.Clone();
+            _registry.TryCompleteCommandResult(LastResult.Value);
             return Task.CompletedTask;
         }
     }

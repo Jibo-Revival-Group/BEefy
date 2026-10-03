@@ -34,25 +34,15 @@ public sealed partial class JiboInteractionService
         string intentName,
         CancellationToken cancellationToken)
     {
-        if (userIntegrationStore is null || cloudStateStore is null)
+        if (cloudStateStore is null)
             return new JiboInteractionDecision(
                 intentName,
                 "Home Assistant control is not available on this server right now.");
 
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
-        var link = userIntegrationStore.FindLinkForJibo(deviceId, friendlyId);
         if (homeAssistantCommandService is null)
             return new JiboInteractionDecision(intentName,
                 "Home Assistant control is not available on this server right now.");
-        if (!HomeAssistantRobotRelay.IsLocal(turn) && link is null)
-        {
-            logger?.LogWarning(
-                "Home Assistant lights rejected reason=pairing_missing sessionId={SessionId} requestId={RequestId} turnDeviceId={TurnDeviceId} resolvedDeviceId={ResolvedDeviceId} resolvedFriendlyId={ResolvedFriendlyId} haLocal={HaLocal}",
-                turn.SessionId, turn.RequestId, turn.DeviceId, deviceId, friendlyId,
-                HomeAssistantRobotRelay.IsLocal(turn));
-            return new JiboInteractionDecision(intentName,
-                "I need to be paired with Home Assistant before I can control the lights.");
-        }
 
         var transcript = turn.NormalizedTranscript ?? turn.RawTranscript;
         HomeAssistantLightCommandParser.TryParse(transcript, out var lightCommand);
@@ -147,18 +137,12 @@ public sealed partial class JiboInteractionService
         string intentName,
         CancellationToken cancellationToken)
     {
-        if (userIntegrationStore is null || cloudStateStore is null)
+        if (cloudStateStore is null)
             return new JiboInteractionDecision(
                 intentName,
                 "Home Assistant control is not available on this server right now.");
 
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
-        var link = userIntegrationStore.FindLinkForJibo(deviceId, friendlyId);
-        if (!IsHomeAssistantReady(turn, link))
-            return new JiboInteractionDecision(
-                intentName,
-                "I don't have Home Assistant set up for my room yet.");
-
         var transcript = turn.NormalizedTranscript ?? turn.RawTranscript;
         HomeAssistantClimateCommandParser.TryParse(transcript, out var climateCommand);
 
@@ -203,7 +187,7 @@ public sealed partial class JiboInteractionService
                 _ => "set_temperature"
             };
             homeAssistantPendingClimateStore.Set(
-                friendlyId ?? deviceId ?? link?.JiboFriendlyName ?? "ha-local",
+                friendlyId ?? deviceId ?? "ha-local",
                 new HomeAssistantPendingClimateStore.PendingClimateAction(
                     action,
                     result.Candidates.ToArray(),
@@ -239,8 +223,7 @@ public sealed partial class JiboInteractionService
         CancellationToken cancellationToken)
     {
         const string intentName = "ha_climate_clarify";
-        if (userIntegrationStore is null ||
-            cloudStateStore is null ||
+        if (cloudStateStore is null ||
             homeAssistantCommandService is null ||
             homeAssistantPendingClimateStore is null)
             return new JiboInteractionDecision(
@@ -304,14 +287,6 @@ public sealed partial class JiboInteractionService
             return new JiboInteractionDecision(intentName, $"Okay, I'll warm things up with the {name}.");
 
         return new JiboInteractionDecision(intentName, $"Okay, I'll use the {name}.");
-    }
-
-    private bool IsHomeAssistantReady(TurnContext turn, HomeAssistantLinkRecord? link)
-    {
-        if (HomeAssistantRobotRelay.IsLocal(turn) || link is not null)
-            return true;
-
-        return homeAssistantCommandService?.CanReachHomeAssistant(turn) == true;
     }
 
     private bool ShouldTreatAsHaClimateClarify(TurnContext turn, string loweredTranscript, string semanticIntent)

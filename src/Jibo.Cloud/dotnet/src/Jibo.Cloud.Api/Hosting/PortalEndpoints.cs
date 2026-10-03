@@ -281,9 +281,7 @@ internal static class PortalEndpoints
         app.MapGet("/api/portal/admin/summary", (
             HttpRequest request,
             PortalSessionService portalSessionService,
-            ICloudStateStore cloudStateStore,
-            IUserIntegrationStore integrationStore,
-            HomeAssistantConnectionRegistry registry) =>
+            ICloudStateStore cloudStateStore) =>
         {
             var session = ResolvePortalSession(request, null, portalSessionService);
             if (session is null)
@@ -299,7 +297,6 @@ internal static class PortalEndpoints
             var updates = cloudStateStore.ListUpdates();
             var media = cloudStateStore.ListMedia([loopId]);
             var people = graph.People;
-            var haLink = integrationStore.FindLinkForJibo(session.FriendlyId, session.FriendlyId);
             var robotKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 { session.DeviceId, session.FriendlyId };
             var trustedServerAdmissions = cloudStateStore.GetTrustedServerAdmissions()
@@ -329,10 +326,6 @@ internal static class PortalEndpoints
                     updates = updates.Count,
                     backups = backups.Length,
                     media = media.Count,
-                    homeAssistantLinks = haLink is null ? 0 : 1,
-                    homeAssistantConnected = haLink is not null && registry.IsInstanceConnected(haLink.HaInstanceId)
-                        ? 1
-                        : 0,
                     identityRelationships = graph.Relationships.Count,
                     identityEvidenceSignals = graph.EvidenceSignals.Count,
                     trustedServerAdmissions = trustedServerAdmissions.Length
