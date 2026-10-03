@@ -83,6 +83,7 @@ public sealed partial class JiboInteractionService
                 intentName,
                 result.Message switch
                 {
+                    "pairing_required" => "My Home Assistant pairing is missing on this robot. Please pair me using the Yes or No prompt.",
                     "auth_failed" => "Home Assistant rejected my command. Please check my pairing and the server clocks.",
                     "timeout" => "Home Assistant didn't confirm the light command in time.",
                     "disconnected" => "I couldn't reach Home Assistant just now.",

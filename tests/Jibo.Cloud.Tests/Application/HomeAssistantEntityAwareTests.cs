@@ -69,6 +69,20 @@ public sealed class HomeAssistantEntityAwareTests
     }
 
     [Fact]
+    public async Task BuildDecisionAsync_Light_ExplainsMissingRobotPairing()
+    {
+        var (service, _) = CreateServiceWithRespondingHa(status: "error", message: "pairing_required");
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "turn off the lights",
+            NormalizedTranscript = "turn off the lights",
+            DeviceId = "Ghost-Instance-Onion-Silk"
+        });
+        Assert.Equal("My Home Assistant pairing is missing on this robot. Please pair me using the Yes or No prompt.",
+            decision.ReplyText);
+    }
+
+    [Fact]
     public async Task BuildDecisionAsync_Climate_AsksWhichThermostat_WhenNeedsClarification()
     {
         var (service, pendingStore) = CreateServiceWithRespondingHa(
