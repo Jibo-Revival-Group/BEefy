@@ -1,3 +1,4 @@
+using Jibo.Cloud.Domain.Models;
 using Jibo.Runtime.Abstractions;
 
 namespace Jibo.Cloud.Application.Services;
@@ -39,7 +40,7 @@ public sealed partial class JiboInteractionService
 
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
         var link = userIntegrationStore.FindLinkForJibo(deviceId, friendlyId);
-        if (link is null && !HomeAssistantRobotRelay.IsLocal(turn))
+        if (!IsHomeAssistantReady(turn, link))
             return new JiboInteractionDecision(
                 intentName,
                 "I don't have Home Assistant set up for my room yet.");
@@ -142,7 +143,7 @@ public sealed partial class JiboInteractionService
 
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
         var link = userIntegrationStore.FindLinkForJibo(deviceId, friendlyId);
-        if (link is null && !HomeAssistantRobotRelay.IsLocal(turn))
+        if (!IsHomeAssistantReady(turn, link))
             return new JiboInteractionDecision(
                 intentName,
                 "I don't have Home Assistant set up for my room yet.");
@@ -292,6 +293,14 @@ public sealed partial class JiboInteractionService
             return new JiboInteractionDecision(intentName, $"Okay, I'll warm things up with the {name}.");
 
         return new JiboInteractionDecision(intentName, $"Okay, I'll use the {name}.");
+    }
+
+    private bool IsHomeAssistantReady(TurnContext turn, HomeAssistantLinkRecord? link)
+    {
+        if (HomeAssistantRobotRelay.IsLocal(turn) || link is not null)
+            return true;
+
+        return homeAssistantCommandService?.CanReachHomeAssistant(turn) == true;
     }
 
     private bool ShouldTreatAsHaClimateClarify(TurnContext turn, string loweredTranscript, string semanticIntent)

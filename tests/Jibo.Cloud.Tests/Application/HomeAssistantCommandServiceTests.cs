@@ -203,6 +203,99 @@ public sealed class HomeAssistantCommandServiceTests
         Assert.False(registry.IsInstanceConnected("missing-instance"));
     }
 
+    [Fact]
+    public async Task TryDispatchLightCommandAsync_SendsToEachConnectedLink_WhenRobotIdDoesNotMatch()
+    {
+        var snapshotStore = new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-ha-cmd-{Guid.NewGuid():N}.json"),
+            new UserDataEncryptionService());
+        var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
+        integrationStore.AddHomeAssistantLink("other-device-a", "Other-Robot-Alpha", "ha-instance-a");
+        integrationStore.AddHomeAssistantLink("other-device-b", "Other-Robot-Beta", "ha-instance-b");
+
+        var registry = new HomeAssistantConnectionRegistry();
+        var first = new CapturingWebSocket();
+        var second = new CapturingWebSocket();
+        registry.RegisterPairedConnection("ha-instance-a", first);
+        registry.RegisterPairedConnection("ha-instance-b", second);
+
+        var service = new HomeAssistantCommandService(
+            integrationStore,
+            registry,
+            new InMemoryCloudStateStore());
+
+        var dispatched = await service.TryDispatchLightCommandAsync(new TurnContext
+        {
+            DeviceId = "105a4a1f-3577-4ce8-96d4-1be1ea637837",
+            NormalizedTranscript = "turn off the lights"
+        }, "ha_lights_off");
+
+        Assert.True(dispatched);
+        Assert.Equal("lights_off_current_room", first.LastPayload!.Value.GetProperty("command").GetString());
+        Assert.Equal("lights_off_current_room", second.LastPayload!.Value.GetProperty("command").GetString());
+    }
+
+    [Fact]
+    public async Task TryDispatchLightCommandAsync_SendsOnlyToMatchedLink_WhenRobotIdMatches()
+    {
+        var snapshotStore = new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-ha-cmd-{Guid.NewGuid():N}.json"),
+            new UserDataEncryptionService());
+        var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
+        integrationStore.AddHomeAssistantLink(
+            "BOJW-1000-0017-0820-0020",
+            "Ghost-Instance-Onion-Silk",
+            "ha-instance-1");
+        integrationStore.AddHomeAssistantLink("other-device-b", "Other-Robot-Beta", "ha-instance-b");
+
+        var registry = new HomeAssistantConnectionRegistry();
+        var matched = new CapturingWebSocket();
+        var other = new CapturingWebSocket();
+        registry.RegisterPairedConnection("ha-instance-1", matched);
+        registry.RegisterPairedConnection("ha-instance-b", other);
+
+        var cloudStateStore = new InMemoryCloudStateStore();
+        cloudStateStore.UpdateRobot(new DeviceRegistration
+        {
+            DeviceId = "BOJW-1000-0017-0820-0020",
+            RobotId = "Ghost-Instance-Onion-Silk",
+            FriendlyName = "Test Robot"
+        });
+        var service = new HomeAssistantCommandService(integrationStore, registry, cloudStateStore);
+
+        var dispatched = await service.TryDispatchLightCommandAsync(new TurnContext
+        {
+            DeviceId = "Ghost-Instance-Onion-Silk",
+            NormalizedTranscript = "turn off the lights"
+        }, "ha_lights_off");
+
+        Assert.True(dispatched);
+        Assert.Equal("lights_off_current_room", matched.LastPayload!.Value.GetProperty("command").GetString());
+        Assert.Null(other.LastPayload);
+    }
+
+    [Fact]
+    public async Task TryDispatchLightCommandAsync_ReturnsFalse_WhenPairedLinksAreDisconnected()
+    {
+        var snapshotStore = new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-ha-cmd-{Guid.NewGuid():N}.json"),
+            new UserDataEncryptionService());
+        var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
+        integrationStore.AddHomeAssistantLink("other-device-a", "Other-Robot-Alpha", "ha-instance-a");
+        var service = new HomeAssistantCommandService(
+            integrationStore,
+            new HomeAssistantConnectionRegistry(),
+            new InMemoryCloudStateStore());
+
+        var dispatched = await service.TryDispatchLightCommandAsync(new TurnContext
+        {
+            DeviceId = "105a4a1f-3577-4ce8-96d4-1be1ea637837",
+            NormalizedTranscript = "turn off the lights"
+        }, "ha_lights_off");
+
+        Assert.False(dispatched);
+    }
+
     private static (HomeAssistantCommandService Service, CapturingWebSocket Socket) CreateLinkedService()
     {
         var snapshotStore = new EncryptedUserDataSnapshotStore(

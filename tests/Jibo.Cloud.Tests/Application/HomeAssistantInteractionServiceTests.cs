@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Content;
@@ -130,6 +131,59 @@ public sealed class HomeAssistantInteractionServiceTests
         Assert.Equal("Okay, turning off the lights.", decision.ReplyText);
     }
 
+    [Fact]
+    public async Task BuildDecisionAsync_HaLightsOff_UsesConnectedHomeAssistant_WhenRobotIdDoesNotMatch()
+    {
+        var snapshotStore = new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-ha-intent-{Guid.NewGuid():N}.json"),
+            new UserDataEncryptionService());
+        var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
+        integrationStore.AddHomeAssistantLink("other-device-a", "Other-Robot-Alpha", "ha-instance-a");
+        integrationStore.AddHomeAssistantLink("other-device-b", "Other-Robot-Beta", "ha-instance-b");
+        var registry = new HomeAssistantConnectionRegistry();
+        registry.RegisterPairedConnection("ha-instance-a", new OpenSocket());
+        registry.RegisterPairedConnection("ha-instance-b", new OpenSocket());
+        var cloudStateStore = CreateCloudStateStore();
+        var commandService = new HomeAssistantCommandService(integrationStore, registry, cloudStateStore);
+        var service = CreateService(integrationStore, cloudStateStore, commandService);
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "turn off the lights",
+            NormalizedTranscript = "turn off the lights",
+            DeviceId = "105a4a1f-3577-4ce8-96d4-1be1ea637837"
+        });
+
+        Assert.Equal("ha_lights_off", decision.IntentName);
+        Assert.Equal("Okay, turning off the lights.", decision.ReplyText);
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_HaLightsOff_ReturnsFallback_WhenPairedLinksAreDisconnected()
+    {
+        var snapshotStore = new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-ha-intent-{Guid.NewGuid():N}.json"),
+            new UserDataEncryptionService());
+        var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
+        integrationStore.AddHomeAssistantLink("other-device-a", "Other-Robot-Alpha", "ha-instance-a");
+        var cloudStateStore = CreateCloudStateStore();
+        var commandService = new HomeAssistantCommandService(
+            integrationStore,
+            new HomeAssistantConnectionRegistry(),
+            cloudStateStore);
+        var service = CreateService(integrationStore, cloudStateStore, commandService);
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "turn off the lights",
+            NormalizedTranscript = "turn off the lights",
+            DeviceId = "105a4a1f-3577-4ce8-96d4-1be1ea637837"
+        });
+
+        Assert.Equal("ha_lights_off", decision.IntentName);
+        Assert.Equal("I don't have Home Assistant set up for my room yet.", decision.ReplyText);
+    }
+
     [Theory]
     [InlineData("verify me")]
     [InlineData("what's my verification code")]
@@ -208,14 +262,43 @@ public sealed class HomeAssistantInteractionServiceTests
 
     private static JiboInteractionService CreateService(
         InMemoryUserIntegrationStore integrationStore,
-        InMemoryCloudStateStore cloudStateStore)
+        InMemoryCloudStateStore cloudStateStore,
+        HomeAssistantCommandService? commandService = null)
     {
         return new JiboInteractionService(
             new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
             new FirstItemRandomizer(),
             new InMemoryPersonalMemoryStore(),
             cloudStateStore: cloudStateStore,
-            userIntegrationStore: integrationStore);
+            userIntegrationStore: integrationStore,
+            homeAssistantCommandService: commandService);
+    }
+
+    private sealed class OpenSocket : WebSocket
+    {
+        public override WebSocketCloseStatus? CloseStatus => null;
+        public override string? CloseStatusDescription => null;
+        public override WebSocketState State => WebSocketState.Open;
+        public override string? SubProtocol => null;
+        public override void Abort()
+        {
+        }
+
+        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public override void Dispose()
+        {
+        }
+
+        public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage,
+            CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class FirstItemRandomizer : IJiboRandomizer
