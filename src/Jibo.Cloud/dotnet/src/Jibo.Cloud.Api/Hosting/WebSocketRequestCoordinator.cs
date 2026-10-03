@@ -258,10 +258,16 @@ internal sealed class WebSocketRequestCoordinator(
                     {
                         watchdogDelay = Task.Delay(TurnWatchdogInterval, context.RequestAborted);
                         var idleEnvelope = CreateEnvelope(context, kind, token, connectionId);
-                        var idleReplies = await webSocketService.HandleIdleAsync(
-                            session,
-                            idleEnvelope,
-                            context.RequestAborted);
+                        IReadOnlyList<WebSocketReply> idleReplies;
+                        using (AmbientTurnProgressPublisher.Begin(
+                                   (reply, cancellationToken) => SendRepliesAsync(socket, [reply], kind,
+                                       transportMetrics, cancellationToken)))
+                        {
+                            idleReplies = await webSocketService.HandleIdleAsync(
+                                session,
+                                idleEnvelope,
+                                context.RequestAborted);
+                        }
                         if (idleReplies.Count > 0)
                         {
                             logger.LogInformation(

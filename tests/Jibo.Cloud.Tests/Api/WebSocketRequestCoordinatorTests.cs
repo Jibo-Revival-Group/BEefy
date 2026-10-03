@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
+using Jibo.Runtime.Abstractions;
 using Jibo.Cloud.Api.Hosting;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
@@ -275,6 +277,81 @@ public sealed class WebSocketRequestCoordinatorTests
         Assert.Equal(WebSocketState.Closed, newSocket.State);
     }
 
+    [Fact]
+    public async Task IdleWatchdog_HaLightsSendsRobotActionAndWaitsForResult()
+    {
+        var store = new InMemoryCloudStateStore();
+        var token = store.IssueHubToken("watchdog-ha-robot");
+        var relay = new HomeAssistantRobotRelay();
+        var commands = new HomeAssistantCommandService(store, relay);
+        var interaction = new JiboInteractionService(
+            new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new LastItemRandomizer(), new InMemoryPersonalMemoryStore(),
+            cloudStateStore: store, homeAssistantCommandService: commands);
+        var finalizer = new WebSocketTurnFinalizationService(new DemoConversationBroker(interaction),
+            new DefaultSttStrategySelector([new WatchdogLightStt()]), new NullTurnTelemetrySink(),
+            NullLogger<WebSocketTurnFinalizationService>.Instance, commands, store);
+        var service = new JiboWebSocketService(store, new NullWebSocketTelemetrySink(), finalizer);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var actionCount = 0;
+        var socket = new FakeWebSocket(
+            new FakeWebSocketFrame(WebSocketMessageType.Text, Encoding.UTF8.GetBytes(
+                """{"type":"LISTEN","transID":"watchdog-light","data":{"rules":["global"]}}""")),
+            new FakeWebSocketFrame(WebSocketMessageType.Text, Encoding.UTF8.GetBytes(
+                """{"type":"CONTEXT","data":{"general":{}}}""")),
+            new FakeWebSocketFrame(WebSocketMessageType.Binary, new byte[4000]),
+            new FakeWebSocketFrame(WebSocketMessageType.Binary, new byte[4000]),
+            new FakeWebSocketFrame(WebSocketMessageType.Binary, new byte[4000]),
+            new FakeWebSocketFrame(WebSocketMessageType.Close, []))
+        {
+            PauseBeforeReceiveNumber = 6, ReceiveGate = gate,
+            OnSend = payload =>
+            {
+                using var doc = JsonDocument.Parse(payload);
+                var root = doc.RootElement;
+                if (root.GetProperty("type").GetString() == "SKILL_ACTION")
+                {
+                    var data = root.GetProperty("data");
+                    if (data.GetProperty("skill").GetProperty("id").GetString() == HomeAssistantRobotRelay.RobotSkillId)
+                    {
+                        actionCount++;
+                        var action = data.GetProperty("action");
+                        Assert.Equal("lights_off_current_room", action.GetProperty("command").GetString());
+                        relay.TryComplete(action.GetProperty("callbackToken").GetString()!,
+                            new HomeAssistantCommandResult(action.GetProperty("requestId").GetString()!, "ok"));
+                    }
+                    else finished.TrySetResult(true);
+                }
+                return Task.CompletedTask;
+            }
+        };
+        var context = CreateContext(socket);
+        context.Request.Host = new HostString("neo-hub.jibo.com");
+        context.Request.Path = "/listen";
+        context.Request.Headers.Authorization = $"Bearer {token}";
+        var handling = CreateCoordinator(service, store).HandleAsync(context);
+        try
+        {
+            await finished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(1, actionCount);
+            Assert.Equal("ha_lights_off", store.FindActiveSessionByToken(token)!.LastIntent);
+        }
+        finally
+        {
+            gate.TrySetResult(true);
+            await handling;
+        }
+    }
+
+    private sealed class WatchdogLightStt : ISttStrategy
+    {
+        public string Name => "watchdog-light";
+        public bool CanHandle(TurnContext turn) => true;
+        public Task<SttResult> TranscribeAsync(TurnContext turn, CancellationToken cancellationToken = default)
+            => Task.FromResult(new SttResult { Text = "turn off the lights", Confidence = 1 });
+    }
+
     private static WebSocketRequestCoordinator CreateCoordinator(out RecordingWebSocketTelemetrySink telemetrySink)
     {
         var service = CreateWebSocketService(out var store);
@@ -404,6 +481,7 @@ public sealed class WebSocketRequestCoordinatorTests
         public int PauseBeforeReceiveNumber { get; set; }
 
         public TaskCompletionSource<bool>? ReceiveGate { get; set; }
+        public Func<byte[], Task>? OnSend { get; set; }
 
         public bool ThrowPrematureOnNextReceive { get; set; }
 
@@ -478,8 +556,9 @@ public sealed class WebSocketRequestCoordinatorTests
         public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage,
             CancellationToken cancellationToken)
         {
-            SentPayloads.Add(buffer.ToArray());
-            return Task.CompletedTask;
+            var payload = buffer.ToArray();
+            SentPayloads.Add(payload);
+            return OnSend?.Invoke(payload) ?? Task.CompletedTask;
         }
     }
 

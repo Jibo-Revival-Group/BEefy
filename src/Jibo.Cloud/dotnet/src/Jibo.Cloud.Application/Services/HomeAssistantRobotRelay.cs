@@ -39,7 +39,10 @@ public sealed class HomeAssistantRobotRelay(ILogger<HomeAssistantRobotRelay>? lo
     {
         var send = AmbientTurnProgressPublisher.TryGetSendAsync();
         if (send is null)
+        {
+            logger?.LogWarning("Home Assistant robot relay unavailable reason=missing_outbound_transport command={Command}", command);
             return null;
+        }
 
         var requestId = Guid.NewGuid().ToString("N");
         string? callbackToken = null;
