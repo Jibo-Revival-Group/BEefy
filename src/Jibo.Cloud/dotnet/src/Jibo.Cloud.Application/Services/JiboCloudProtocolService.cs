@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jibo.Cloud.Application.Services;
 
-public sealed class JiboCloudProtocolService(
+public sealed partial class JiboCloudProtocolService(
     ICloudStateStore stateStore,
     IMediaContentStore? mediaContentStore = null,
     IConfiguration? configuration = null,
@@ -20,7 +20,9 @@ public sealed class JiboCloudProtocolService(
     RobotNotificationRegistry? robotNotificationRegistry = null,
     LoopUpdatedPushService? loopUpdatedPushService = null,
     ILogger<JiboCloudProtocolService>? logger = null,
-    RobotIdentitySuggestionStore? identitySuggestionStore = null)
+    RobotIdentitySuggestionStore? identitySuggestionStore = null,
+    IUserIntegrationStore? userIntegrationStore = null,
+    IMemberCalendarFeedProbe? calendarFeedProbe = null)
 {
     private const int SchedulerBackupDelayMs = 250;
     private const int SchedulerDownloadTickMs = 100;
@@ -165,7 +167,11 @@ public sealed class JiboCloudProtocolService(
             return Task.FromResult(HandleNotification(operation, envelope));
 
         if (servicePrefix.StartsWith("Loop_", StringComparison.OrdinalIgnoreCase))
+        {
+            if (IsMemberCalendarOperation(operation))
+                return HandleMemberCalendarAsync(operation, envelope);
             return Task.FromResult(HandleLoop(operation, envelope));
+        }
 
         if (servicePrefix.Equals("Media_20160725", StringComparison.OrdinalIgnoreCase))
             return Task.FromResult(HandleMedia(operation, envelope, ResolveRobotIdentity(envelope, $"media.{operation}")));

@@ -9,8 +9,9 @@ management), BEnch LoopManager (seed sync), and BEefy (NLU/STT recognition).
 in the robot's local Knowledge Base (`/opt/jibo/Knowledge/jibo/loop`).
 
 **BEefy recognizes people** from each speech turn's `runtime.loop.users` via
-`SyncPeopleFromLoopUsers`. It does **not** own household CRUD. The portal Loop
-panel only attaches calendars to robot-reported people.
+`SyncPeopleFromLoopUsers`. It does **not** own household CRUD. Personal-report
+calendars are attached on the BEacon People panel and stored as encrypted
+per-member iCal feeds. The BEefy customer portal is gone.
 
 **BEefy `ListLoops`** seeds **owner + robot** only so stock LoopManager can boot.
 Human members are never driven from cloud into the robot.
@@ -99,8 +100,8 @@ fields.
 
 | Surface | Role |
 |---------|------|
-| BEacon People (`:8123`) | **Manage** household: add / rename / remove / photo; enrollment badges; phonetic name; sync diagnostics |
-| BEefy portal Loop | Calendars only (people come from robot-reported roster) |
+| BEacon People (`:8123`) | **Manage** household: add / rename / remove / photo; enrollment badges; phonetic name; sync diagnostics; per-person iCal URL for personal report |
+| BEefy operator status | Fleet health and admin config. Not a household portal |
 | Main menu | Introductions + Who am I |
 | `@be/introductions` / `@be/who-am-i` / `@be/greetings` | Enrollment and named greetings |
 | BEefy NLU/STT | Recognize loop members via `runtime.loop.users` |

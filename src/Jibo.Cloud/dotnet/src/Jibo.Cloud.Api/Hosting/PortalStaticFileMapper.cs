@@ -15,11 +15,8 @@ internal static class PortalStaticFileMapper
             () => Serve(portalDirectory, "status/status.css", "text/css; charset=utf-8"));
         app.MapGet("/portal/status/status.js",
             () => Serve(portalDirectory, "status/status.js", "application/javascript; charset=utf-8"));
-        app.MapGet("/portal", () => Results.Redirect("/portal/index.html"));
-        app.MapGet("/portal/index.html", () => Serve(portalDirectory, "index.html", "text/html; charset=utf-8"));
-        app.MapGet("/portal/portal.js",
-            () => Serve(portalDirectory, "portal.js", "application/javascript; charset=utf-8"));
-        app.MapGet("/portal/portal.css", () => Serve(portalDirectory, "portal.css", "text/css; charset=utf-8"));
+        app.MapGet("/portal", () => Results.Redirect("/portal/status"));
+        app.MapGet("/portal/index.html", () => Results.Redirect("/portal/status"));
         app.MapGet("/portal/admin/config", () => Results.Redirect("/portal/admin/config/index.html"));
         app.MapGet("/portal/admin/config/index.html",
             () => Serve(portalDirectory, "admin/config/index.html", "text/html; charset=utf-8"));
@@ -32,12 +29,9 @@ internal static class PortalStaticFileMapper
         var portalDirectory = ResolveStaticDirectory(app.Environment.WebRootPath, app.Environment.ContentRootPath, "portal", "index.html");
         var harnessDirectory = ResolveStaticDirectory(app.Environment.WebRootPath, app.Environment.ContentRootPath, "harness", "index.html");
 
-        app.MapGet("/portal", () => Results.Redirect("/portal/index.html"));
-        app.MapGet("/portal.html", () => Results.Redirect("/portal/index.html"));
-        app.MapGet("/portal/index.html", () => Serve(portalDirectory, "index.html", "text/html; charset=utf-8"));
-        app.MapGet("/portal/portal.css", () => Serve(portalDirectory, "portal.css", "text/css; charset=utf-8"));
-        app.MapGet("/portal/portal.js",
-            () => Serve(portalDirectory, "portal.js", "application/javascript; charset=utf-8"));
+        app.MapGet("/portal", () => Results.Redirect("/portal/status"));
+        app.MapGet("/portal.html", () => Results.Redirect("/portal/status"));
+        app.MapGet("/portal/index.html", () => Results.Redirect("/portal/status"));
         app.MapGet("/portal/status", () => Results.Redirect("/portal/status/index.html"));
         app.MapGet("/portal/status.html", () => Results.Redirect("/portal/status/index.html"));
         app.MapGet("/portal/status/index.html", () => Serve(portalDirectory, "status/index.html", "text/html; charset=utf-8"));

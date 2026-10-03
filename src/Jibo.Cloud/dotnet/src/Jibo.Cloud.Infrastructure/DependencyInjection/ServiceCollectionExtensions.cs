@@ -127,6 +127,7 @@ public static class ServiceCollectionExtensions
                 AllowAutoRedirect = false
             });
         services.AddSingleton<IcalCalendarFeedInspector>();
+        services.AddSingleton<IMemberCalendarFeedProbe, IcalMemberCalendarFeedProbe>();
         services.AddSingleton<CloudStateCalendarReportProvider>();
         services.AddSingleton<ICalendarReportProvider>(provider =>
             new IcalCalendarReportProvider(

@@ -395,7 +395,6 @@ async function renderLogin(message = "", isError = false) {
         <input id="statusPassword" type="password" autocomplete="current-password" placeholder="Enter password">
         <div class="button-row">
           <button class="button primary" id="loginButton" type="button">Open status dashboard</button>
-          <a class="secondary-button" href="/portal">Back to portal</a>
         </div>
         ${message ? `<p class="status ${isError ? "error" : "success"}">${escapeHtml(message)}</p>` : ""}
       </section>
@@ -939,7 +938,6 @@ function renderStatusView(summary, previous = previousSummary) {
             <a class="secondary-button" href="/portal/admin/onboarding">Onboarding</a>
             <a class="secondary-button" href="/portal/admin/config">Config</a>
             <a class="secondary-button" href="/portal/admin/harness">Harness</a>
-            <a class="secondary-button" href="/portal">Customer portal</a>
             <button class="button secondary" id="refreshButton" type="button">Refresh</button>
             <button class="button danger" id="logoutButton" type="button">Sign out</button>
           </div>

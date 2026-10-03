@@ -9,7 +9,7 @@ public static class AwsRequestAccessKey
 {
     public static string? Read(ProtocolEnvelope envelope)
     {
-        envelope.Headers.TryGetValue("Authorization", out var authorization);
+        var authorization = Aws3Signature.ReadAuthorization(envelope);
         var credential = ExtractCredential(authorization) ??
                          (envelope.QueryParameters.TryGetValue("X-Amz-Credential", out var queryCredential)
                              ? queryCredential
