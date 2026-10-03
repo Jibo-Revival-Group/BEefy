@@ -21,8 +21,10 @@ public sealed class HomeAssistantCommandServiceTests
         {
             sends++;
             using var doc = JsonDocument.Parse(reply.Text!);
-            Assert.Equal("HA_COMMAND", doc.RootElement.GetProperty("type").GetString());
-            var action = doc.RootElement.GetProperty("data");
+            Assert.Equal("SKILL_ACTION", doc.RootElement.GetProperty("type").GetString());
+            var envelope = doc.RootElement.GetProperty("data");
+            Assert.Equal(HomeAssistantRobotRelay.RobotSkillId, envelope.GetProperty("skill").GetProperty("id").GetString());
+            var action = envelope.GetProperty("action");
             Assert.Equal(command, action.GetProperty("command").GetString());
             if (target is not null) Assert.Equal(target, action.GetProperty("targetName").GetString());
             relay.TryComplete(action.GetProperty("callbackToken").GetString()!,
@@ -47,8 +49,10 @@ public sealed class HomeAssistantCommandServiceTests
         using var scope = AmbientTurnProgressPublisher.Begin((reply, _) =>
         {
             using var doc = JsonDocument.Parse(reply.Text!);
-            Assert.Equal("HA_COMMAND", doc.RootElement.GetProperty("type").GetString());
-            var action = doc.RootElement.GetProperty("data");
+            Assert.Equal("SKILL_ACTION", doc.RootElement.GetProperty("type").GetString());
+            var envelope = doc.RootElement.GetProperty("data");
+            Assert.Equal(HomeAssistantRobotRelay.RobotSkillId, envelope.GetProperty("skill").GetProperty("id").GetString());
+            var action = envelope.GetProperty("action");
             Assert.Equal(command, action.GetProperty("command").GetString());
             relay.TryComplete(action.GetProperty("callbackToken").GetString()!,
                 new HomeAssistantCommandResult(action.GetProperty("requestId").GetString()!, "ok"));

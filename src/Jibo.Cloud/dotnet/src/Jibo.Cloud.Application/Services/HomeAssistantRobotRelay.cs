@@ -74,11 +74,12 @@ public sealed class HomeAssistantRobotRelay(ILogger<HomeAssistantRobotRelay>? lo
                 data["callbackPath"] = CallbackPath;
             }
 
-            // Current BEnch's hub client handles HA_COMMAND separately from playable cloud skills.
+            // Native Jetstream accepts SKILL_ACTION. The BE skill consumes this relay
+            // action before Nimbus playback and keeps waiting for the spoken result.
             var json = JsonSerializer.Serialize(new Dictionary<string, object?>
             {
-                ["type"] = "HA_COMMAND",
-                ["data"] = data,
+                ["type"] = "SKILL_ACTION",
+                ["data"] = new { skill = new { id = RobotSkillId }, action = data },
                 ["final"] = false
             });
             logger?.LogInformation("Home Assistant robot relay command={Command} requestId={RequestId} waitForResult={WaitForResult}",

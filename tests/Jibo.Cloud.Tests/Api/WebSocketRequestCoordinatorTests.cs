@@ -310,11 +310,13 @@ public sealed class WebSocketRequestCoordinatorTests
             {
                 using var doc = JsonDocument.Parse(payload);
                 var root = doc.RootElement;
-                if (root.GetProperty("type").GetString() == "HA_COMMAND")
+                if (root.GetProperty("type").GetString() == "SKILL_ACTION" &&
+                    root.GetProperty("data").TryGetProperty("action", out var relayAction) &&
+                    relayAction.TryGetProperty("callbackToken", out _))
                 {
                     actionCount++;
-                    var action = root.GetProperty("data");
-                    Assert.False(action.TryGetProperty("skill", out _));
+                    var action = relayAction;
+                    Assert.Equal(HomeAssistantRobotRelay.RobotSkillId, root.GetProperty("data").GetProperty("skill").GetProperty("id").GetString());
                     Assert.Equal("lights_off_current_room", action.GetProperty("command").GetString());
                     relay.TryComplete(action.GetProperty("callbackToken").GetString()!,
                         new HomeAssistantCommandResult(action.GetProperty("requestId").GetString()!, "ok"));

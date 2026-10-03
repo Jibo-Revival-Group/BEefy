@@ -356,8 +356,10 @@ public sealed class HomeAssistantEntityAwareTests
         public IDisposable Bind() => AmbientTurnProgressPublisher.Begin(async (reply, cancellationToken) =>
         {
             using var doc = JsonDocument.Parse(reply.Text!);
-            Assert.Equal("HA_COMMAND", doc.RootElement.GetProperty("type").GetString());
-            var action = doc.RootElement.GetProperty("data");
+            Assert.Equal("SKILL_ACTION", doc.RootElement.GetProperty("type").GetString());
+            var envelope = doc.RootElement.GetProperty("data");
+            Assert.Equal(HomeAssistantRobotRelay.RobotSkillId, envelope.GetProperty("skill").GetProperty("id").GetString());
+            var action = envelope.GetProperty("action");
             var bytes = JsonSerializer.SerializeToUtf8Bytes(action);
             await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
             if (socket.LastResult is not null && action.TryGetProperty("callbackToken", out var token))
