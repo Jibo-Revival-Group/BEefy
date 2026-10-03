@@ -203,8 +203,10 @@ public sealed class HomeAssistantCommandServiceTests
         Assert.False(registry.IsInstanceConnected("missing-instance"));
     }
 
-    [Fact]
-    public async Task TryDispatchLightCommandAsync_SendsToEachConnectedLink_WhenRobotIdDoesNotMatch()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TryDispatchLightCommandAsync_DoesNotBroadcast_WhenRobotIdDoesNotMatch(bool multipleInstances)
     {
         var snapshotStore = new EncryptedUserDataSnapshotStore(
             Path.Combine(Path.GetTempPath(), $"openjibo-ha-cmd-{Guid.NewGuid():N}.json"),
@@ -217,7 +219,7 @@ public sealed class HomeAssistantCommandServiceTests
         var first = new CapturingWebSocket();
         var second = new CapturingWebSocket();
         registry.RegisterPairedConnection("ha-instance-a", first);
-        registry.RegisterPairedConnection("ha-instance-b", second);
+        if (multipleInstances) registry.RegisterPairedConnection("ha-instance-b", second);
 
         var service = new HomeAssistantCommandService(
             integrationStore,
@@ -230,9 +232,9 @@ public sealed class HomeAssistantCommandServiceTests
             NormalizedTranscript = "turn off the lights"
         }, "ha_lights_off");
 
-        Assert.True(dispatched);
-        Assert.Equal("lights_off_current_room", first.LastPayload!.Value.GetProperty("command").GetString());
-        Assert.Equal("lights_off_current_room", second.LastPayload!.Value.GetProperty("command").GetString());
+        Assert.False(dispatched);
+        Assert.Null(first.LastPayload);
+        Assert.Null(second.LastPayload);
     }
 
     [Fact]

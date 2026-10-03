@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text.Json;
 using Jibo.Cloud.Application.Services;
+using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Content;
 using Jibo.Cloud.Infrastructure.Persistence;
@@ -210,6 +211,77 @@ public sealed class HomeAssistantEntityAwareTests
         Assert.Equal("Hallway", match!.Name);
     }
 
+    [Theory]
+    [InlineData("turn off the lights", "ok", "Okay, turning off the lights.")]
+    [InlineData("lights off", "ok", "Okay, turning off the lights.")]
+    [InlineData("turn the lights off", "ok", "Okay, turning off the lights.")]
+    [InlineData("kill the lights", "ok", "Okay, turning off the lights.")]
+    [InlineData("lights on", "ok", "Okay, turning on the lights.")]
+    [InlineData("turn on the lights", "ok", "Okay, turning on the lights.")]
+    [InlineData("turn off the lights", "error", "I couldn't control the lights right now.")]
+    [InlineData("turn off the lights", "not_found", "I couldn't find any lights in my Home Assistant Area.")]
+    public async Task RoomLights_ReplyReflectsHaResult(string transcript, string status, string reply)
+    {
+        var (service, _) = CreateServiceWithRespondingHa(status);
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            DeviceId = "Ghost-Instance-Onion-Silk",
+            NormalizedTranscript = transcript,
+            RawTranscript = transcript
+        });
+        Assert.Equal(reply, decision.ReplyText);
+    }
+
+    [Theory]
+    [InlineData("error", "auth_failed", "Home Assistant rejected my command. Please check my pairing and the server clocks.")]
+    [InlineData("not_found", "missing_area", "Assign me to an Area in Home Assistant so I can control my room's lights.")]
+    [InlineData("silent", null, "Home Assistant didn't confirm the light command in time.")]
+    public async Task RoomLights_ReportsSpecificFailures(string status, string? message, string reply)
+    {
+        var sends = 0;
+        var (service, _) = CreateServiceWithRespondingHa(status, message: message,
+            onCommand: _ => sends++);
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            DeviceId = "Ghost-Instance-Onion-Silk",
+            NormalizedTranscript = "turn off the lights"
+        });
+        Assert.Equal(reply, decision.ReplyText);
+        Assert.Equal(1, sends);
+    }
+
+    [Theory]
+    [InlineData("turn off the lights")]
+    [InlineData("turn off zanes light")]
+    public async Task CompletedLightTurn_DispatchesExactlyOnce(string transcript)
+    {
+        var sends = 0;
+        WebSocketTurnFinalizationService? finalizer = null;
+        InMemoryCloudStateStore? state = null;
+        CreateServiceWithRespondingHa("ok", onCommand: _ => sends++,
+            inspect: (interaction, command, store) =>
+            {
+                state = store;
+                finalizer = new WebSocketTurnFinalizationService(
+                    new DemoConversationBroker(interaction),
+                    new DefaultSttStrategySelector([new SyntheticBufferedAudioSttStrategy()]),
+                    new NullTurnTelemetrySink(),
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<WebSocketTurnFinalizationService>.Instance,
+                    command, store);
+            });
+        var token = state!.IssueHubToken("Ghost-Instance-Onion-Silk");
+        var session = state.OpenSession("neo-hub-listen", null, token, "neo-hub.jibo.com", "/listen");
+        var text = JsonSerializer.Serialize(new { type = "TURN", transID = "light-turn",
+            data = new { text = transcript } });
+        var replies = await finalizer!.HandleTurnAsync(session, new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = token, Text = text
+        }, "TURN");
+        Assert.NotEmpty(replies);
+        Assert.Equal(1, sends);
+    }
+
     private static (JiboInteractionService Service, HomeAssistantPendingClimateStore PendingStore)
         CreateServiceWithRespondingHa(
             string status,
@@ -218,7 +290,10 @@ public sealed class HomeAssistantEntityAwareTests
             IReadOnlyList<HomeAssistantCommandCandidate>? candidates = null,
             string? autoRespondAction = null,
             decimal? currentTemperature = null,
-            string? unit = null)
+            string? unit = null,
+            string? message = null,
+            Action<JsonElement>? onCommand = null,
+            Action<JiboInteractionService, HomeAssistantCommandService, InMemoryCloudStateStore>? inspect = null)
     {
         var snapshotStore = new EncryptedUserDataSnapshotStore(
             Path.Combine(Path.GetTempPath(), $"openjibo-ha-aware-{Guid.NewGuid():N}.json"),
@@ -246,7 +321,7 @@ public sealed class HomeAssistantEntityAwareTests
             candidates,
             autoRespondAction,
             currentTemperature,
-            unit);
+            unit, message, onCommand);
         registry.RegisterPairedConnection("ha-instance-1", socket);
 
         var pendingStore = new HomeAssistantPendingClimateStore();
@@ -260,6 +335,7 @@ public sealed class HomeAssistantEntityAwareTests
             homeAssistantCommandService: commandService,
             homeAssistantPendingClimateStore: pendingStore);
 
+        inspect?.Invoke(service, commandService, cloudStateStore);
         return (service, pendingStore);
     }
 
@@ -273,6 +349,8 @@ public sealed class HomeAssistantEntityAwareTests
         private readonly string? _autoRespondAction;
         private readonly decimal? _currentTemperature;
         private readonly string? _unit;
+        private readonly string? _message;
+        private readonly Action<JsonElement>? _onCommand;
 
         public CapturingWebSocket(
             HomeAssistantConnectionRegistry registry,
@@ -282,7 +360,7 @@ public sealed class HomeAssistantEntityAwareTests
             IReadOnlyList<HomeAssistantCommandCandidate>? candidates = null,
             string? autoRespondAction = null,
             decimal? currentTemperature = null,
-            string? unit = null)
+            string? unit = null, string? message = null, Action<JsonElement>? onCommand = null)
         {
             _registry = registry;
             _status = status;
@@ -292,6 +370,8 @@ public sealed class HomeAssistantEntityAwareTests
             _autoRespondAction = autoRespondAction;
             _currentTemperature = currentTemperature;
             _unit = unit;
+            _message = message;
+            _onCommand = onCommand;
         }
 
         public override WebSocketCloseStatus? CloseStatus => null;
@@ -330,6 +410,8 @@ public sealed class HomeAssistantEntityAwareTests
         {
             using var document = JsonDocument.Parse(buffer.Array!.AsMemory(buffer.Offset, buffer.Count));
             var root = document.RootElement;
+            _onCommand?.Invoke(root);
+            if (_status == "silent") return Task.CompletedTask;
             if (!root.TryGetProperty("requestId", out var requestIdElement))
                 return Task.CompletedTask;
 
@@ -353,6 +435,7 @@ public sealed class HomeAssistantEntityAwareTests
                 ["requestId"] = requestId,
                 ["status"] = _status
             };
+            if (_message is not null) payload["message"] = _message;
             if (!string.IsNullOrWhiteSpace(_matchedName))
                 payload["matchedName"] = _matchedName;
             if (!string.IsNullOrWhiteSpace(_heardName))

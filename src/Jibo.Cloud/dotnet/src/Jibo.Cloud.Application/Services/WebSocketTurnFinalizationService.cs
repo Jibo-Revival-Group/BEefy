@@ -1182,7 +1182,7 @@ public sealed class WebSocketTurnFinalizationService(
 
         if (string.Equals(intentName, "ha_lights_off", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(intentName, "ha_lights_on", StringComparison.OrdinalIgnoreCase))
-            return !homeAssistantCommandService.IsNamedLightCommand(turn, intentName);
+            return false;
 
         if (string.Equals(intentName, "ha_climate_set_temp", StringComparison.OrdinalIgnoreCase))
             return !homeAssistantCommandService.IsRoomClimateCommand(turn, intentName);

@@ -40,31 +40,17 @@ public sealed partial class JiboInteractionService
 
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
         var link = userIntegrationStore.FindLinkForJibo(deviceId, friendlyId);
-        if (!IsHomeAssistantReady(turn, link))
-            return new JiboInteractionDecision(
-                intentName,
-                "I don't have Home Assistant set up for my room yet.");
+        if (homeAssistantCommandService is null)
+            return new JiboInteractionDecision(intentName,
+                "Home Assistant control is not available on this server right now.");
+        if (!HomeAssistantRobotRelay.IsLocal(turn) && link is null)
+            return new JiboInteractionDecision(intentName,
+                "I need to be paired with Home Assistant before I can control the lights.");
 
         var transcript = turn.NormalizedTranscript ?? turn.RawTranscript;
         HomeAssistantLightCommandParser.TryParse(transcript, out var lightCommand);
-
-        if (lightCommand.Scope != HomeAssistantLightCommandParser.LightScope.Named ||
-            string.IsNullOrWhiteSpace(lightCommand.TargetName))
-        {
-            var roomReply = expectedAction == HomeAssistantLightCommandParser.LightAction.On
-                ? "Okay, turning on the lights."
-                : "Okay, turning off the lights.";
-            return new JiboInteractionDecision(intentName, roomReply);
-        }
-
-        if (homeAssistantCommandService is null)
-        {
-            var targetLabel = HomeAssistantLightCommandParser.FormatTargetForSpeech(lightCommand.TargetName);
-            var optimistic = expectedAction == HomeAssistantLightCommandParser.LightAction.On
-                ? $"Okay, turning on {targetLabel}."
-                : $"Okay, turning off {targetLabel}.";
-            return new JiboInteractionDecision(intentName, optimistic);
-        }
+        var isNamed = lightCommand.Scope == HomeAssistantLightCommandParser.LightScope.Named &&
+                      !string.IsNullOrWhiteSpace(lightCommand.TargetName);
 
         homeAssistantPendingClimateStore?.Clear(deviceId, friendlyId);
 
@@ -79,6 +65,12 @@ public sealed partial class JiboInteractionService
                 intentName,
                 "I couldn't reach Home Assistant just now.");
 
+        if (result.IsNotFound && !isNamed)
+            return new JiboInteractionDecision(intentName,
+                result.Message == "missing_area"
+                    ? "Assign me to an Area in Home Assistant so I can control my room's lights."
+                    : "I couldn't find any lights in my Home Assistant Area.");
+
         if (result.IsNotFound)
         {
             var heard = string.IsNullOrWhiteSpace(result.HeardName)
@@ -92,7 +84,19 @@ public sealed partial class JiboInteractionService
         if (!result.IsOk)
             return new JiboInteractionDecision(
                 intentName,
-                "I couldn't control that light right now.");
+                result.Message switch
+                {
+                    "auth_failed" => "Home Assistant rejected my command. Please check my pairing and the server clocks.",
+                    "timeout" => "Home Assistant didn't confirm the light command in time.",
+                    "disconnected" => "I couldn't reach Home Assistant just now.",
+                    _ => "I couldn't control the lights right now."
+                });
+
+        if (!isNamed)
+            return new JiboInteractionDecision(intentName,
+                expectedAction == HomeAssistantLightCommandParser.LightAction.On
+                    ? "Okay, turning on the lights."
+                    : "Okay, turning off the lights.");
 
         var matchedLabel = string.IsNullOrWhiteSpace(result.MatchedName)
             ? HomeAssistantLightCommandParser.FormatTargetForSpeech(lightCommand.TargetName)

@@ -180,9 +180,7 @@ public sealed class HomeAssistantCommandService(
         if (matched is not null && registry.IsInstanceConnected(matched.HaInstanceId))
             return [matched];
 
-        return integrationStore.GetHomeAssistantLinks()
-            .Where(link => registry.IsInstanceConnected(link.HaInstanceId))
-            .ToArray();
+        return [];
     }
 
     private async Task<HomeAssistantCommandResult?> DispatchToHomeAssistantAsync(

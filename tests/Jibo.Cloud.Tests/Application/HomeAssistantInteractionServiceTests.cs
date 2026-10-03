@@ -10,15 +10,6 @@ namespace Jibo.Cloud.Tests.Application;
 public sealed class HomeAssistantInteractionServiceTests
 {
     [Theory]
-    [InlineData("turn off the lights", "ha_lights_off", "Okay, turning off the lights.")]
-    [InlineData("lights off", "ha_lights_off", "Okay, turning off the lights.")]
-    [InlineData("turn the lights off", "ha_lights_off", "Okay, turning off the lights.")]
-    [InlineData("turn on the lights", "ha_lights_on", "Okay, turning on the lights.")]
-    [InlineData("lights on", "ha_lights_on", "Okay, turning on the lights.")]
-    [InlineData("turn off zanes light", "ha_lights_off", "Okay, turning off zanes light.")]
-    [InlineData("turn on zane's light", "ha_lights_on", "Okay, turning on zane's light.")]
-    [InlineData("kill the lights", "ha_lights_off", "Okay, turning off the lights.")]
-    [InlineData("lights off in bedroom", "ha_lights_off", "Okay, turning off bedroom light.")]
     [InlineData("set the temperature to 69", "ha_climate_set_temp", "Okay, setting the temperature to 69 degrees.")]
     [InlineData("make it 72", "ha_climate_set_temp", "Okay, setting the temperature to 72 degrees.")]
     [InlineData("set the bedroom thermostat to 72", "ha_climate_set_temp",
@@ -27,7 +18,7 @@ public sealed class HomeAssistantInteractionServiceTests
     [InlineData("it's cold in here", "ha_climate_warm_up", "Okay, I'll warm things up a bit.")]
     [InlineData("what temperature is it in here", "ha_climate_get_temp", "Okay, I'll check the temperature.")]
     [InlineData("what's the bedroom temperature", "ha_climate_get_temp", "Okay, I'll check the bedroom thermostat.")]
-    public async Task BuildDecisionAsync_HaLights_RecognizesIntent(
+    public async Task BuildDecisionAsync_HaClimate_RecognizesIntent(
         string transcript,
         string expectedIntent,
         string expectedReply)
@@ -107,11 +98,11 @@ public sealed class HomeAssistantInteractionServiceTests
         });
 
         Assert.Equal("ha_lights_off", decision.IntentName);
-        Assert.Equal("I don't have Home Assistant set up for my room yet.", decision.ReplyText);
+        Assert.Equal("Home Assistant control is not available on this server right now.", decision.ReplyText);
     }
 
     [Fact]
-    public async Task BuildDecisionAsync_HaLightsOff_TreatsRobotPairingAsSetUp()
+    public async Task BuildDecisionAsync_HaLightsOff_UnavailableWithoutCommandService()
     {
         var snapshotStore = new EncryptedUserDataSnapshotStore(
             Path.Combine(Path.GetTempPath(), $"openjibo-ha-intent-{Guid.NewGuid():N}.json"),
@@ -128,11 +119,11 @@ public sealed class HomeAssistantInteractionServiceTests
         });
 
         Assert.Equal("ha_lights_off", decision.IntentName);
-        Assert.Equal("Okay, turning off the lights.", decision.ReplyText);
+        Assert.Equal("Home Assistant control is not available on this server right now.", decision.ReplyText);
     }
 
     [Fact]
-    public async Task BuildDecisionAsync_HaLightsOff_UsesConnectedHomeAssistant_WhenRobotIdDoesNotMatch()
+    public async Task BuildDecisionAsync_HaLightsOff_RequiresRobotPairing()
     {
         var snapshotStore = new EncryptedUserDataSnapshotStore(
             Path.Combine(Path.GetTempPath(), $"openjibo-ha-intent-{Guid.NewGuid():N}.json"),
@@ -155,7 +146,7 @@ public sealed class HomeAssistantInteractionServiceTests
         });
 
         Assert.Equal("ha_lights_off", decision.IntentName);
-        Assert.Equal("Okay, turning off the lights.", decision.ReplyText);
+        Assert.Equal("I need to be paired with Home Assistant before I can control the lights.", decision.ReplyText);
     }
 
     [Fact]
@@ -165,7 +156,7 @@ public sealed class HomeAssistantInteractionServiceTests
             Path.Combine(Path.GetTempPath(), $"openjibo-ha-intent-{Guid.NewGuid():N}.json"),
             new UserDataEncryptionService());
         var integrationStore = new InMemoryUserIntegrationStore(snapshotStore);
-        integrationStore.AddHomeAssistantLink("other-device-a", "Other-Robot-Alpha", "ha-instance-a");
+        integrationStore.AddHomeAssistantLink("105a4a1f-3577-4ce8-96d4-1be1ea637837", "Robot", "ha-instance-a");
         var cloudStateStore = CreateCloudStateStore();
         var commandService = new HomeAssistantCommandService(
             integrationStore,
@@ -181,7 +172,7 @@ public sealed class HomeAssistantInteractionServiceTests
         });
 
         Assert.Equal("ha_lights_off", decision.IntentName);
-        Assert.Equal("I don't have Home Assistant set up for my room yet.", decision.ReplyText);
+        Assert.Equal("I couldn't reach Home Assistant just now.", decision.ReplyText);
     }
 
     [Theory]

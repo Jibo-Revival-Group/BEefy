@@ -5,10 +5,12 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Jibo.Cloud.Application.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Jibo.Cloud.Application.Services;
 
-public sealed class HomeAssistantConnectionRegistry(ITransportMetrics? transportMetrics = null)
+public sealed class HomeAssistantConnectionRegistry(ITransportMetrics? transportMetrics = null,
+    ILogger<HomeAssistantConnectionRegistry>? logger = null)
 {
     private static readonly TimeSpan VerificationLifetime = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan CommandResultTimeout = TimeSpan.FromSeconds(3);
@@ -135,7 +137,8 @@ public sealed class HomeAssistantConnectionRegistry(ITransportMetrics? transport
         IReadOnlyDictionary<string, string>? parameters = null,
         CancellationToken cancellationToken = default)
     {
-        if (!_connections.TryGetValue(instanceId, out var connection)) return false;
+        if (!_connections.TryGetValue(instanceId, out var connection) ||
+            connection.Socket.State != WebSocketState.Open) return false;
         if (string.IsNullOrWhiteSpace(commandSecret)) return false;
 
         var payload = BuildCommandPayload(command, parameters, requestId: null, linkId, commandSecret);
@@ -151,7 +154,8 @@ public sealed class HomeAssistantConnectionRegistry(ITransportMetrics? transport
         IReadOnlyDictionary<string, string>? parameters = null,
         CancellationToken cancellationToken = default)
     {
-        if (!_connections.TryGetValue(instanceId, out var connection)) return null;
+        if (!_connections.TryGetValue(instanceId, out var connection) ||
+            connection.Socket.State != WebSocketState.Open) return null;
         if (string.IsNullOrWhiteSpace(commandSecret)) return null;
 
         var requestId = Guid.NewGuid().ToString("N");
@@ -162,6 +166,8 @@ public sealed class HomeAssistantConnectionRegistry(ITransportMetrics? transport
         try
         {
             var payload = BuildCommandPayload(command, parameters, requestId, linkId, commandSecret);
+            logger?.LogInformation("Home Assistant command dispatch instanceId={InstanceId} linkId={LinkId} requestId={RequestId} command={Command}",
+                instanceId, linkId, requestId, command);
             await SendJsonAsync(connection.Socket, payload, "command", cancellationToken);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -173,8 +179,15 @@ public sealed class HomeAssistantConnectionRegistry(ITransportMetrics? transport
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                logger?.LogWarning("Home Assistant command timed out instanceId={InstanceId} requestId={RequestId}", instanceId, requestId);
                 return HomeAssistantCommandResult.Timeout(requestId);
             }
+        }
+        catch (WebSocketException)
+        {
+            logger?.LogWarning("Home Assistant command transport failed instanceId={InstanceId} requestId={RequestId}",
+                instanceId, requestId);
+            return new HomeAssistantCommandResult(requestId, "error", Message: "disconnected");
         }
         finally
         {
@@ -190,6 +203,8 @@ public sealed class HomeAssistantConnectionRegistry(ITransportMetrics? transport
         if (!_pendingCommandResults.TryRemove(result.RequestId, out var completion))
             return false;
 
+        logger?.LogInformation("Home Assistant command result requestId={RequestId} status={Status} message={Message}",
+            result.RequestId, result.Status, result.Message);
         return completion.TrySetResult(result);
     }
 
