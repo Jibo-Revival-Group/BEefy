@@ -505,8 +505,8 @@ public sealed class WebSocketTurnFinalizationService(
             turnState.SawContext = true;
             turnState.ContextPayload = ExtractDataPayload(envelope.Text);
             session.Metadata["context"] = turnState.ContextPayload;
-            if (TryReadHomeAssistantLocal(envelope.Text))
-                session.Metadata["haLocal"] = true;
+            session.Metadata["haLocalContext"] = TryReadHomeAssistantLocal(envelope.Text);
+            UpdateHomeAssistantLocalMarker(session);
             var previouslyObservedDeviceId = session.Metadata.TryGetValue("registeredDeviceId", out var registeredValue)
                 ? registeredValue?.ToString()
                 : session.DeviceId;
@@ -1058,7 +1058,11 @@ public sealed class WebSocketTurnFinalizationService(
             }
 
             if (isListenMessage)
-                session.Metadata["haLocal"] = haLocalRule || ProtocolToTurnContextMapper.HasHomeAssistantLocalMarker(data);
+            {
+                session.Metadata["haLocalListen"] = haLocalRule ||
+                    ProtocolToTurnContextMapper.HasHomeAssistantLocalMarker(data);
+                UpdateHomeAssistantLocalMarker(session);
+            }
 
             if (data.TryGetProperty("asr", out var asr) &&
                 asr.ValueKind == JsonValueKind.Object)
@@ -2871,6 +2875,14 @@ public sealed class WebSocketTurnFinalizationService(
                     IsConstrainedYesNoRule(rule) ||
                     IsIntroductionsRule(rule) ||
                     rule.StartsWith("exercise/", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static void UpdateHomeAssistantLocalMarker(CloudSession session)
+    {
+        // CONTEXT and LISTEN advertise pairing independently and may arrive in either order.
+        session.Metadata["haLocal"] =
+            session.Metadata.TryGetValue("haLocalContext", out var context) && context is true ||
+            session.Metadata.TryGetValue("haLocalListen", out var listen) && listen is true;
     }
 
     private static bool TryReadHomeAssistantLocal(string? text)

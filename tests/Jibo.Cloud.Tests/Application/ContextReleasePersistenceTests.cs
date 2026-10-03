@@ -150,4 +150,62 @@ public sealed class ContextReleasePersistenceTests
 
         Assert.Equal(true, session.Metadata["haLocal"]);
     }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LocalPairing_SurvivesContextListenOrderingAndFollowUp(bool contextFirst)
+    {
+        var service = new WebSocketTurnFinalizationService(
+            Mock.Of<IConversationBroker>(), Mock.Of<ISttStrategySelector>(),
+            Mock.Of<ITurnTelemetrySink>(), NullLogger<WebSocketTurnFinalizationService>.Instance);
+        var session = new CloudSession();
+        var context = new WebSocketMessageEnvelope
+        {
+            Text = """{"type":"CONTEXT","data":{"general":{"haLocal":true}}}"""
+        };
+        var listen = new WebSocketMessageEnvelope
+        {
+            Text = """{"type":"LISTEN","data":{"rules":["global"]}}"""
+        };
+        if (contextFirst) await service.HandleContextAsync(session, context);
+        service.HandleListenSetup(session, listen);
+        if (!contextFirst) await service.HandleContextAsync(session, context);
+        service.HandleListenSetup(session, listen);
+
+        var turn = ProtocolToTurnContextMapper.MapListenMessage(listen, session, "TURN");
+        Assert.True(HomeAssistantRobotRelay.IsLocal(turn));
+        Assert.Equal(["global"], session.TurnState.ListenRules);
+
+        // A fresh context without pairing must revoke the previous context advertisement.
+        await service.HandleContextAsync(session, new WebSocketMessageEnvelope
+        {
+            Text = """{"type":"CONTEXT","data":{"general":{}}}"""
+        });
+        turn = ProtocolToTurnContextMapper.MapListenMessage(listen, session, "TURN");
+        Assert.False(HomeAssistantRobotRelay.IsLocal(turn));
+    }
+
+    [Fact]
+    public async Task LocalListenRule_RemainsAuthoritativeWhenContextHasNoMarker()
+    {
+        var service = new WebSocketTurnFinalizationService(
+            Mock.Of<IConversationBroker>(), Mock.Of<ISttStrategySelector>(),
+            Mock.Of<ITurnTelemetrySink>(), NullLogger<WebSocketTurnFinalizationService>.Instance);
+        var session = new CloudSession();
+        service.HandleListenSetup(session, new WebSocketMessageEnvelope
+        {
+            Text = """{"type":"LISTEN","data":{"rules":["global","__ha_local"]}}"""
+        });
+        await service.HandleContextAsync(session, new WebSocketMessageEnvelope
+        {
+            Text = """{"type":"CONTEXT","data":{"general":{}}}"""
+        });
+        Assert.Equal(true, session.Metadata["haLocal"]);
+        service.HandleListenSetup(session, new WebSocketMessageEnvelope
+        {
+            Text = """{"type":"LISTEN","data":{"rules":["global"]}}"""
+        });
+        Assert.Equal(false, session.Metadata["haLocal"]);
+    }
+
 }
