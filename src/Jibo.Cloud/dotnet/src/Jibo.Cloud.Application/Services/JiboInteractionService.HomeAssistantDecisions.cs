@@ -1,5 +1,6 @@
 using Jibo.Cloud.Domain.Models;
 using Jibo.Runtime.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Jibo.Cloud.Application.Services;
 
@@ -44,8 +45,14 @@ public sealed partial class JiboInteractionService
             return new JiboInteractionDecision(intentName,
                 "Home Assistant control is not available on this server right now.");
         if (!HomeAssistantRobotRelay.IsLocal(turn) && link is null)
+        {
+            logger?.LogWarning(
+                "Home Assistant lights rejected reason=pairing_missing sessionId={SessionId} requestId={RequestId} turnDeviceId={TurnDeviceId} resolvedDeviceId={ResolvedDeviceId} resolvedFriendlyId={ResolvedFriendlyId} haLocal={HaLocal}",
+                turn.SessionId, turn.RequestId, turn.DeviceId, deviceId, friendlyId,
+                HomeAssistantRobotRelay.IsLocal(turn));
             return new JiboInteractionDecision(intentName,
                 "I need to be paired with Home Assistant before I can control the lights.");
+        }
 
         var transcript = turn.NormalizedTranscript ?? turn.RawTranscript;
         HomeAssistantLightCommandParser.TryParse(transcript, out var lightCommand);

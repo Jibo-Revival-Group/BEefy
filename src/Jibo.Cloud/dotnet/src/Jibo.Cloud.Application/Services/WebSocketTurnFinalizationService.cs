@@ -507,6 +507,11 @@ public sealed class WebSocketTurnFinalizationService(
             session.Metadata["context"] = turnState.ContextPayload;
             session.Metadata["haLocalContext"] = TryReadHomeAssistantLocal(envelope.Text);
             UpdateHomeAssistantLocalMarker(session);
+            logger.LogInformation(
+                "Home Assistant context pairing marker sessionId={SessionId} transId={TransId} contextLocal={ContextLocal} listenLocal={ListenLocal} effectiveLocal={EffectiveLocal}",
+                session.SessionId, turnState.TransId, session.Metadata["haLocalContext"],
+                session.Metadata.TryGetValue("haLocalListen", out var listenLocal) && listenLocal is true,
+                session.Metadata["haLocal"]);
             var previouslyObservedDeviceId = session.Metadata.TryGetValue("registeredDeviceId", out var registeredValue)
                 ? registeredValue?.ToString()
                 : session.DeviceId;
