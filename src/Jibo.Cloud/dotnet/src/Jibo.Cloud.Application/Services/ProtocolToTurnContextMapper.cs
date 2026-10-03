@@ -150,6 +150,12 @@ public sealed class ProtocolToTurnContextMapper
                 !string.IsNullOrWhiteSpace(triggerLooperId.GetString()))
                 attributes["triggerLooperId"] = triggerLooperId.GetString();
 
+            if (data.TryGetProperty("haLocal", out var haLocal) &&
+                (haLocal.ValueKind == JsonValueKind.True ||
+                 (haLocal.ValueKind == JsonValueKind.String &&
+                  string.Equals(haLocal.GetString(), "true", StringComparison.OrdinalIgnoreCase))))
+                attributes["haLocal"] = true;
+
             if (data.TryGetProperty("rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
                 attributes["clientRules"] = rules.EnumerateArray()
                     .Where(item => item.ValueKind == JsonValueKind.String)

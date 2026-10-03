@@ -8,10 +8,14 @@ namespace Jibo.Cloud.Application.Services;
 public sealed class HomeAssistantCommandService(
     IUserIntegrationStore integrationStore,
     HomeAssistantConnectionRegistry registry,
-    ICloudStateStore cloudStateStore)
+    ICloudStateStore cloudStateStore,
+    HomeAssistantRobotRelay? robotRelay = null)
 {
     public bool CanReachHomeAssistant(TurnContext turn)
     {
+        if (robotRelay?.IsHaLocal(turn) == true)
+            return true;
+
         var link = FindLink(turn);
         return link is not null && registry.IsInstanceConnected(link.HaInstanceId);
     }
@@ -34,9 +38,6 @@ public sealed class HomeAssistantCommandService(
         var lightCommand = ResolveLightCommand(turn, intentName);
         if (lightCommand is null) return null;
 
-        var link = FindLink(turn);
-        if (link is null || !registry.IsInstanceConnected(link.HaInstanceId)) return null;
-
         var command = BuildHaCommand(lightCommand.Value);
         IReadOnlyDictionary<string, string>? parameters = null;
         if (lightCommand.Value.Scope == HomeAssistantLightCommandParser.LightScope.Named &&
@@ -45,6 +46,12 @@ public sealed class HomeAssistantCommandService(
             {
                 ["targetName"] = lightCommand.Value.TargetName
             };
+
+        if (robotRelay?.IsHaLocal(turn) == true)
+            return await robotRelay.SendAsync(command, parameters, waitForResult, cancellationToken);
+
+        var link = FindLink(turn);
+        if (link is null || !registry.IsInstanceConnected(link.HaInstanceId)) return null;
 
         if (!waitForResult)
         {
@@ -87,10 +94,19 @@ public sealed class HomeAssistantCommandService(
         var climateCommand = ResolveClimateCommand(turn, intentName);
         if (climateCommand is null) return null;
 
+        var command = BuildHaClimateCommand(climateCommand.Value);
+        if (robotRelay?.IsHaLocal(turn) == true)
+        {
+            return await robotRelay.SendAsync(
+                command,
+                BuildHaClimateParameters(climateCommand.Value, link: null),
+                waitForResult,
+                cancellationToken);
+        }
+
         var link = FindLink(turn);
         if (link is null || !registry.IsInstanceConnected(link.HaInstanceId)) return null;
 
-        var command = BuildHaClimateCommand(climateCommand.Value);
         var parameters = BuildHaClimateParameters(climateCommand.Value, link);
 
         if (!waitForResult)
@@ -124,16 +140,32 @@ public sealed class HomeAssistantCommandService(
         string? delta,
         CancellationToken cancellationToken = default)
     {
-        var link = FindLink(turn);
-        if (link is null || !registry.IsInstanceConnected(link.HaInstanceId)) return null;
-
         var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["entityId"] = entityId,
-            ["action"] = action,
-            ["blacklistHeat"] = link.BlacklistHeat ? "true" : "false",
-            ["blacklistCool"] = link.BlacklistCool ? "true" : "false"
+            ["action"] = action
         };
+        if (robotRelay?.IsHaLocal(turn) == true)
+        {
+            parameters["blacklistHeat"] = "false";
+            parameters["blacklistCool"] = "false";
+            if (!string.IsNullOrWhiteSpace(temperature))
+                parameters["temperature"] = temperature;
+            if (!string.IsNullOrWhiteSpace(delta))
+                parameters["delta"] = delta;
+
+            return await robotRelay.SendAsync(
+                "climate_apply_entity",
+                parameters,
+                waitForResult: true,
+                cancellationToken);
+        }
+
+        var link = FindLink(turn);
+        if (link is null || !registry.IsInstanceConnected(link.HaInstanceId)) return null;
+
+        parameters["blacklistHeat"] = link.BlacklistHeat ? "true" : "false";
+        parameters["blacklistCool"] = link.BlacklistCool ? "true" : "false";
         if (!string.IsNullOrWhiteSpace(temperature))
             parameters["temperature"] = temperature;
         if (!string.IsNullOrWhiteSpace(delta))
@@ -265,7 +297,7 @@ public sealed class HomeAssistantCommandService(
 
     private static IReadOnlyDictionary<string, string>? BuildHaClimateParameters(
         HomeAssistantClimateCommandParser.ClimateCommand climateCommand,
-        HomeAssistantLinkRecord link)
+        HomeAssistantLinkRecord? link)
     {
         Dictionary<string, string>? parameters = null;
 
@@ -289,7 +321,8 @@ public sealed class HomeAssistantCommandService(
             parameters["delta"] = "2";
         }
 
-        AppendClimateBlacklist(link, ref parameters);
+        if (link is not null)
+            AppendClimateBlacklist(link, ref parameters);
         return parameters;
     }
 

@@ -322,6 +322,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<LoopMemberPhotoUrlSigner>();
         services.AddSingleton<LoopMemberPhotoProcessor>();
         services.AddSingleton<HomeAssistantConnectionRegistry>();
+        services.AddSingleton<HomeAssistantRobotRelay>();
         services.AddSingleton<HomeAssistantPendingClimateStore>();
         services.AddSingleton<RepeatLastCommandStore>();
         services.AddSingleton<RobotPendingNotificationStore>();

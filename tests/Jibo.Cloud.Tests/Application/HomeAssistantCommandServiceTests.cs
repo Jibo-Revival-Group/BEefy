@@ -230,6 +230,77 @@ public sealed class HomeAssistantCommandServiceTests
         return (service, socket);
     }
 
+    [Fact]
+    public async Task TryDispatchLightCommandAsync_RelaysToRobot_WhenHaLocal()
+    {
+        var relay = new HomeAssistantRobotRelay();
+        var snapshotStore = new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-ha-cmd-{Guid.NewGuid():N}.json"),
+            new UserDataEncryptionService());
+        var service = new HomeAssistantCommandService(
+            new InMemoryUserIntegrationStore(snapshotStore),
+            new HomeAssistantConnectionRegistry(),
+            new InMemoryCloudStateStore(),
+            relay);
+
+        string? sent = null;
+        using (AmbientTurnProgressPublisher.Begin((reply, _) =>
+               {
+                   sent = reply.Text;
+                   return Task.CompletedTask;
+               }))
+        {
+            var dispatched = await service.TryDispatchLightCommandAsync(new TurnContext
+            {
+                Attributes = new Dictionary<string, object?> { ["haLocal"] = true },
+                NormalizedTranscript = "turn on the lights"
+            }, "ha_lights_on");
+
+            Assert.True(dispatched);
+        }
+
+        Assert.NotNull(sent);
+        using var document = JsonDocument.Parse(sent!);
+        Assert.Equal("HA_COMMAND", document.RootElement.GetProperty("type").GetString());
+        Assert.Equal(
+            "lights_on_current_room",
+            document.RootElement.GetProperty("data").GetProperty("command").GetString());
+        Assert.False(document.RootElement.GetProperty("data").TryGetProperty("callbackToken", out _));
+    }
+
+    [Fact]
+    public async Task DispatchLightCommandAsync_CompletesFromRobotCallback_WhenWaiting()
+    {
+        var relay = new HomeAssistantRobotRelay();
+        var snapshotStore = new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-ha-cmd-{Guid.NewGuid():N}.json"),
+            new UserDataEncryptionService());
+        var service = new HomeAssistantCommandService(
+            new InMemoryUserIntegrationStore(snapshotStore),
+            new HomeAssistantConnectionRegistry(),
+            new InMemoryCloudStateStore(),
+            relay);
+
+        using (AmbientTurnProgressPublisher.Begin((reply, _) =>
+               {
+                   using var document = JsonDocument.Parse(reply.Text!);
+                   var token = document.RootElement.GetProperty("data").GetProperty("callbackToken").GetString();
+                   relay.TryComplete(token!, new HomeAssistantCommandResult("req", "ok", MatchedName: "Lamp"));
+                   return Task.CompletedTask;
+               }))
+        {
+            var result = await service.DispatchLightCommandAsync(new TurnContext
+            {
+                Attributes = new Dictionary<string, object?> { ["haLocal"] = true },
+                NormalizedTranscript = "turn off the lights"
+            }, "ha_lights_off", waitForResult: true);
+
+            Assert.NotNull(result);
+            Assert.Equal("ok", result!.Status);
+            Assert.Equal("Lamp", result.MatchedName);
+        }
+    }
+
     private sealed class CapturingWebSocket : WebSocket
     {
         public JsonElement? LastPayload { get; private set; }

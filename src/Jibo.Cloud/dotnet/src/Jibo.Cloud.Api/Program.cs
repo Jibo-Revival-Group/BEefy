@@ -195,6 +195,7 @@ app.MapGet("/health", () => Results.Json(new
 app.MapLoopMemberPhotoEndpoints();
 app.MapAdminPanelStaticFiles();
 app.MapPortalEndpoints();
+app.MapHomeAssistantRobotEndpoints();
 
 app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, JiboCloudProtocolService service,
     JoapUpdateProxy joapUpdateProxy,
