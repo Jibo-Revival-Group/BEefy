@@ -35,13 +35,24 @@ class AlignmentTests(unittest.TestCase):
         self.assertIsNotNone(self.match('tell me a story', 'tell me a store ree'))
 
     def test_single_command_unknown_spellings_and_boundaries(self):
-        for heard in ['twick', 'twelc']:
+        for heard in ['twirk', 'twick', 'twelc']:
             self.assertIsNotNone(self.match(heard, 'twerk'))
         for heard in ['work', 'Tim', 'not', 'twick tomorrow', 'do not twick', 'twick 2']:
             self.assertIsNone(self.match(heard, 'twerk'))
         self.assertIsNone(self.match('twick', 'can you twerk'))
         self.corrector.pronunciations['twirl'] = [['T', 'W', 'ER', 'L']]
         self.assertIsNone(self.match('twirl', 'twerk'))
+
+    def test_unique_r_colored_vowel_spelling_uses_pronunciation(self):
+        # These are the same command sound; unknown subwords must not veto it.
+        self.corrector.evidence = lambda *_: None
+        result = self.corrector.correct('twirk', ['twerk'])
+        self.assertEqual('twerk', result['text'])
+        self.assertEqual(0.9, result['confidence'])
+        self.assertIsNone(self.corrector.correct('twirk', ['twerk', 'twurk']))
+        self.assertIsNone(self.corrector.correct('twirk tomorrow', ['twerk']))
+        self.corrector.pronunciations['twirk'] = [['T', 'W', 'ER', 'K']]
+        self.assertIsNone(self.corrector.correct('twirk', ['twerk']))
 
     def test_single_command_scores_complete_words_with_shared_normalization(self):
         class Encoding:

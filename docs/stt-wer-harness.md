@@ -86,6 +86,11 @@ making a malformed spelling appear more likely than the intended command.
 `twick` and `twelc` recover to `twerk` with the installed model; the ordinary
 positive-evidence, pronunciation/spelling-distance and confidence checks still
 apply. Twerk phrases are shared between routing and the recovery catalog.
+An unknown single-word er/ir/ur spelling before a consonant (for example `twirk`)
+can also match a unique supported command with the same bounded sound spelling.
+This pronunciation match returns heuristic confidence 0.90 without requiring BERT
+to prefer a rare command's tokenizer fragments. Known dictionary words, ambiguous
+homophones, extra words, and protected tokens remain excluded.
 
 A close competitor therefore lowers confidence instead of triggering a separate
 fixed ambiguity cutoff. These are heuristic scores, not calibrated probabilities
@@ -198,3 +203,15 @@ unchanged ownership, negation, names,
 numeric commands, unknown speech, and legitimate poem requests. Its timing loop
 runs uncached model inference through the Python pipe. These examples verify
 recovery behavior, not a population-level accuracy guarantee.
+
+### Twerk response compatibility
+
+Twerk closes recognized speech with EOS, then sends a non-final cloud LISTEN for
+`chitchat-skill`, followed by its SKILL_ACTION. The robot Skills Service Manager
+remaps that cloud skill to `@be/nimbus`; the wire ID must identify the cloud skill
+rather than the local renderer. The playback payload uses the original
+`RA_JBO_Twerk_AN_01` prompt and `&(music, twerk), !(short)` animation selector,
+including `endNeutral=true`, from the bundled legacy MIM. Correctly recognized
+`twerk` and pronunciation-recovered commands use this same response path.
+Already-recognized `CLIENT_NLU` twerk commands also emit the cloud playback action,
+even when the robot supplies only the intent and no transcript text.

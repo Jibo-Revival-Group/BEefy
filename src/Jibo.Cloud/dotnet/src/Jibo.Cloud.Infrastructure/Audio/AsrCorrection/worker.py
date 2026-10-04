@@ -30,6 +30,12 @@ def words(text):
     return re.findall(r"[a-z0-9]+", text)
 
 
+def sound_spelling(word):
+    # Unknown er/ir/ur spellings before consonants share an r-colored vowel.
+    # Preserve every other letter; this is not a general spelling correction.
+    return re.sub(r"[eiu]r(?=[bcdfghjklmnpqrstvwxyz]|$)", "er", word)
+
+
 def distance(a, b):
     previous = list(range(len(b) + 1))
     for i, x in enumerate(a):
@@ -98,7 +104,7 @@ class Corrector:
         if p and q:
             return min(distance(x, y) for x in p for y in q)
         # Unknown spellings may be repaired, but unknown multiword sounds cannot.
-        return distance(list(left[0]), list(right[0])) if len(left) == len(right) == 1 else 1
+        return distance(list(sound_spelling(left[0])), list(sound_spelling(right[0]))) if len(left) == len(right) == 1 else 1
 
     def nearby(self, heard, candidate):
         if not 1 <= len(heard) <= 32 or not 1 <= len(candidate) <= 32:
@@ -236,6 +242,16 @@ class Corrector:
             match = self.nearby(heard, candidate)
             if match:
                 nearby.append((match[0], " ".join(candidate), candidate, match[1]))
+        # A single unknown spelling with exactly the same bounded sound spelling
+        # needs no sentence context. BERT can otherwise favor common subword
+        # fragments in e.g. "twirk" over the rare but supported command "twerk".
+        homophones = [item for item in nearby if len(heard) == len(item[2]) == 1
+                      and item[0] == 0 and sound_spelling(heard[0]) == sound_spelling(item[2][0])]
+        if homophones:
+            if len(homophones) != 1 or time.monotonic() >= deadline:
+                return None
+            return {"text": homophones[0][1], "confidence": 0.9,
+                    "durationMs": (time.monotonic() - started) * 1000}
         nearby.sort(key=lambda item: (item[0], item[1]))
         # Bound inference work without silently dropping acoustic competitors.
         if len(nearby) > 12:

@@ -33,6 +33,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         var isWordOfDayLaunch = string.Equals(plan.IntentName, "word_of_the_day", StringComparison.OrdinalIgnoreCase);
         var isWordOfDayGuess =
             string.Equals(plan.IntentName, "word_of_the_day_guess", StringComparison.OrdinalIgnoreCase);
+        var isTwerkIntent = string.Equals(plan.IntentName, "twerk", StringComparison.OrdinalIgnoreCase);
         var isRadioLaunch = string.Equals(plan.IntentName, "radio", StringComparison.OrdinalIgnoreCase) ||
                             string.Equals(plan.IntentName, "radio_genre", StringComparison.OrdinalIgnoreCase);
         var isBadAppleLaunch = string.Equals(plan.IntentName, "bad_apple", StringComparison.OrdinalIgnoreCase) &&
@@ -104,7 +105,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
             ? wordOfDayGuess
             : isWordOfDayLaunch
                 ? string.Empty
-                : isGlobalCommand
+                : isGlobalCommand || isTwerkIntent
                     ? transcript
                     : isRadioLaunch || isBadAppleLaunch
                         ? transcript
@@ -201,6 +202,9 @@ public sealed class ResponsePlanToSocketMessagesMapper
                                    !isSkillListenIntent &&
                                    !isPromptEchoIntent &&
                                    !(isYesNoIntent && isSkillOwnedYesNoTurn);
+        var isTwerkCloudLaunch = shouldEmitCloudSpeak && isTwerkIntent;
+        // Pegasus cloud LISTEN identifies the cloud skill on the wire. The robot's
+        // Skills Service Manager remaps it to @be/nimbus and sets match.cloudSkill.
         // Pegasus answer LISTEN: skillID="answer", onRobot=false, launch=true, no cloudSkill on wire.
         // Robot remaps skillID → match.cloudSkill and launches @be/nimbus (Thinking_Eye for answer/news).
         // Stock jetstream skill-switch uses match.skillID, not nlu.skill. Hotphrase + Nimbus
@@ -233,11 +237,11 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 skipSurprises = true
             };
         }
-        else if (isAnswerCloudSkill)
+        else if (isAnswerCloudSkill || isTwerkCloudLaunch)
         {
             listenMatch = new
             {
-                skillID = SearchThinkingPreludeFactory.AnswerSkillId,
+                skillID = isTwerkCloudLaunch ? "chitchat-skill" : SearchThinkingPreludeFactory.AnswerSkillId,
                 launch = true,
                 onRobot = false,
                 skipSurprises = true
@@ -307,7 +311,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 ["match"] = listenMatch
             }
         };
-        if (isAnswerCloudSkill)
+        if (isAnswerCloudSkill || isTwerkCloudLaunch)
             listenPayload["final"] = false;
 
         var skipListenAndEos = session.Metadata.TryGetValue(
@@ -321,7 +325,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         if (!skipListenAndEos)
         {
             // Pegasus cloud-skill order: EOS then non-final LISTEN, then SKILL_ACTION later.
-            if (isAnswerCloudSkill)
+            if (isAnswerCloudSkill || isTwerkCloudLaunch)
             {
                 messages.Add(new SocketReplyPlan(JsonSerializer.Serialize(new
                 {

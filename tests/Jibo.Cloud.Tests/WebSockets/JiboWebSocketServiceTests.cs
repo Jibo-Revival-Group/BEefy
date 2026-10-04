@@ -84,6 +84,7 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Theory]
+    [InlineData("twirk", 0.9, true)]
     [InlineData("twick", 0.85, true)]
     [InlineData("twelc", 0.85, true)]
     [InlineData("twick", 0.749, false)]
@@ -98,12 +99,12 @@ public sealed class JiboWebSocketServiceTests
         model.Verify(m => m.TryCorrectAsync(heard, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(accepted, session.LastIntent == "twerk");
         Assert.Equal(heard, session.LastTranscript);
-        Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, replies.Select(ReadReplyType));
-        using var listen = JsonDocument.Parse(replies[0].Text!);
+        Assert.Equal(accepted ? new[] { "EOS", "LISTEN", "SKILL_ACTION" } : new[] { "LISTEN", "EOS", "SKILL_ACTION" }, replies.Select(ReadReplyType));
+        using var listen = JsonDocument.Parse(Assert.Single(replies, reply => ReadReplyType(reply) == "LISTEN").Text!);
         var data = listen.RootElement.GetProperty("data");
         Assert.Equal(heard, data.GetProperty("asr").GetProperty("text").GetString());
-        Assert.Equal("@be/nimbus", data.GetProperty("match").GetProperty("skillID").GetString());
-        if (accepted) Assert.Contains("rom-twerk", replies[2].Text!);
+        Assert.Equal(accepted ? "chitchat-skill" : "@be/nimbus", data.GetProperty("match").GetProperty("skillID").GetString());
+        if (accepted) AssertTwerkPlaybackPayload(replies[2]);
         Assert.False(session.TurnState.AwaitingTurnCompletion);
     }
 
@@ -117,21 +118,30 @@ public sealed class JiboWebSocketServiceTests
         {
             using var readyDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while (!model.IsReady) await Task.Delay(20, readyDeadline.Token);
-            foreach (var heard in new[] { "twick", "twelc" })
+            foreach (var heard in new[] { "twirk", "twick", "twelc" })
             {
                 var (session, replies) = await FinalizeShortSpeechCommand(heard, model);
                 Assert.Equal("twerk", session.LastIntent);
                 Assert.Equal(heard, session.LastTranscript);
-                Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, replies.Select(ReadReplyType));
-                using var listen = JsonDocument.Parse(replies[0].Text!);
+                Assert.Equal(new[] { "EOS", "LISTEN", "SKILL_ACTION" }, replies.Select(ReadReplyType));
+                using var listen = JsonDocument.Parse(Assert.Single(replies, reply => ReadReplyType(reply) == "LISTEN").Text!);
                 var data = listen.RootElement.GetProperty("data");
                 Assert.Equal(heard, data.GetProperty("asr").GetProperty("text").GetString());
                 Assert.Equal("twerk", data.GetProperty("nlu").GetProperty("intent").GetString());
-                Assert.Contains("rom-twerk", replies[2].Text!);
+                AssertTwerkPlaybackPayload(replies[2]);
                 Assert.False(session.TurnState.AwaitingTurnCompletion);
             }
         }
         finally { await model.StopAsync(CancellationToken.None); }
+    }
+
+    private static void AssertTwerkPlaybackPayload(WebSocketReply reply)
+    {
+        using var action = JsonDocument.Parse(reply.Text!);
+        var play = action.RootElement.GetProperty("data").GetProperty("action")
+            .GetProperty("config").GetProperty("jcp").GetProperty("config").GetProperty("play");
+        Assert.Contains("filter='&(music, twerk), !(short)'", play.GetProperty("esml").GetString());
+        Assert.Equal("RA_JBO_Twerk", play.GetProperty("meta").GetProperty("mim_id").GetString());
     }
 
     private static async Task<(CloudSession Session, IReadOnlyList<WebSocketReply> Replies)>
@@ -6472,6 +6482,43 @@ public sealed class JiboWebSocketServiceTests
         Assert.Null(session.LastTranscript);
     }
 
+    [Theory]
+    [InlineData("LISTEN", "twerk")]
+    [InlineData("LISTEN", "can you twerk")]
+    [InlineData("CLIENT_ASR", "twerk")]
+    [InlineData("CLIENT_NLU", "twerk")]
+    [InlineData("CLIENT_NLU", "can you twerk")]
+    [InlineData("CLIENT_NLU", null)]
+    public async Task Twerk_UsesNativeCloudSkillHandoffAndOriginalAnimationSelector(string messageType, string? transcript)
+    {
+        var replies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = "hub-twerk-playback", Text = JsonSerializer.Serialize(new
+            {
+                type = messageType, transID = "twerk-playback",
+                data = new { text = transcript, intent = "twerk", rules = new[] { "launch", "globals/global_commands_launch" } }
+            })
+        });
+        Assert.Equal(new[] { "EOS", "LISTEN", "SKILL_ACTION" }, replies.Select(ReadReplyType));
+        using var listen = JsonDocument.Parse(replies[1].Text!);
+        Assert.False(listen.RootElement.GetProperty("final").GetBoolean());
+        var data = listen.RootElement.GetProperty("data");
+        Assert.Equal(transcript ?? "twerk", data.GetProperty("asr").GetProperty("text").GetString());
+        Assert.Equal("twerk", data.GetProperty("nlu").GetProperty("intent").GetString());
+        var match = data.GetProperty("match");
+        Assert.Equal("chitchat-skill", match.GetProperty("skillID").GetString());
+        Assert.False(match.GetProperty("onRobot").GetBoolean());
+        Assert.True(match.GetProperty("launch").GetBoolean());
+        using var action = JsonDocument.Parse(replies[2].Text!);
+        Assert.Equal(match.GetProperty("skillID").GetString(),
+            action.RootElement.GetProperty("data").GetProperty("skill").GetProperty("id").GetString());
+        var play = action.RootElement.GetProperty("data").GetProperty("action")
+            .GetProperty("config").GetProperty("jcp").GetProperty("config").GetProperty("play");
+        Assert.Contains("filter='&(music, twerk), !(short)'", play.GetProperty("esml").GetString());
+        Assert.Equal("RA_JBO_Twerk", play.GetProperty("meta").GetProperty("mim_id").GetString());
+    }
+
     [Fact]
     public async Task Listen_BareTwerk_IsPreservedAndRoutesToDanceIntent()
     {
@@ -6486,11 +6533,11 @@ public sealed class JiboWebSocketServiceTests
         });
 
         Assert.Equal(3, replies.Count);
-        Assert.Equal("LISTEN", ReadReplyType(replies[0]));
-        Assert.Equal("EOS", ReadReplyType(replies[1]));
+        Assert.Equal("EOS", ReadReplyType(replies[0]));
+        Assert.Equal("LISTEN", ReadReplyType(replies[1]));
         Assert.Equal("SKILL_ACTION", ReadReplyType(replies[2]));
 
-        using var listenPayload = JsonDocument.Parse(replies[0].Text!);
+        using var listenPayload = JsonDocument.Parse(replies[1].Text!);
         Assert.Equal("twerk",
             listenPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
         Assert.Equal("twerk",
@@ -6525,11 +6572,11 @@ public sealed class JiboWebSocketServiceTests
         });
 
         Assert.Equal(3, replies.Count);
-        Assert.Equal("LISTEN", ReadReplyType(replies[0]));
-        Assert.Equal("EOS", ReadReplyType(replies[1]));
+        Assert.Equal("EOS", ReadReplyType(replies[0]));
+        Assert.Equal("LISTEN", ReadReplyType(replies[1]));
         Assert.Equal("SKILL_ACTION", ReadReplyType(replies[2]));
 
-        using var listenPayload = JsonDocument.Parse(replies[0].Text!);
+        using var listenPayload = JsonDocument.Parse(replies[1].Text!);
         Assert.Equal("twerk",
             listenPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
         Assert.Equal("can you twerk",
@@ -7617,11 +7664,11 @@ public sealed class JiboWebSocketServiceTests
             await skillSent.Task.WaitAsync(timeout.Token);
             Assert.Equal(1, stt.TranscriptionCount);
             Assert.Equal(expectedIntent, session.LastIntent);
-            Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, sent.Select(ReadReplyType));
-            using var listen = JsonDocument.Parse(sent.First().Text!);
+            Assert.Equal(expectedIntent == "twerk" ? new[] { "EOS", "LISTEN", "SKILL_ACTION" } : new[] { "LISTEN", "EOS", "SKILL_ACTION" }, sent.Select(ReadReplyType));
+            using var listen = JsonDocument.Parse(Assert.Single(sent, reply => ReadReplyType(reply) == "LISTEN").Text!);
             Assert.False(string.IsNullOrWhiteSpace(listen.RootElement.GetProperty("data")
                 .GetProperty("asr").GetProperty("text").GetString()));
-            if (expectedIntent == "twerk") Assert.Contains("rom-twerk", sent.Last().Text!);
+            if (expectedIntent == "twerk") AssertTwerkPlaybackPayload(sent.Last());
             var released = false;
             for (var index = 0; index < 100 && !released; index++)
             {

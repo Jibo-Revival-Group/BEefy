@@ -2043,6 +2043,7 @@ public sealed class WebSocketTurnFinalizationService(
                 !string.Equals(plan.IntentName, "prompt_echo", StringComparison.OrdinalIgnoreCase) &&
                 !SkillListenOwnership.ShouldSuppressCompetingSpeech(finalizedTurn, plan.IntentName) &&
                 (messageType != "CLIENT_NLU" ||
+                 string.Equals(plan.IntentName, "twerk", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(plan.IntentName, "word_of_the_day_guess", StringComparison.OrdinalIgnoreCase) ||
                  IsCloudOwnedPersonalReportIntent(plan.IntentName) ||
                  ShouldSpeakCloudOwnedClientNlu(finalizedTurn, plan.IntentName));

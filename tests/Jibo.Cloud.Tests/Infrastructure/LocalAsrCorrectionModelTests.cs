@@ -33,6 +33,7 @@ public sealed class LocalAsrCorrectionModelTests(ITestOutputHelper output)
             Assert.Equal("what is your favorite color", grammar.Text);
             foreach (var (heard, corrected, intent) in new[] {
                 ("what's your paper color", "what is your favorite color", "robot_favorite_color"),
+                ("twirk", "twerk", "twerk"),
                 ("twick", "twerk", "twerk"),
                 ("twelc", "twerk", "twerk"),
                 ("make a peter", "make a pizza", "pizza"),

@@ -220,7 +220,7 @@ public sealed partial class JiboInteractionService
             "roll_dice" => BuildRollDiceDecision(transcript),
             "dance_question" => BuildDanceQuestionDecision(catalog),
             "dance" => BuildRandomDanceDecision(catalog),
-            "twerk" => BuildDanceDecision("twerk", "rom-twerk", "Watch me twerk."),
+            "twerk" => BuildTwerkDecision(),
             "time" => BuildClockLaunchDecision("time", "clock", "askForTime", "Showing the time."),
             "date" => BuildClockLaunchDecision("date", "clock", "askForDate", "Showing the date."),
             "day" => BuildClockLaunchDecision("day", "clock", "askForDay", "Showing the day."),

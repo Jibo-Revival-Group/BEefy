@@ -61,6 +61,19 @@ public sealed partial class JiboInteractionService
         return new JiboInteractionDecision("dance_question", randomizer.Choose(catalog.DanceQuestionReplies));
     }
 
+    private static JiboInteractionDecision BuildTwerkDecision() => new(
+        "twerk",
+        "If you insist.",
+        "chitchat-skill",
+        new Dictionary<string, object?>
+        {
+            // Original RA_JBO_Twerk MIM: require music and twerk, exclude short clips.
+            ["esml"] = "<speak>If you insist <anim cat='dance' filter='&(music, twerk), !(short)' endNeutral='true'/></speak>",
+            ["mim_id"] = "RA_JBO_Twerk",
+            ["prompt_id"] = "RA_JBO_Twerk_AN_01",
+            ["mim_type"] = "announcement"
+        });
+
     private static JiboInteractionDecision BuildDanceDecision(string intentName, string dance, string replyText)
     {
         return new JiboInteractionDecision(
