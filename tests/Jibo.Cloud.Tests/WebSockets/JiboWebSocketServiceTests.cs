@@ -7481,6 +7481,82 @@ public sealed class JiboWebSocketServiceTests
             listenPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
     }
 
+    [Theory]
+    [InlineData("Hey Jibo, twerk", "twerk")]
+    [InlineData("purple elephants juggle teacups", "not_understood")]
+    public async Task BufferedAudio_BackgroundFinalizationOwnsTurnUntilRepliesAreSent(
+        string transcript, string expectedIntent)
+    {
+        var store = new InMemoryCloudStateStore();
+        var stt = new BlockingBufferedAudioSttStrategy(transcript);
+        var service = CreateService(store, sttStrategies: [stt]);
+        var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var skillSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sent = new System.Collections.Concurrent.ConcurrentQueue<WebSocketReply>();
+        WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = "hub-background-finalize", Text = text, Binary = binary
+        };
+        var setup = Envelope("""{"type":"LISTEN","transID":"background-finalize","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}""");
+        if (expectedIntent == "not_understood")
+            setup = Envelope(setup.Text!.Replace("\"hotphrase\":true", "\"hotphrase\":false"));
+        await service.HandleMessageAsync(setup);
+        foreach (var frame in new[] { BuildOggFrame(0x02, "OpusHead"), BuildOggFrame(0x00, "OpusTags"),
+                     BuildOggFrame(0x00), BuildOggFrame(0x00), BuildOggFrame(0x00) })
+            await service.HandleMessageAsync(Envelope(binary: frame));
+        var session = store.FindSessionByToken(setup.Token!)!;
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-9);
+        session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var scope = AmbientTurnProgressPublisher.Begin(async (reply, ct) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task.WaitAsync(ct);
+            sent.Enqueue(reply);
+            if (ReadReplyType(reply) == "SKILL_ACTION") skillSent.TrySetResult();
+        });
+        try
+        {
+            Assert.Empty(await service.HandleIdleAsync(session, setup, timeout.Token));
+            // The reservation must already exist before Task.Run gets to execute.
+            var acquired = session.TurnState.TryBeginFinalization();
+            if (acquired) session.TurnState.EndFinalization();
+            Assert.False(acquired);
+            await stt.Started.WaitAsync(timeout.Token);
+            for (var index = 0; index < 10; index++)
+                Assert.Empty(await service.HandleIdleAsync(session, setup, timeout.Token));
+            stt.Release();
+            await sendStarted.Task.WaitAsync(timeout.Token);
+            // A client result arriving during outbound delivery must not restart speech.
+            Assert.Empty(await service.HandleMessageAsync(Envelope(
+                """{"type":"CLIENT_ASR","transID":"background-finalize","data":{"text":"twerk"}}"""), timeout.Token));
+            releaseSend.TrySetResult();
+            await skillSent.Task.WaitAsync(timeout.Token);
+            Assert.Equal(1, stt.TranscriptionCount);
+            Assert.Equal(expectedIntent, session.LastIntent);
+            Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, sent.Select(ReadReplyType));
+            using var listen = JsonDocument.Parse(sent.First().Text!);
+            Assert.False(string.IsNullOrWhiteSpace(listen.RootElement.GetProperty("data")
+                .GetProperty("asr").GetProperty("text").GetString()));
+            if (expectedIntent == "twerk") Assert.Contains("rom-twerk", sent.Last().Text!);
+            var released = false;
+            for (var index = 0; index < 100 && !released; index++)
+            {
+                released = session.TurnState.TryBeginFinalization();
+                if (!released) await Task.Delay(10, timeout.Token);
+            }
+            if (released) session.TurnState.EndFinalization();
+            Assert.True(released);
+        }
+        finally
+        {
+            stt.Release();
+            releaseSend.TrySetResult();
+        }
+    }
+
     [Fact]
     public async Task BufferedHotphraseOggAudio_BlankEarlyProbeStaysOpenBeforeHardTimeout()
     {

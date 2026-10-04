@@ -834,6 +834,14 @@ public sealed class WebSocketTurnFinalizationService(
             return FinalizeTurnAsync(session, envelope, messageType, allowFallbackOnMissingTranscript,
                 cancellationToken);
 
+        // Reserve before queuing: otherwise watchdog tasks can pile up and run after
+        // the first task clears the audio, producing a second, empty response.
+        if (!session.TurnState.TryBeginFinalization())
+        {
+            _metrics.TurnFinalizationSuppressed("concurrent");
+            return Task.FromResult<IReadOnlyList<WebSocketReply>>([]);
+        }
+
         // Keep the websocket receive loop draining audio while STT/NLU runs.
         _ = Task.Run(async () =>
         {
@@ -846,7 +854,8 @@ public sealed class WebSocketTurnFinalizationService(
                         envelope,
                         messageType,
                         allowFallbackOnMissingTranscript,
-                        cancellationToken);
+                        cancellationToken,
+                        finalizationAlreadyStarted: true);
                     foreach (var reply in replies)
                     {
                         // Match WebSocketRequestCoordinator.SendRepliesAsync: Nimbus needs a beat
@@ -873,6 +882,12 @@ public sealed class WebSocketTurnFinalizationService(
                     "Background turn finalization failed session={SessionId} transId={TransId}",
                     session.SessionId,
                     session.TurnState.TransId);
+            }
+            finally
+            {
+                // LISTEN/EOS and the delayed SKILL_ACTION belong to one response.
+                // A late client result must not interrupt their delivery.
+                session.TurnState.EndFinalization();
             }
         }, CancellationToken.None);
 
@@ -946,7 +961,7 @@ public sealed class WebSocketTurnFinalizationService(
             var sttResult = await strategy.TranscribeAsync(turn, cancellationToken);
             session.TurnState.LastSttError = null;
             session.TurnState.LastSttErrorUtc = null;
-            logger.LogDebug(
+            logger.LogInformation(
                 "Resolve transcript succeeded session={SessionId} turnId={TurnId} provider={Provider} locale={Locale} text={Text}",
                 session.SessionId,
                 turn.TurnId,
@@ -1231,10 +1246,11 @@ public sealed class WebSocketTurnFinalizationService(
         WebSocketMessageEnvelope envelope,
         string messageType,
         bool allowFallbackOnMissingTranscript,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool finalizationAlreadyStarted = false)
     {
         var turnState = session.TurnState;
-        if (!turnState.TryBeginFinalization())
+        if (!finalizationAlreadyStarted && !turnState.TryBeginFinalization())
         {
             _metrics.TurnFinalizationSuppressed("concurrent");
             logger.LogDebug(
@@ -1260,6 +1276,9 @@ public sealed class WebSocketTurnFinalizationService(
             session.TurnState.AwaitingTurnCompletion);
         try
         {
+            if (messageType == "AUTO_FINALIZE" && !turnState.AwaitingTurnCompletion)
+                return [];
+
             var turn = ProtocolToTurnContextMapper.MapListenMessage(envelope, session, messageType);
             await StoreBufferedAudioArtifactAsync(session, turn, cancellationToken);
             if (IsYesNoTurn(turn) || ReadPrimaryYesNoRule(turn) is not null)
@@ -1982,14 +2001,15 @@ public sealed class WebSocketTurnFinalizationService(
                     ["closeTrigger"] = closeTrigger
                 }),
                 cancellationToken);
-            logger.LogDebug(
-                "Finalize turn plan session={SessionId} messageType={MessageType} intent={Intent} actionCount={ActionCount} keepMicOpen={KeepMicOpen} followUpOpen={FollowUpOpen}",
+            logger.LogInformation(
+                "Finalize turn plan session={SessionId} messageType={MessageType} intent={Intent} actionCount={ActionCount} keepMicOpen={KeepMicOpen} followUpOpen={FollowUpOpen} transcript={Transcript}",
                 session.SessionId,
                 messageType,
                 plan.IntentName,
                 plan.Actions.Count,
                 plan.FollowUp.KeepMicOpen,
-                session.FollowUpOpen);
+                session.FollowUpOpen,
+                finalizedTurn.NormalizedTranscript ?? finalizedTurn.RawTranscript);
 
             var emitSkillActions =
                 !string.Equals(plan.IntentName, "word_of_the_day", StringComparison.OrdinalIgnoreCase) &&
@@ -2095,7 +2115,7 @@ public sealed class WebSocketTurnFinalizationService(
             _metrics.TurnPhaseCompleted("finalize", finalizeOutcome,
                 Stopwatch.GetElapsedTime(finalizeStarted).TotalMilliseconds);
             _metrics.ActiveTurnsChanged(-1);
-            turnState.EndFinalization();
+            if (!finalizationAlreadyStarted) turnState.EndFinalization();
             await TrackGlsmPhaseAsync(session, envelope, $"finalize:{messageType}", cancellationToken);
             logger.LogDebug("Finalize turn exit session={SessionId} messageType={MessageType} transId={TransId}",
                 session.SessionId,
