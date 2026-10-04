@@ -597,6 +597,10 @@ public sealed class ResponsePlanToSocketMessagesMapper
                         intent = "heyJibo",
                         rule = rules.FirstOrDefault() ?? string.Empty,
                         score = 0.95,
+                        skillID = "@be/nimbus",
+                        onRobot = false,
+                        launch = true,
+                        cloudSkill = "chitchat-skill",
                         skipSurprises = true
                     }
                 }

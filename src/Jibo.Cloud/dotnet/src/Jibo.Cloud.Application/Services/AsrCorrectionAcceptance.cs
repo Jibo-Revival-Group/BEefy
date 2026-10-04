@@ -21,7 +21,11 @@ internal static class AsrCorrectionAcceptance
         if (corrected.Length is 0 or > 256) return false;
         var before = Tokens(original);
         var after = Tokens(corrected);
-        if (before.Length is < 2 or > 32 || after.Length is < 2 or > 32) return false;
+        if (before.Length is < 1 or > 32 || after.Length is < 1 or > 32) return false;
+        if (before.Length == 1 || after.Length == 1)
+            return before.Length == 1 && after.Length == 1 &&
+                   AsrCommandCatalog.Candidates.Contains(after[0], StringComparer.Ordinal) &&
+                   IsBoundedSingleCommandEdit(before[0], after[0]);
         if (before.SequenceEqual(after, StringComparer.Ordinal)) return false;
         if (before.Contains("my", StringComparer.Ordinal) &&
             before.Any(word => word is "name" or "names" or "named")) return false;
@@ -70,6 +74,16 @@ internal static class AsrCorrectionAcceptance
                 (i > 0 && before[i] == before[i - 1])) && Align(i + 1, j, content, grammar + 1, anchors);
         }
     }
+
+    internal static bool CouldRecoverSingleCommand(string transcript) =>
+        AsrCommandCatalog.Candidates.Any(candidate => !candidate.Contains(' ') &&
+            IsBoundedSingleCommandEdit(transcript, candidate));
+
+    private static bool IsBoundedSingleCommandEdit(string before, string after) =>
+        before.Length is >= 4 and <= 16 && after.Length is >= 4 and <= 16 &&
+        before.All(char.IsAsciiLetterLower) && after.All(char.IsAsciiLetterLower) &&
+        !IsProtected(before) && !IsProtected(after) && before != after &&
+        before.AsSpan(0, 2).SequenceEqual(after.AsSpan(0, 2)) && CharacterDistance(before, after) <= 2;
 
     private static string[] Tokens(string value) => TranscriptTextNormalizer.NormalizeLooseText(value)
         .Replace("'", string.Empty, StringComparison.Ordinal).Split(' ', StringSplitOptions.RemoveEmptyEntries)

@@ -16,6 +16,8 @@ public sealed class AsrModelFallbackTests
     [InlineData("make a peter", "make a pizza", "pizza")]
     [InlineData("make a pit sir", "make a pizza", "pizza")]
     [InlineData("make peter", "make pizza", "pizza")]
+    [InlineData("twick", "twerk", "twerk")]
+    [InlineData("twelc", "twerk", "twerk")]
     [InlineData("do a dense", "do a dance", "dance")]
     [InlineData("tell me a storey", "tell me a story", "robot_story")]
     public async Task ContextualCommandRecovery(string heard, string corrected, string intent)
@@ -183,6 +185,14 @@ public sealed class AsrModelFallbackTests
     }
 
     [Theory]
+    [InlineData("twick", "twerk", true)]
+    [InlineData("twelc", "twerk", true)]
+    [InlineData("work", "twerk", false)]
+    [InlineData("Tim", "time", false)]
+    [InlineData("not", "twerk", false)]
+    [InlineData("twick tomorrow", "twerk", false)]
+    [InlineData("twick", "can you twerk", false)]
+    [InlineData("twick", "weather", false)]
     [InlineData("make a pit sir", "make a pizza", true)]
     [InlineData("make a peter", "make a pizza", true)]
     [InlineData("make peter", "make pizza", true)]

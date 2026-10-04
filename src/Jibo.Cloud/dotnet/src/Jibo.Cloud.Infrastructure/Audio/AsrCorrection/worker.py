@@ -101,8 +101,22 @@ class Corrector:
         return distance(list(left[0]), list(right[0])) if len(left) == len(right) == 1 else 1
 
     def nearby(self, heard, candidate):
-        if not 2 <= len(heard) <= 32 or not 2 <= len(candidate) <= 32:
+        if not 1 <= len(heard) <= 32 or not 1 <= len(candidate) <= 32:
             return None
+        if len(heard) == 1 or len(candidate) == 1:
+            # Short commands have no unchanged word anchors. Only recover an
+            # unknown spelling with a retained two-letter onset; do not reinterpret
+            # dictionary words (including common names) on this weak context.
+            if len(heard) != 1 or len(candidate) != 1:
+                return None
+            old, new = heard[0], candidate[0]
+            if (not 4 <= len(old) <= 16 or not 4 <= len(new) <= 16 or old == new
+                    or not old.isalpha() or not new.isalpha() or old[:2] != new[:2]
+                    or old in self.pronunciations or self.protected(old) or self.protected(new)
+                    or distance(list(old), list(new)) > 2 / max(len(old), len(new))):
+                return None
+            acoustic = self.span_distance(heard, candidate)
+            return (acoustic, [(0, 1, 0, 1, False)]) if acoustic <= 0.45 else None
         # Keep protected words in order; only the existing malformed question
         # exception may replace initial 'my' with a question word.
         comparable = heard[:]
@@ -171,6 +185,22 @@ class Corrector:
         return sum(scores) / len(scores)
 
     def evidence(self, heard, candidate, edits, deadline):
+        if len(heard) == len(candidate) == 1:
+            # A bare word has no sentence context. Compare both spellings in the
+            # same generic command frame. Normalize complete word log probability
+            # by a shared piece count: averaging each spelling separately rewards
+            # fragmented garbage whose individual suffix pieces are common.
+            def word_score(word):
+                score = self.span_log_probability(["can", "you", word], 2, 1, deadline)
+                encoded = self.tokenizer.encode([word], is_pretokenized=True)
+                pieces = sum(index == 0 for index in encoded.word_ids)
+                return score, pieces
+            new, new_pieces = word_score(candidate[0])
+            old, old_pieces = word_score(heard[0])
+            if new is None or old is None or not min(new_pieces, old_pieces):
+                return None
+            gain = (new * new_pieces - old * old_pieces) / max(new_pieces, old_pieces)
+            return gain if gain > 0 else None
         gains = []
         for old_start, old_size, new_start, new_size, function in edits:
             if new_size == 0:

@@ -1135,20 +1135,7 @@ public sealed partial class JiboInteractionService
     private static bool IsTwerkCommand(string loweredTranscript)
     {
         var normalized = NormalizeCommandPhrase(loweredTranscript);
-        return normalized is
-                   "twerk" or
-                   "do a twerk" or
-                   "do the twerk" or
-                   "show me a twerk" or
-                   "show us a twerk" or
-                   "can you twerk" or
-                   "can you please twerk" or
-                   "will you twerk" or
-                   "will you please twerk" or
-                   "would you twerk" or
-                   "would you please twerk" or
-                   "could you twerk" or
-                   "could you please twerk" ||
+        return AsrCommandCatalog.Twerk.Contains(normalized, StringComparer.Ordinal) ||
                normalized.StartsWith("twerk ", StringComparison.Ordinal);
     }
 

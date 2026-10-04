@@ -80,6 +80,47 @@ public sealed class JiboWebSocketServiceTests
         Assert.Equal("pizza", payload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
     }
 
+    [Theory]
+    [InlineData("twick", 0.85, true)]
+    [InlineData("twelc", 0.85, true)]
+    [InlineData("twick", 0.749, false)]
+    [InlineData("twelc", 0.75, true)]
+    public async Task SpeechRecovery_SingleWordMishearingReachesModelAndPreservesHeardText(
+        string heard, double confidence, bool accepted)
+    {
+        var store = new InMemoryCloudStateStore();
+        var model = new Mock<IAsrCorrectionModel>();
+        model.Setup(m => m.TryCorrectAsync(heard, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AsrCorrection("twerk", confidence, "test-model"));
+        var service = CreateService(store, sttStrategies: [new QueuedBufferedAudioSttStrategy(heard)],
+            asrCorrectionModel: model.Object);
+        WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = "hub-short-speech-recovery", Text = text, Binary = binary
+        };
+        var setup = Envelope("""{"type":"LISTEN","transID":"short-speech-recovery","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}""");
+        await service.HandleMessageAsync(setup);
+        foreach (var frame in new[] { BuildOggFrame(0x02, "OpusHead"), BuildOggFrame(0x00, "OpusTags"),
+                     BuildOggFrame(0x00), BuildOggFrame(0x00), BuildOggFrame(0x00) })
+            await service.HandleMessageAsync(Envelope(binary: frame));
+        var session = store.FindSessionByToken(setup.Token!)!;
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-9);
+        session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+        var replies = await service.HandleIdleAsync(session, setup);
+        model.Verify(m => m.TryCorrectAsync(heard, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(accepted, session.LastIntent == "twerk");
+        Assert.Equal(heard, session.LastTranscript);
+        Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, replies.Select(ReadReplyType));
+        using var listen = JsonDocument.Parse(replies[0].Text!);
+        var data = listen.RootElement.GetProperty("data");
+        Assert.Equal(heard, data.GetProperty("asr").GetProperty("text").GetString());
+        Assert.Equal("@be/nimbus", data.GetProperty("match").GetProperty("skillID").GetString());
+        if (accepted) Assert.Contains("rom-twerk", replies[2].Text!);
+        Assert.False(session.TurnState.AwaitingTurnCompletion);
+        Assert.Empty(await service.HandleIdleAsync(session, setup));
+    }
+
     [Fact]
     public async Task BinaryAudio_RejectsOversizedFrameWithoutRetainingPayload()
     {
@@ -1227,6 +1268,10 @@ public sealed class JiboWebSocketServiceTests
             listenPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
         Assert.Equal(string.Empty,
             listenPayload.RootElement.GetProperty("data").GetProperty("asr").GetProperty("text").GetString());
+        var match = listenPayload.RootElement.GetProperty("data").GetProperty("match");
+        Assert.Equal("@be/nimbus", match.GetProperty("skillID").GetString());
+        Assert.False(match.GetProperty("onRobot").GetBoolean());
+        Assert.Equal("chitchat-skill", match.GetProperty("cloudSkill").GetString());
         Assert.True(listenPayload.RootElement.GetProperty("data").GetProperty("match").GetProperty("skipSurprises")
             .GetBoolean());
     }

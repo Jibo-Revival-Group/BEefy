@@ -92,6 +92,12 @@ public static class AsrCommandCatalog
         "lets dance",
         "let s dance",
     ];
+    internal static readonly string[] Twerk =
+    [
+        "twerk", "do a twerk", "do the twerk", "show me a twerk", "show us a twerk",
+        "can you twerk", "can you please twerk", "will you twerk", "will you please twerk",
+        "would you twerk", "would you please twerk", "could you twerk", "could you please twerk",
+    ];
     internal static readonly string[] Weather =
     [
         "weather",
@@ -151,12 +157,13 @@ public static class AsrCommandCatalog
         .Concat(Time)
         .Concat(Date)
         .Concat(Dance)
+        .Concat(Twerk)
         .Concat(Weather)
         .Concat(Greeting)
         .Concat(new[] { "what day is it", "what is your name", "how old are you",
             "where are you from", "what can you do" })
         .Select(TranscriptTextNormalizer.NormalizeLooseText)
         .Where(phrase => !phrase.Contains("leather", StringComparison.Ordinal))
-        .Where(phrase => phrase.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2)
+        .Where(phrase => phrase.Contains(' ') || phrase.Length >= 4)
         .Distinct(StringComparer.Ordinal).ToArray();
 }

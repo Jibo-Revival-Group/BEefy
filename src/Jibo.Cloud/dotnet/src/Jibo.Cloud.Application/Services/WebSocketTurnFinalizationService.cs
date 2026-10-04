@@ -3057,7 +3057,10 @@ public sealed class WebSocketTurnFinalizationService(
 
         if (SkillListenOwnership.IsSkillOwnedListen(turn) && IsYesNoReplyTranscript(transcript)) return true;
 
-        if (IsLowSignalSingleTokenTranscript(transcript)) return false;
+        if (IsLowSignalSingleTokenTranscript(transcript))
+            return turn.InputMode is not (TurnInputMode.DirectText or TurnInputMode.System) &&
+                   (turn.Locale is null || turn.Locale.StartsWith("en", StringComparison.OrdinalIgnoreCase)) &&
+                   AsrCorrectionAcceptance.CouldRecoverSingleCommand(transcript);
 
         if (SingleTokenUsableTranscripts.Contains(transcript)) return true;
 

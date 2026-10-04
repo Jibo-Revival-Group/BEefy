@@ -33,6 +33,8 @@ public sealed class LocalAsrCorrectionModelTests(ITestOutputHelper output)
             Assert.Equal("what is your favorite color", grammar.Text);
             foreach (var (heard, corrected, intent) in new[] {
                 ("what's your paper color", "what is your favorite color", "robot_favorite_color"),
+                ("twick", "twerk", "twerk"),
+                ("twelc", "twerk", "twerk"),
                 ("make a peter", "make a pizza", "pizza"),
                 ("make a peter sir", "make a pizza", "pizza"),
                 ("tell me a store ree", "tell me a story", "robot_story"),
@@ -56,7 +58,7 @@ public sealed class LocalAsrCorrectionModelTests(ITestOutputHelper output)
                 Assert.Equal(corrected, turn.Attributes[JiboInteractionService.ModelCorrectedTranscriptKey]);
                 Assert.Equal("bert-mini-context-q8", turn.Attributes["stt:correctionModel"]);
             }
-            foreach (var text in new[] { "make a pencil", "make a pit sir tomorrow", "do not make a pit sir",
+            foreach (var text in new[] { "work", "twice", "twirl", "truck", "Tim", "not", "twick tomorrow", "do not twick", "twerk", "make a pencil", "make a pit sir tomorrow", "do not make a pit sir",
                 "make my pit sir", "make two pit sir", "make a pizza", "do a dance",
                 "what is your paper color printer", "what color is your paper",
                 "what is my favorite color", "my name is Paper", "three purple clouds", "tell me a poem",
