@@ -64,8 +64,13 @@ remain in routing but are excluded from recovery hypotheses.
 The worker aligns whole phrases with at most one content-span correction and one
 grammar edit. It concatenates pronunciations across a single word boundary, so
 `make a pit sir` and `make a peter sir` can match `make a pizza`. Commands with two
-or more words are eligible. Protected ownership, numbers, negation, unrelated
-trailing clauses, and personal names cannot be discarded to force a match.
+or more words are eligible. Short fixed commands, including `twerk`, also allow
+one unknown spelling of 4–16 letters, with the first two letters retained and at
+most two spelling edits. Dictionary words are not reinterpreted in this single-word
+path. The microphone transcript filter preserves these bounded candidates for
+NLU rather than clearing them as empty audio. Protected ownership, numbers,
+negation, unrelated trailing clauses, and personal names cannot be discarded to
+force a match.
 
 For acoustically nearby hypotheses, the masked LM scores each changed tokenizer
 piece in its phrase context. Mean log probabilities allow comparisons across
@@ -74,10 +79,22 @@ contextual improvement; grammar substitutions retain a stronger evidence check.
 Candidates are ranked by contextual improvement and pronunciation distance. The
 returned confidence is sigmoid(3 × minimum contextual gain), capped by the
 sigmoid of the winning score margin when there is a competing hypothesis.
+For a single-word command, both spellings use the same `can you …` command frame.
+The LM compares complete-word log probabilities divided by the larger tokenizer
+piece count of the two spellings. This prevents common subword fragments from
+making a malformed spelling appear more likely than the intended command.
+`twick` and `twelc` recover to `twerk` with the installed model; the ordinary
+positive-evidence, pronunciation/spelling-distance and confidence checks still
+apply. Twerk phrases are shared between routing and the recovery catalog.
+
 A close competitor therefore lowers confidence instead of triggering a separate
 fixed ambiguity cutoff. These are heuristic scores, not calibrated probabilities
 of the user's intent. The host accepts scores at or above 75% by default.
 Real microphone accuracy still requires a recorded corpus.
+
+Missing-transcript fallback replies explicitly launch Nimbus for their cloud
+speech, preventing the same LISTEN from also launching a robot-owned greeting.
+Normal server logs include the original recognized words and finalized intent.
 
 From the BEefy repository root, install the model and its isolated Python runtime:
 

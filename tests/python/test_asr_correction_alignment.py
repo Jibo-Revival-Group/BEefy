@@ -34,6 +34,32 @@ class AlignmentTests(unittest.TestCase):
         self.assertIsNotNone(self.match('tell me a store ree', 'tell me a story'))
         self.assertIsNotNone(self.match('tell me a story', 'tell me a store ree'))
 
+    def test_single_command_unknown_spellings_and_boundaries(self):
+        for heard in ['twick', 'twelc']:
+            self.assertIsNotNone(self.match(heard, 'twerk'))
+        for heard in ['work', 'Tim', 'not', 'twick tomorrow', 'do not twick', 'twick 2']:
+            self.assertIsNone(self.match(heard, 'twerk'))
+        self.assertIsNone(self.match('twick', 'can you twerk'))
+        self.corrector.pronunciations['twirl'] = [['T', 'W', 'ER', 'L']]
+        self.assertIsNone(self.match('twirl', 'twerk'))
+
+    def test_single_command_scores_complete_words_with_shared_normalization(self):
+        class Encoding:
+            def __init__(self, count):
+                self.word_ids = [None] + [0] * count + [None]
+        class Tokenizer:
+            def encode(self, phrase, **_):
+                return Encoding(2 if phrase[0] == 'twerk' else 3)
+        self.corrector.tokenizer = Tokenizer()
+        self.corrector.span_log_probability = lambda phrase, *_: -7 if phrase[-1] == 'twerk' else -5
+        edits = self.match('twelc', 'twerk')[1]
+        # Per-piece means prefer fragmented twelc (-5 vs -7). Complete word
+        # probability prefers twerk (-14 vs -15), on a shared three-piece scale.
+        gain = self.corrector.evidence(['twelc'], ['twerk'], edits, float('inf'))
+        self.assertAlmostEqual(1 / 3, gain)
+        self.corrector.span_log_probability = lambda phrase, *_: -5 if phrase[-1] == 'twerk' else -3
+        self.assertIsNone(self.corrector.evidence(['twick'], ['twerk'], edits, float('inf')))
+
     def test_protected_meaning_and_unrelated_clauses(self):
         for heard in ['do not make a peter sir', 'make my peter sir', 'make two peter sir',
                       'make a peter sir tomorrow', 'make a pencil', 'bake a peter sir',

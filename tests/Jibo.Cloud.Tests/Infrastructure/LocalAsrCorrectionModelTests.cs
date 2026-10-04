@@ -65,15 +65,18 @@ public sealed class LocalAsrCorrectionModelTests(ITestOutputHelper output)
                 "do not tell me a choke", "set timer for five minutes", "what is your favorite color" })
                 Assert.Null(await model.TryCorrectAsync(text));
 
-            var timings = new List<double>();
-            foreach (var phrase in Enumerable.Repeat("what is your paper color", 20))
+            foreach (var phrase in new[] { "what is your paper color", "twick", "twelc" })
             {
-                var started = System.Diagnostics.Stopwatch.GetTimestamp();
-                Assert.NotNull(await model.TryCorrectAsync(phrase));
-                timings.Add(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                var timings = new List<double>();
+                for (var index = 0; index < 20; index++)
+                {
+                    var started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    Assert.NotNull(await model.TryCorrectAsync(phrase));
+                    timings.Add(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                }
+                timings.Sort();
+                output.WriteLine($"Uncached neural correction '{phrase}': median={timings[10]:F2} ms, p95={timings[18]:F2} ms");
             }
-            timings.Sort();
-            output.WriteLine($"Warm neural correction: median={timings[10]:F2} ms, p95={timings[18]:F2} ms");
         }
         finally { await model.StopAsync(CancellationToken.None); }
     }

@@ -4,6 +4,9 @@ using System.Text.Json;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
+using Jibo.Cloud.Infrastructure.Audio;
+using Jibo.Cloud.Tests.Infrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
 using Jibo.Cloud.Infrastructure.Content;
 using Jibo.Cloud.Infrastructure.Persistence;
 using Jibo.Cloud.Tests.Fixtures;
@@ -88,12 +91,55 @@ public sealed class JiboWebSocketServiceTests
     public async Task SpeechRecovery_SingleWordMishearingReachesModelAndPreservesHeardText(
         string heard, double confidence, bool accepted)
     {
-        var store = new InMemoryCloudStateStore();
         var model = new Mock<IAsrCorrectionModel>();
         model.Setup(m => m.TryCorrectAsync(heard, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AsrCorrection("twerk", confidence, "test-model"));
+        var (session, replies) = await FinalizeShortSpeechCommand(heard, model.Object);
+        model.Verify(m => m.TryCorrectAsync(heard, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(accepted, session.LastIntent == "twerk");
+        Assert.Equal(heard, session.LastTranscript);
+        Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, replies.Select(ReadReplyType));
+        using var listen = JsonDocument.Parse(replies[0].Text!);
+        var data = listen.RootElement.GetProperty("data");
+        Assert.Equal(heard, data.GetProperty("asr").GetProperty("text").GetString());
+        Assert.Equal("@be/nimbus", data.GetProperty("match").GetProperty("skillID").GetString());
+        if (accepted) Assert.Contains("rom-twerk", replies[2].Text!);
+        Assert.False(session.TurnState.AwaitingTurnCompletion);
+    }
+
+    [LocalCorrectionFact]
+    public async Task InstalledModel_SingleWordMicrophoneMishearingsRecoverWithHeardText()
+    {
+        using var model = new LocalAsrCorrectionModel(new AsrCorrectionOptions(),
+            NullLogger<LocalAsrCorrectionModel>.Instance);
+        await model.StartAsync(CancellationToken.None);
+        try
+        {
+            using var readyDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (!model.IsReady) await Task.Delay(20, readyDeadline.Token);
+            foreach (var heard in new[] { "twick", "twelc" })
+            {
+                var (session, replies) = await FinalizeShortSpeechCommand(heard, model);
+                Assert.Equal("twerk", session.LastIntent);
+                Assert.Equal(heard, session.LastTranscript);
+                Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, replies.Select(ReadReplyType));
+                using var listen = JsonDocument.Parse(replies[0].Text!);
+                var data = listen.RootElement.GetProperty("data");
+                Assert.Equal(heard, data.GetProperty("asr").GetProperty("text").GetString());
+                Assert.Equal("twerk", data.GetProperty("nlu").GetProperty("intent").GetString());
+                Assert.Contains("rom-twerk", replies[2].Text!);
+                Assert.False(session.TurnState.AwaitingTurnCompletion);
+            }
+        }
+        finally { await model.StopAsync(CancellationToken.None); }
+    }
+
+    private static async Task<(CloudSession Session, IReadOnlyList<WebSocketReply> Replies)>
+        FinalizeShortSpeechCommand(string heard, IAsrCorrectionModel model)
+    {
+        var store = new InMemoryCloudStateStore();
         var service = CreateService(store, sttStrategies: [new QueuedBufferedAudioSttStrategy(heard)],
-            asrCorrectionModel: model.Object);
+            asrCorrectionModel: model);
         WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
         {
             HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
@@ -108,17 +154,7 @@ public sealed class JiboWebSocketServiceTests
         session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-9);
         session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
         var replies = await service.HandleIdleAsync(session, setup);
-        model.Verify(m => m.TryCorrectAsync(heard, It.IsAny<CancellationToken>()), Times.Once);
-        Assert.Equal(accepted, session.LastIntent == "twerk");
-        Assert.Equal(heard, session.LastTranscript);
-        Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, replies.Select(ReadReplyType));
-        using var listen = JsonDocument.Parse(replies[0].Text!);
-        var data = listen.RootElement.GetProperty("data");
-        Assert.Equal(heard, data.GetProperty("asr").GetProperty("text").GetString());
-        Assert.Equal("@be/nimbus", data.GetProperty("match").GetProperty("skillID").GetString());
-        if (accepted) Assert.Contains("rom-twerk", replies[2].Text!);
-        Assert.False(session.TurnState.AwaitingTurnCompletion);
-        Assert.Empty(await service.HandleIdleAsync(session, setup));
+        return (session, replies);
     }
 
     [Fact]

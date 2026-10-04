@@ -81,6 +81,7 @@ public sealed class AsrModelFallbackTests
     }
 
     [Theory]
+    [InlineData("twerk")]
     [InlineData("make a pizza")]
     [InlineData("do a dance")]
     [InlineData("what time is it")]
