@@ -7,9 +7,7 @@ namespace Jibo.Cloud.Infrastructure.Audio;
 /// </summary>
 internal static class OggOpusPcmDecoder
 {
-    private const int OpusSampleRate = 48000;
     private const int TargetSampleRate = 16000;
-    private const int DownsampleFactor = OpusSampleRate / TargetSampleRate;
 
     internal static float[] DecodeTo16kMono(IReadOnlyList<byte[]> frames)
     {
@@ -17,9 +15,10 @@ internal static class OggOpusPcmDecoder
         if (packets.Length == 0)
             return [];
 
-        var decoder = OpusCodecFactory.CreateDecoder(OpusSampleRate, 1);
-        var pcm48k = new List<float>(packets.Length * 960);
-        var scratch = new float[5760];
+        var decoder = OpusCodecFactory.CreateDecoder(TargetSampleRate, 1);
+        using var decoderLifetime = decoder as IDisposable;
+        var pcm16k = new List<float>(packets.Length * 320);
+        var scratch = new float[1920];
 
         foreach (var packet in packets)
         {
@@ -30,7 +29,7 @@ internal static class OggOpusPcmDecoder
             {
                 var sampleCount = decoder.Decode(packet, scratch, scratch.Length, false);
                 if (sampleCount > 0)
-                    pcm48k.AddRange(scratch.AsSpan(0, sampleCount).ToArray());
+                    pcm16k.AddRange(scratch.AsSpan(0, sampleCount).ToArray());
             }
             catch
             {
@@ -38,14 +37,11 @@ internal static class OggOpusPcmDecoder
             }
         }
 
-        if (pcm48k.Count == 0)
+        if (pcm16k.Count == 0)
             return [];
 
-        var sampleCount16k = pcm48k.Count / DownsampleFactor;
-        var pcm16k = new float[sampleCount16k];
-        for (var i = 0; i < sampleCount16k; i++)
-            pcm16k[i] = pcm48k[i * DownsampleFactor];
-
-        return pcm16k;
+        // Decode at Sherpa's rate: dropping 48 kHz samples without a low-pass
+        // filter aliases high-frequency noise into the speech band.
+        return pcm16k.ToArray();
     }
 }
