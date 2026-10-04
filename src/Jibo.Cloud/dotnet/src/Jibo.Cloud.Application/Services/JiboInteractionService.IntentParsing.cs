@@ -280,9 +280,7 @@ public sealed partial class JiboInteractionService
         var normalized = NormalizeCommandPhrase(loweredTranscript);
         if (string.IsNullOrWhiteSpace(normalized)) return false;
 
-        if (normalized is "time" or "the time" or "current time" or "what time is it" or "what s the time"
-            or "what's the time"
-            or "what is the time") return true;
+        if (AsrCommandCatalog.Time.Contains(normalized, StringComparer.Ordinal)) return true;
 
         return normalized.StartsWith("what time", StringComparison.Ordinal) ||
                normalized.StartsWith("tell me the time", StringComparison.Ordinal) ||
@@ -294,20 +292,7 @@ public sealed partial class JiboInteractionService
         var normalized = NormalizeCommandPhrase(loweredTranscript);
         if (string.IsNullOrWhiteSpace(normalized)) return false;
 
-        return normalized is
-            "what is the date" or
-            "what s the date" or
-            "what's the date" or
-            "what date is it" or
-            "today s date" or
-            "today date" or
-            "what's today's date" or
-            "what is today s date" or
-            "what s today s date" or
-            "what's today s date" or
-            "what's todays date" or
-            "what is todays date" or
-            "what s todays date";
+        return AsrCommandCatalog.Date.Contains(normalized, StringComparer.Ordinal);
     }
 
     private static bool IsWeatherRequest(string loweredTranscript)
@@ -320,47 +305,7 @@ public sealed partial class JiboInteractionService
         var normalized = NormalizeCommandPhrase(loweredTranscript);
         if (IsWeatherTopicQuestion(normalized)) return true;
 
-        if (MatchesAny(
-                loweredTranscript,
-                "weather",
-                "forecast",
-                "how is the weather",
-                "how s the weather",
-                "how's the weather",
-                "check the weather",
-                "weather report",
-                "what's today s weather",
-                "what's today's weather",
-                "what is the weather",
-                "what will the weather",
-                "what will tomorrow s weather",
-                "what will tomorrow's weather",
-                "look up the forecast",
-                "launch the weather skill",
-                "what is today s humidity",
-                "what is today's humidity",
-                "what's the humidity",
-                "what is the humidity",
-                "what's today's forecast",
-                "what s today's forecast",
-                "what s today s forecast",
-                "what is today s forecast",
-                "what is today's forecast",
-                "what's today's weather look like",
-                "what s today's weather look like",
-                "what s today s weather look like",
-                "what is today s weather look like",
-                "what is today's weather look like",
-                // ASR: "weather" → "leather"
-                "what's the leather",
-                "whats the leather",
-                "what s the leather",
-                "what is the leather",
-                "how's the leather",
-                "how s the leather",
-                "how is the leather",
-                "check the leather",
-                "the leather"))
+        if (MatchesAny(loweredTranscript, AsrCommandCatalog.Weather))
             return true;
 
         return MatchesAny(
@@ -1182,25 +1127,7 @@ public sealed partial class JiboInteractionService
     private static bool IsDanceCommand(string loweredTranscript)
     {
         var normalized = NormalizeCommandPhrase(loweredTranscript);
-        return normalized is
-                   "dance" or
-                   "boogie" or
-                   "do a dance" or
-                   "do your dance" or
-                   "show me a dance" or
-                   "show us a dance" or
-                   "show me your dance" or
-                   "show us your dance" or
-                   "dance for me" or
-                   "dance for us" or
-                   "dance with me" or
-                   "dance with us" or
-                   "bust a move" or
-                   "bust some moves" or
-                   "do some dancing" or
-                   "start dancing" or
-                   "lets dance" or
-                   "let s dance" ||
+        return AsrCommandCatalog.Dance.Contains(normalized, StringComparer.Ordinal) ||
                normalized.StartsWith("dance ", StringComparison.Ordinal) ||
                normalized.StartsWith("boogie ", StringComparison.Ordinal);
     }

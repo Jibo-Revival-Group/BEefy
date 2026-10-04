@@ -363,13 +363,7 @@ public sealed partial class JiboInteractionService
                 "useless fact"))
             return "fun_fact";
 
-        if (MatchesAny(
-                loweredTranscript,
-                "joke",
-                "knock knock",
-                "nock nock",
-                "funny",
-                "make me laugh")) return "joke";
+        if (MatchesAny(loweredTranscript, AsrCommandCatalog.Joke)) return "joke";
 
         if (MatchesAny(
                 loweredTranscript,
@@ -1446,15 +1440,7 @@ public sealed partial class JiboInteractionService
                 "who developed you"))
             return "robot_origin_created";
 
-        if (MatchesAny(
-                loweredTranscript,
-                "tell me a story",
-                "can you tell me a story",
-                "could you tell me a story",
-                "can you tell me a bedtime story",
-                "could you tell me a bedtime story",
-                "read me a story",
-                "read a story"))
+        if (MatchesAny(loweredTranscript, AsrCommandCatalog.Story))
             return "robot_story";
 
         if (MatchesAny(
@@ -2126,30 +2112,12 @@ public sealed partial class JiboInteractionService
                 "do you think you are likeable"))
             return "robot_is_likable";
 
-        if (MatchesAny(
-                loweredTranscript,
-                "can you order pizza",
-                "can you order a pizza",
-                "could you order a pizza",
-                "order pizza",
-                "order a pizza",
-                "order us a pizza",
-                "order me a pizza",
-                "please order pizza") ||
+        if (MatchesAny(loweredTranscript, AsrCommandCatalog.OrderPizza) ||
             (loweredTranscript.Contains("order", StringComparison.Ordinal) &&
              loweredTranscript.Contains("pizza", StringComparison.Ordinal)))
             return "order_pizza";
 
-        if (MatchesAny(
-                loweredTranscript,
-                "can you cook us a pizza",
-                "flip a pizza",
-                "make a pizza",
-                "make pizza",
-                "show pizza",
-                "can you make pizza",
-                "let's make pizza",
-                "lets make pizza") ||
+        if (MatchesAny(loweredTranscript, AsrCommandCatalog.Pizza) ||
             (loweredTranscript.Contains("pizza", StringComparison.Ordinal) &&
              (loweredTranscript.Contains("make", StringComparison.Ordinal) ||
               loweredTranscript.Contains("cook", StringComparison.Ordinal) ||
@@ -2322,7 +2290,7 @@ public sealed partial class JiboInteractionService
         if (TryResolvePegasusPersonalityGap(loweredTranscript, out var pegasusGapIntent))
             return pegasusGapIntent!;
 
-        return MatchesAny(loweredTranscript, "hello", "hi", "hey") ? "hello" : "chat";
+        return MatchesAny(loweredTranscript, AsrCommandCatalog.Greeting) ? "hello" : "chat";
     }
 
     private static bool TryResolvePegasusPersonalityGap(

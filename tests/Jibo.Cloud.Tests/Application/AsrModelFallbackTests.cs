@@ -12,6 +12,11 @@ public sealed class AsrModelFallbackTests
     [Theory]
     [InlineData("what's your paper color", "what is your favorite color", "robot_favorite_color")]
     [InlineData("my time is it", "what time is it", "time")]
+    [InlineData("make a peter", "make a pizza", "pizza")]
+    [InlineData("make a pit sir", "make a pizza", "pizza")]
+    [InlineData("make peter", "make pizza", "pizza")]
+    [InlineData("do a dense", "do a dance", "dance")]
+    [InlineData("tell me a storey", "tell me a story", "robot_story")]
     public async Task ContextualCommandRecovery(string heard, string corrected, string intent)
     {
         var model = Model(corrected);
@@ -33,6 +38,8 @@ public sealed class AsrModelFallbackTests
     }
 
     [Theory]
+    [InlineData("make a pizza")]
+    [InlineData("do a dance")]
     [InlineData("what time is it")]
     [InlineData("tell me a joke")]
     [InlineData("what's your favorite color")]
@@ -135,6 +142,15 @@ public sealed class AsrModelFallbackTests
     }
 
     [Theory]
+    [InlineData("make a pit sir", "make a pizza", true)]
+    [InlineData("make a peter", "make a pizza", true)]
+    [InlineData("make peter", "make pizza", true)]
+    [InlineData("do a dense", "do a dance", true)]
+    [InlineData("make a pit sir tomorrow", "make a pizza", false)]
+    [InlineData("do not make a pit sir", "make a pizza", false)]
+    [InlineData("make my pit sir", "make a pizza", false)]
+    [InlineData("make two pit sir", "make a pizza", false)]
+    [InlineData("bake a peter", "make a pizza", false)]
     [InlineData("what your favorite colur", "What is your favorite color?", true)]
     [InlineData("tell me a jok", "Tell me a joke.", true)]
     [InlineData("what is your paper color", "what is your favorite color", true)]

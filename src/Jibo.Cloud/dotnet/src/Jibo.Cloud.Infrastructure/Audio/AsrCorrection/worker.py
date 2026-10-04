@@ -1,7 +1,7 @@
 """Offline contextual masked-LM scoring of nearby supported speech commands."""
 
 import argparse
-import difflib
+import itertools
 import json
 import math
 import os
@@ -85,145 +85,136 @@ class Corrector:
             self.pronunciations.setdefault(word, []).append(phones)
         self.mask = self.tokenizer.token_to_id("[MASK]")
 
-    def nearby(self, heard, candidate):
-        # Whole-sentence alignment, not substring matching. At most two edits;
-        # content substitutions require similar pronunciation.
-        if not 3 <= len(heard) <= 16 or not 3 <= len(candidate) <= 16:
-            return None
-        if [w for w in heard if w in PROTECTED or any(c.isdigit() for c in w)] != [
-            w for w in candidate if w in PROTECTED or any(c.isdigit() for c in w)
-        ]:
-            return None
-        edits = []
-        cost = 0
-        content_changes = 0
-        for kind, a, b, c, d in difflib.SequenceMatcher(
-            None, heard, candidate, autojunk=False
-        ).get_opcodes():
-            if kind == "equal":
-                continue
-            if kind == "replace" and b - a == d - c == 1:
-                left, right = heard[a], candidate[c]
-                if left in FUNCTIONS and right in FUNCTIONS:
-                    # Never change ownership of a preference or personal fact.
-                    if left in {"my", "your", "you"} and right in {"my", "your", "you"}:
-                        return None
-                    similarity = 0.35
-                else:
-                    content_changes += 1
-                    p, q = self.pronunciations.get(left), self.pronunciations.get(right)
-                    similarity = (
-                        min(distance(x, y) for x in p for y in q)
-                        if p and q
-                        else distance(list(left), list(right))
-                    )
-                    if similarity > 0.55:
-                        return None
-                cost += similarity
-                edits.append((c, right, left))
-            elif kind == "insert" and d - c == 1 and candidate[c] in FUNCTIONS:
-                cost += 0.4
-                edits.append((c, candidate[c], None))
-            elif (
-                kind == "delete"
-                and b - a == 1
-                and (heard[a] in FUNCTIONS or (a and heard[a] == heard[a - 1]))
-            ):
-                cost += 0.4
-                # Deletions need a model score for the full surviving phrase; excluded here.
-                return None
-            else:
-                return None
-        if (
-            not edits
-            or len(edits) > 2
-            or content_changes > 1
-            or len(heard) - len(edits) < 3
-        ):
-            return None
-        return cost, edits
+    def protected(self, word):
+        return word in PROTECTED or word in {"i", "me", "my", "mine", "you", "your", "yours", "we", "us", "our", "they", "their", "he", "his", "she", "her"} or any(c.isdigit() for c in word)
 
-    def evidence(self, candidate, edits, deadline):
-        encoded = self.tokenizer.encode(
-            candidate
-            + [
-                (
-                    "?"
-                    if candidate[0] in {"what", "which", "who", "how", "where", "do"}
-                    else "."
-                )
-            ],
-            is_pretokenized=True,
-        )
-        ids = encoded.ids
-        if len(ids) > 64:
-            return None
-        rows = []
-        comparisons = []
-        for index, target, original in edits:
-            positions = [i for i, w in enumerate(encoded.word_ids) if w == index]
-            replacement = self.tokenizer.encode(target, add_special_tokens=False).ids
-            old = (
-                self.tokenizer.encode(original, add_special_tokens=False).ids
-                if original
-                else []
-            )
-            # Avoid comparing probabilities of words with unequal wordpiece counts.
-            if (
-                len(positions) != 1
-                or len(replacement) != 1
-                or (original and len(old) != 1)
-            ):
+    def span_distance(self, left, right):
+        def pronunciations(span):
+            variants = [self.pronunciations.get(word) for word in span]
+            if not all(variants):
                 return None
-            row = ids.copy()
-            row[positions[0]] = self.mask
-            rows.append(row)
-            comparisons.append((positions[0], replacement[0], old[0] if old else None))
-        if time.monotonic() >= deadline:
+            return [sum(parts, []) for parts in itertools.product(*variants)]
+        p, q = pronunciations(left), pronunciations(right)
+        if p and q:
+            return min(distance(x, y) for x in p for y in q)
+        # Unknown spellings may be repaired, but unknown multiword sounds cannot.
+        return distance(list(left[0]), list(right[0])) if len(left) == len(right) == 1 else 1
+
+    def nearby(self, heard, candidate):
+        if not 2 <= len(heard) <= 32 or not 2 <= len(candidate) <= 32:
             return None
-        input_ids = np.array(rows, dtype=np.int64)
-        feeds = {
-            "input_ids": input_ids,
-            "attention_mask": np.ones_like(input_ids),
-            "token_type_ids": np.zeros_like(input_ids),
-        }
-        logits = self.model.run(None, feeds)[0]
-        improvements = []
-        for row, (position, target, original) in enumerate(comparisons):
+        # Keep protected words in order; only the existing malformed question
+        # exception may replace initial 'my' with a question word.
+        comparable = heard[:]
+        if (candidate[0] in {"what", "which", "how"} and heard[0] == "my"
+                and heard[1:] == candidate[1:]):
+            comparable[0] = candidate[0]
+        if [w for w in comparable if self.protected(w)] != [w for w in candidate if self.protected(w)]:
+            return None
+        matches = []
+
+        def align(i, j, cost, edits, content, anchors):
+            if len(edits) > 2 or content > 1:
+                return
+            if i == len(heard) and j == len(candidate):
+                if edits and anchors >= 1 and anchors >= len(heard) // 2:
+                    matches.append((cost, edits))
+                return
+            if i < len(heard) and j < len(candidate) and heard[i] == candidate[j]:
+                align(i + 1, j + 1, cost, edits, content, anchors + 1)
+                return
+            if i < len(heard) and j < len(candidate):
+                for old_size, new_size in [(1, 1), (2, 1), (1, 2)]:
+                    old, new = heard[i:i + old_size], candidate[j:j + new_size]
+                    if len(old) != old_size or len(new) != new_size:
+                        continue
+                    function = old_size == new_size == 1 and old[0] in FUNCTIONS and new[0] in FUNCTIONS
+                    question = i == j == 0 and comparable != heard
+                    if any(self.protected(w) for w in old + new) and not question:
+                        continue
+                    acoustic = 0.35 if function else self.span_distance(old, new)
+                    if acoustic <= 0.45:
+                        edit = (i, old_size, j, new_size, function)
+                        align(i + old_size, j + new_size, cost + acoustic, edits + [edit],
+                              content + (not function), anchors)
+            if j < len(candidate) and candidate[j] in FUNCTIONS and not self.protected(candidate[j]):
+                align(i, j + 1, cost + 0.4, edits + [(i, 0, j, 1, True)], content, anchors)
+            if i < len(heard) and not self.protected(heard[i]) and (
+                    heard[i] in FUNCTIONS or (i and heard[i] == heard[i - 1])):
+                align(i + 1, j, cost + 0.4, edits + [(i, 1, j, 0, True)], content, anchors)
+
+        align(0, 0, 0, [], 0, 0)
+        return min(matches, key=lambda match: match[0]) if matches else None
+
+    def span_log_probability(self, phrase, start, size, deadline):
+        encoded = self.tokenizer.encode(phrase + ["?" if phrase[0] in {"what", "which", "who", "how", "where", "do"} else "."], is_pretokenized=True)
+        positions = [i for i, word in enumerate(encoded.word_ids)
+                     if word is not None and start <= word < start + size]
+        if not positions or len(encoded.ids) > 64 or time.monotonic() >= deadline:
+            return None
+        # Score each piece with all other pieces visible; average rather than sum
+        # so an ASR split or a multi-piece spelling gets no length penalty.
+        rows = []
+        for position in positions:
+            row = encoded.ids[:]
+            row[position] = self.mask
+            rows.append(row)
+        ids = np.array(rows, dtype=np.int64)
+        logits = self.model.run(None, {"input_ids": ids, "attention_mask": np.ones_like(ids),
+                                       "token_type_ids": np.zeros_like(ids)})[0]
+        scores = []
+        for row, position in enumerate(positions):
             z = logits[row, position].astype(np.float64)
-            logp = float(z[target] - np.max(z) - np.log(np.exp(z - np.max(z)).sum()))
-            gain = float(z[target] - z[original]) if original is not None else 0
-            if original is None:
-                if logp < -3:
+            scores.append(float(z[encoded.ids[position]] - np.max(z) - np.log(np.exp(z - np.max(z)).sum())))
+        return sum(scores) / len(scores)
+
+    def evidence(self, heard, candidate, edits, deadline):
+        gains = []
+        for old_start, old_size, new_start, new_size, function in edits:
+            if new_size == 0:
+                # Grammar-only deletion is not sufficient neural evidence.
+                continue
+            new = self.span_log_probability(candidate, new_start, new_size, deadline)
+            if new is None:
+                return None
+            if old_size:
+                old = self.span_log_probability(heard, old_start, old_size, deadline)
+                if old is None:
+                    return None
+                gain = new - old
+                if gain < (3 if function else 0.5):
+                    return None
+            else:
+                if new < -3:
                     return None
                 gain = 3
-            # Require both a plausible replacement and strong contextual improvement.
-            if logp < -7 or gain < 3:
-                return None
-            improvements.append(gain)
-        return min(improvements)
+            gains.append(gain)
+        return min(gains) if gains else None
 
     def correct(self, text, candidates, budget_ms=150):
         started = time.monotonic()
         deadline = started + budget_ms / 1000
         heard = words(text)
+        phrases = sorted(set(" ".join(words(p)) for p in candidates))
+        if " ".join(heard) in phrases:
+            return None
         nearby = []
-        for phrase in candidates:
+        for phrase in phrases:
             candidate = words(phrase)
             match = self.nearby(heard, candidate)
             if match:
                 nearby.append((match[0], " ".join(candidate), candidate, match[1]))
         nearby.sort(key=lambda item: (item[0], item[1]))
-        # Ambiguous candidate lists are rejected instead of forcing a command.
-        if len(nearby) > 6:
+        # Bound inference work without silently dropping acoustic competitors.
+        if len(nearby) > 12:
             return None
         ranked = []
         for cost, phrase, candidate, edits in nearby:
             if time.monotonic() >= deadline:
                 return None
-            gain = self.evidence(candidate, edits, deadline)
+            gain = self.evidence(heard, candidate, edits, deadline)
             if gain is not None:
-                ranked.append((gain - 4 * cost, phrase, gain))
+                ranked.append((3 * gain - 4 * cost, phrase, gain))
         if not ranked or time.monotonic() >= deadline:
             return None
         ranked.sort(reverse=True)
@@ -232,7 +223,7 @@ class Corrector:
         _, phrase, gain = ranked[0]
         return {
             "text": phrase,
-            "confidence": 1 / (1 + math.exp(-gain)),
+            "confidence": 1 / (1 + math.exp(-min(3 * gain, 60))),
             "durationMs": (time.monotonic() - started) * 1000,
         }
 
