@@ -8,6 +8,29 @@ namespace Jibo.Cloud.Tests.WebSockets;
 
 public sealed class ModelEndpointingFinalizationTests
 {
+    [Theory]
+    [InlineData("what's your paper color", "what's your paper color", false)]
+    [InlineData("what's your paper color printer", "what's your paper color printer", false)]
+    public async Task BufferedStt_CorrectsOnlyKnownFrames_AndPreservesRawTranscript(
+        string heard, string expected, bool corrected)
+    {
+        var incremental = new FakeIncrementalSttSession { PartialText = heard, IsEndpoint = true };
+        var service = CreateService(incremental, out var broker);
+        var session = CreateArmedSession(incremental);
+        await service.HandleIdleAsync(session, new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com",
+            Path = "/listen",
+            Kind = "neo-hub-listen",
+            Text = """{"type":"IDLE"}"""
+        });
+        broker.Verify(b => b.HandleTurnAsync(
+            It.Is<TurnContext>(turn => turn.RawTranscript == heard &&
+                turn.NormalizedTranscript == expected &&
+                turn.Attributes.ContainsKey("stt:grammarCorrection") == corrected),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task IdleWatchdog_FinalizesImmediately_WhenModelEndpointAndCompletePartial()
     {

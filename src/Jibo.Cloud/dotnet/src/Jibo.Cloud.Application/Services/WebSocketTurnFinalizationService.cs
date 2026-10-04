@@ -964,6 +964,12 @@ public sealed class WebSocketTurnFinalizationService(
 
             var rawTranscript = sttResult.Text.Trim();
             var normalizedTranscript = NormalizeBufferedAudioTranscript(turn, rawTranscript);
+            var correctedTranscript = AsrGrammarCorrector.Correct(normalizedTranscript);
+            if (!string.Equals(correctedTranscript, normalizedTranscript, StringComparison.Ordinal))
+            {
+                attributes["stt:grammarCorrection"] = "preference-frame";
+                normalizedTranscript = correctedTranscript;
+            }
 
             var resolvedTurn = new TurnContext
             {

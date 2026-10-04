@@ -66,7 +66,9 @@ public sealed partial class JiboInteractionService
             robotKey,
             new RepeatLastCommandStore.LastCommand(
                 turn.RawTranscript ?? transcript,
-                turn.NormalizedTranscript,
+                turn.Attributes.TryGetValue(ModelCorrectedTranscriptKey, out var corrected)
+                    ? corrected?.ToString() ?? turn.NormalizedTranscript
+                    : turn.NormalizedTranscript,
                 SnapshotNluAttributes(turn)));
     }
 

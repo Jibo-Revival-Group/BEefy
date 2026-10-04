@@ -80,6 +80,23 @@ public sealed partial class JiboInteractionService
         if (SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
             semanticIntent = "chat";
 
+        if (semanticIntent == "chat" && !isYesNoTurn && !isSkillOwnedListen &&
+            !isTimerValueTurn && !isAlarmValueTurn && !SkillListenOwnership.IsCloudOwnedFollowUp(turn) &&
+            turn.InputMode is not (TurnInputMode.DirectText or TurnInputMode.System))
+        {
+            var correction = await TryCorrectUnrecognizedCommandAsync(turn, transcript,
+                candidate => ResolveSemanticIntent(candidate, referenceLocalTime, clientIntent,
+                    clientRules, listenRules, clientEntities, lastClockDomain, pendingProactivityOffer,
+                    isYesNoTurn, isTimerValueTurn, isAlarmValueTurn, isSkillOwnedListen), cancellationToken);
+            if (correction is { } accepted)
+            {
+                transcript = accepted.Transcript;
+                lowered = transcript.ToLowerInvariant();
+                semanticIntent = accepted.Intent;
+                turn = WithModelCorrectedTranscript(turn, transcript);
+            }
+        }
+
         if (ShouldTreatAsHaClimateClarify(turn, lowered, semanticIntent))
             semanticIntent = "ha_climate_clarify";
 

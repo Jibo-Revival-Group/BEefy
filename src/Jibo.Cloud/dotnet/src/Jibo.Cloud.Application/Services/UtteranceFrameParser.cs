@@ -40,6 +40,10 @@ internal static class UtteranceFrameParser
 
     private static readonly Dictionary<string, PreferenceRoute> Routes = BuildRoutes();
 
+    internal static IEnumerable<string> CorrectionCandidates() => Routes
+        .Where(route => route.Value.FavoriteIntent is not null)
+        .SelectMany(route => new[] { $"what is your favorite {route.Key}", $"do you have a favorite {route.Key}" });
+
     internal static string? TryParsePreference(string? transcript)
     {
         var text = Prepare(transcript);
@@ -152,6 +156,32 @@ internal static class UtteranceFrameParser
         return false;
     }
 
+    // Correction uses whole catalog subjects, never the prefix matching used by routing.
+    internal static bool TryCanonicalizePreferenceAttribute(string attribute, out string canonical)
+    {
+        if (Routes.ContainsKey(attribute))
+        {
+            canonical = attribute;
+            return true;
+        }
+
+        foreach (var surface in Routes.Keys)
+        {
+            if (!IsSameTokenSequence(attribute, surface)) continue;
+            canonical = surface;
+            return true;
+        }
+
+        if (AsrTokenLexicon.ColorAttributePattern.IsMatch(attribute))
+        {
+            canonical = "color";
+            return true;
+        }
+
+        canonical = attribute;
+        return false;
+    }
+
     private static bool IsSameTokenSequence(string attribute, string surface)
     {
         var attributeTokens = attribute.Split(' ');
@@ -221,6 +251,7 @@ internal static class UtteranceFrameParser
         var normalized = TranscriptTextNormalizer.NormalizeLooseText(transcript);
         if (string.IsNullOrWhiteSpace(normalized)) return string.Empty;
 
+        normalized = AsrGrammarCorrector.Correct(normalized);
         normalized = normalized.Replace("'", string.Empty, StringComparison.Ordinal);
         return TranscriptTextNormalizer.StripTrailingCourtesyWords(normalized);
     }

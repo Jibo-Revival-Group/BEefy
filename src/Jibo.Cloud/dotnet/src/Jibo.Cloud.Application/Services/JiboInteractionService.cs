@@ -26,8 +26,14 @@ public sealed partial class JiboInteractionService(
     HomeAssistantPendingClimateStore? homeAssistantPendingClimateStore = null,
     RepeatLastCommandStore? repeatLastCommandStore = null,
     IPhoenixConversationClient? phoenixConversation = null,
-    ILogger<JiboInteractionService>? logger = null)
+    ILogger<JiboInteractionService>? logger = null,
+    IAsrCorrectionModel? asrCorrectionModel = null,
+    AsrCorrectionOptions? asrCorrectionOptions = null,
+    ITransportMetrics? transportMetrics = null)
 {
+    private readonly AsrCorrectionOptions _asrCorrectionOptions = asrCorrectionOptions ?? new();
+    private readonly ITransportMetrics _asrCorrectionMetrics = transportMetrics ?? NullTransportMetrics.Instance;
+
     private const string GreetingRouteMetadataKey = "greetingsRoute";
     private const string GreetingSpeakerMetadataKey = "greetingsSpeaker";
     private const string LastProactiveGreetingUtcMetadataKey = "greetingsLastProactiveUtc";

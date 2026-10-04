@@ -31,6 +31,7 @@ public static class ServiceCollectionExtensions
     {
         var sttOptions = new BufferedAudioSttOptions();
         var listenEndpointingOptions = new ListenEndpointingOptions();
+        var asrCorrectionOptions = new AsrCorrectionOptions();
         if (configuration is not null)
         {
             services.Configure<WebSocketTelemetryOptions>(configuration.GetSection("OpenJibo:Telemetry"));
@@ -38,6 +39,7 @@ public static class ServiceCollectionExtensions
             services.Configure<TurnTelemetryOptions>(configuration.GetSection("OpenJibo:TurnTelemetry"));
             configuration.GetSection("OpenJibo:Stt").Bind(sttOptions);
             configuration.GetSection("OpenJibo:Listen").Bind(listenEndpointingOptions);
+            configuration.GetSection("OpenJibo:Stt:Correction").Bind(asrCorrectionOptions);
         }
 
         BufferedAudioSttPathResolver.ValidateResolvedDependencies(sttOptions);
@@ -83,6 +85,10 @@ public static class ServiceCollectionExtensions
             searchSection?.GetValue("FailureCacheTtlSeconds", 45) ?? 45,
             llmInstructions);
 
+        services.AddSingleton(asrCorrectionOptions);
+        services.AddSingleton<LocalAsrCorrectionModel>();
+        services.AddSingleton<IAsrCorrectionModel>(provider => provider.GetRequiredService<LocalAsrCorrectionModel>());
+        services.AddHostedService(provider => provider.GetRequiredService<LocalAsrCorrectionModel>());
         services.AddSingleton(sttOptions);
         services.AddSingleton(listenEndpointingOptions);
         services.AddHostedService<WhisperServerHostedService>();
