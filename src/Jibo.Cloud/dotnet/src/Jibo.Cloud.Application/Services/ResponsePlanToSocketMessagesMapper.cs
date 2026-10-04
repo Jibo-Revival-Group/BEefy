@@ -1058,7 +1058,39 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 ["views"] = weatherViews
             };
 
-            if (usePersonalReportSequence)
+            if (!isPersonalReport &&
+                !string.IsNullOrWhiteSpace(ReadPayloadString(skillPayload, "weather_comment_esml")) &&
+                !string.IsNullOrWhiteSpace(ReadPayloadString(skillPayload, "weather_high_low_esml")))
+            {
+                useSequence = true;
+                var commentConfig = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["play"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["esml"] = ReadPayloadString(skillPayload, "weather_comment_esml"),
+                        ["meta"] = playConfig["meta"]
+                    }
+                };
+                var highLowConfig = new Dictionary<string, object?>(jcpConfig, StringComparer.OrdinalIgnoreCase);
+                highLowConfig.Remove("children");
+                highLowConfig["play"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["esml"] = ReadPayloadString(skillPayload, "weather_high_low_esml"),
+                    ["meta"] = new
+                    {
+                        prompt_id = ReadPayloadString(skillPayload, "weather_high_low_prompt_id") ?? "WeatherTodayHighLow_AN_01",
+                        prompt_sub_category = promptSubCategory,
+                        mim_id = ReadPayloadString(skillPayload, "weather_high_low_mim_id") ?? "WeatherTodayHighLow",
+                        mim_type = mimType
+                    }
+                };
+                jcpConfig["children"] = new object[]
+                {
+                    new Dictionary<string, object?> { ["type"] = "SLIM", ["config"] = commentConfig },
+                    new Dictionary<string, object?> { ["type"] = "SLIM", ["config"] = highLowConfig }
+                };
+            }
+            else if (usePersonalReportSequence)
             {
                 useSequence = true;
                 var weatherIcon = ReadPayloadString(skillPayload, "weather_icon") ?? "cloudy";

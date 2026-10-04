@@ -140,8 +140,14 @@ public sealed partial class JiboInteractionService
                 ChooseWeatherServiceDownReply(catalog));
 
         snapshot = ApplyPreferredWeatherLocationName(snapshot, preferredLocationName, locationQuery);
-        var spokenReply = BuildWeatherSpokenReply(snapshot, weatherDate, catalog);
-        var weatherPayload = BuildWeatherSkillPayload(spokenReply, snapshot, referenceLocalTime);
+        var (comment, highLow) = BuildWeatherSpokenReply(snapshot, weatherDate, catalog);
+        var spokenReply = string.IsNullOrWhiteSpace(highLow) ? comment : $"{comment} {highLow}";
+        var weatherPayload = BuildWeatherSkillPayload(spokenReply, snapshot, referenceLocalTime, comment, highLow);
+        if (weatherDate.ForecastDayOffset == 1 && !string.IsNullOrWhiteSpace(highLow))
+        {
+            weatherPayload["weather_high_low_mim_id"] = "WeatherTomorrowHighLow";
+            weatherPayload["weather_high_low_prompt_id"] = "WeatherTomorrowHighLow_AN_01";
+        }
         AddWeatherRequestDiagnostics(
             weatherPayload,
             transcript,

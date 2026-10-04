@@ -15,7 +15,7 @@ public sealed partial class JiboInteractionService
             .Replace("\"", "&quot;", StringComparison.Ordinal);
     }
 
-    private static string BuildWeatherSpokenReply(
+    private static (string Comment, string? HighLow) BuildWeatherSpokenReply(
         WeatherReportSnapshot snapshot,
         WeatherDateEntity weatherDate,
         JiboExperienceCatalog catalog)
@@ -46,7 +46,7 @@ public sealed partial class JiboInteractionService
                 var forecastLeadIn = string.IsNullOrWhiteSpace(weatherDate.ForecastLeadIn)
                     ? "Tomorrow"
                     : weatherDate.ForecastLeadIn;
-                return $"Let's look at the weather. {forecastLeadIn} in {location}, it looks {summary}{tempRange}.";
+                return ($"Let's look at the weather. {forecastLeadIn} in {location}, it looks {summary}{tempRange}.", null);
             }
 
             var highValue = snapshot.HighTemperature ?? snapshot.Temperature;
@@ -76,7 +76,7 @@ public sealed partial class JiboInteractionService
             var forecastSentenceLeadIn = string.IsNullOrWhiteSpace(weatherDate.ForecastLeadIn)
                 ? "Tomorrow"
                 : weatherDate.ForecastLeadIn;
-            return $"{intro} {forecastSentenceLeadIn} in {location}, it looks {summary}. {highLow}";
+            return ($"{intro} {forecastSentenceLeadIn} in {location}, it looks {summary}.", highLow);
         }
 
         var currentIntro = RenderWeatherTemplate(
@@ -97,8 +97,7 @@ public sealed partial class JiboInteractionService
             snapshot.LowTemperature ?? snapshot.Temperature,
             unit,
             string.Empty);
-        return
-            $"{currentIntro} In {location}, it's {summary} and {snapshot.Temperature} degrees {unit}. {currentHighLow}";
+        return ($"{currentIntro} In {location}, it's {summary} and {snapshot.Temperature} degrees {unit}.", currentHighLow);
     }
 
     private static string BuildCommuteSpokenReply(
@@ -452,7 +451,9 @@ public sealed partial class JiboInteractionService
     private static IDictionary<string, object?> BuildWeatherSkillPayload(
         string spokenReply,
         WeatherReportSnapshot snapshot,
-        DateTimeOffset? referenceLocalTime)
+        DateTimeOffset? referenceLocalTime,
+        string? comment = null,
+        string? highLow = null)
     {
         var weatherIcon = ResolveWeatherAnimationIcon(snapshot, referenceLocalTime);
         var promptToken = ResolveWeatherPromptToken(weatherIcon);
@@ -461,7 +462,7 @@ public sealed partial class JiboInteractionService
         var temperatureUnit = snapshot.UseCelsius ? "C" : "F";
         var temperatureBand = ResolveWeatherTemperatureBand(highTemperature, snapshot.UseCelsius);
 
-        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["skillId"] = "report-skill",
             ["cloudSkill"] = "weather",
@@ -482,6 +483,16 @@ public sealed partial class JiboInteractionService
             ["weather_unit"] = temperatureUnit,
             ["weather_theme"] = temperatureBand
         };
+        if (!string.IsNullOrWhiteSpace(highLow))
+        {
+            payload["weather_comment_esml"] =
+                $"<speak><anim cat='weather' meta='{weatherIcon}' nonBlocking='true' /><break size='0.5'/><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeForEsml(comment ?? string.Empty)}</es></speak>";
+            payload["weather_high_low_esml"] =
+                $"<speak><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeForEsml(highLow)}</es></speak>";
+            payload["weather_high_low_mim_id"] = "WeatherTodayHighLow";
+            payload["weather_high_low_prompt_id"] = "WeatherTodayHighLow_AN_01";
+        }
+        return payload;
     }
 
     private static string ResolveWeatherAnimationIcon(

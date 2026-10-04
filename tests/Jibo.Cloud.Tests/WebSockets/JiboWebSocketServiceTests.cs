@@ -4638,15 +4638,22 @@ public sealed class JiboWebSocketServiceTests
         Assert.Equal(
             "report-skill",
             skillPayload.RootElement.GetProperty("data").GetProperty("skill").GetProperty("id").GetString());
-        var jcpConfig = skillPayload.RootElement
+        var jcp = skillPayload.RootElement
             .GetProperty("data")
             .GetProperty("action")
             .GetProperty("config")
-            .GetProperty("jcp")
-            .GetProperty("config");
+            .GetProperty("jcp");
+        Assert.Equal("SEQUENCE", jcp.GetProperty("type").GetString());
+        var children = jcp.GetProperty("children");
+        Assert.Equal(2, children.GetArrayLength());
+        var commentConfig = children[0].GetProperty("config");
+        Assert.False(commentConfig.TryGetProperty("gui", out _));
+        Assert.Contains("cat='weather'", commentConfig.GetProperty("play").GetProperty("esml").GetString(), StringComparison.OrdinalIgnoreCase);
+        var jcpConfig = children[1].GetProperty("config");
 
         var esml = jcpConfig.GetProperty("play").GetProperty("esml").GetString();
-        Assert.Contains("cat='weather'", esml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("cat='weather'", esml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("high", esml, StringComparison.OrdinalIgnoreCase);
 
         Assert.True(jcpConfig.TryGetProperty("gui", out var gui));
         Assert.Equal("Javascript", gui.GetProperty("type").GetString());
