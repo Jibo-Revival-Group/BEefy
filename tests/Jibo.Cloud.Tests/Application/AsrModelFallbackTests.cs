@@ -16,6 +16,7 @@ public sealed class AsrModelFallbackTests
     [InlineData("make a peter", "make a pizza", "pizza")]
     [InlineData("make a pit sir", "make a pizza", "pizza")]
     [InlineData("make peter", "make pizza", "pizza")]
+    [InlineData("twic", "twerk", "twerk")]
     [InlineData("twick", "twerk", "twerk")]
     [InlineData("twelc", "twerk", "twerk")]
     [InlineData("do a dense", "do a dance", "dance")]
@@ -186,8 +187,13 @@ public sealed class AsrModelFallbackTests
     }
 
     [Theory]
+    [InlineData("twic", "twerk", true)]
     [InlineData("twick", "twerk", true)]
     [InlineData("twelc", "twerk", true)]
+    [InlineData("twice", "twerk", false)]
+    [InlineData("twic tomorrow", "twerk", false)]
+    [InlineData("do not twic", "twerk", false)]
+    [InlineData("twic 2", "twerk", false)]
     [InlineData("work", "twerk", false)]
     [InlineData("Tim", "time", false)]
     [InlineData("not", "twerk", false)]

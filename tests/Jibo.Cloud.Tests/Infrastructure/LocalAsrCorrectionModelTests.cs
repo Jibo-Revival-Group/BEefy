@@ -33,6 +33,7 @@ public sealed class LocalAsrCorrectionModelTests(ITestOutputHelper output)
             Assert.Equal("what is your favorite color", grammar.Text);
             foreach (var (heard, corrected, intent) in new[] {
                 ("what's your paper color", "what is your favorite color", "robot_favorite_color"),
+                ("twic", "twerk", "twerk"),
                 ("twirk", "twerk", "twerk"),
                 ("twick", "twerk", "twerk"),
                 ("twelc", "twerk", "twerk"),
@@ -59,14 +60,14 @@ public sealed class LocalAsrCorrectionModelTests(ITestOutputHelper output)
                 Assert.Equal(corrected, turn.Attributes[JiboInteractionService.ModelCorrectedTranscriptKey]);
                 Assert.Equal("bert-mini-context-q8", turn.Attributes["stt:correctionModel"]);
             }
-            foreach (var text in new[] { "work", "twice", "twirl", "truck", "Tim", "not", "twick tomorrow", "do not twick", "twerk", "make a pencil", "make a pit sir tomorrow", "do not make a pit sir",
+            foreach (var text in new[] { "work", "twice", "twirl", "truck", "Tim", "not", "twic tomorrow", "do not twic", "twic 2", "twick tomorrow", "do not twick", "twerk", "make a pencil", "make a pit sir tomorrow", "do not make a pit sir",
                 "make my pit sir", "make two pit sir", "make a pizza", "do a dance",
                 "what is your paper color printer", "what color is your paper",
                 "what is my favorite color", "my name is Paper", "three purple clouds", "tell me a poem",
                 "do not tell me a choke", "set timer for five minutes", "what is your favorite color" })
                 Assert.Null(await model.TryCorrectAsync(text));
 
-            foreach (var phrase in new[] { "what is your paper color", "twick", "twelc" })
+            foreach (var phrase in new[] { "what is your paper color", "twic", "twick", "twelc" })
             {
                 var timings = new List<double>();
                 for (var index = 0; index < 20; index++)

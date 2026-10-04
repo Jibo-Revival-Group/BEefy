@@ -83,7 +83,10 @@ internal static class AsrCorrectionAcceptance
         before.Length is >= 4 and <= 16 && after.Length is >= 4 and <= 16 &&
         before.All(char.IsAsciiLetterLower) && after.All(char.IsAsciiLetterLower) &&
         !IsProtected(before) && !IsProtected(after) && before != after &&
-        before.AsSpan(0, 2).SequenceEqual(after.AsSpan(0, 2)) && CharacterDistance(before, after) <= 2;
+        before.AsSpan(0, 2).SequenceEqual(after.AsSpan(0, 2)) &&
+        (CharacterDistance(before, after) <= 2 ||
+         (before.EndsWith('c') && "aeiou".Contains(before[^2]) && after.EndsWith('k') &&
+          CharacterDistance(before + "k", after) <= 2));
 
     private static string[] Tokens(string value) => TranscriptTextNormalizer.NormalizeLooseText(value)
         .Replace("'", string.Empty, StringComparison.Ordinal).Split(' ', StringSplitOptions.RemoveEmptyEntries)

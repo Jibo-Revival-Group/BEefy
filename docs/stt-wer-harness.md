@@ -83,9 +83,14 @@ For a single-word command, both spellings use the same `can you …` command fra
 The LM compares complete-word log probabilities divided by the larger tokenizer
 piece count of the two spellings. This prevents common subword fragments from
 making a malformed spelling appear more likely than the intended command.
-`twick` and `twelc` recover to `twerk` with the installed model; the ordinary
-positive-evidence, pronunciation/spelling-distance and confidence checks still
-apply. Twerk phrases are shared between routing and the recovery catalog.
+`twick` and `twelc` recover to `twerk` with the installed model. For an unknown
+single word ending in vowel plus `c`, the worker may also score a spelling with
+a final `k`; this recovers the observed `twic` as `twerk` without changing the
+raw transcript. This completion is limited to candidate commands ending in
+`k`, incurs a 0.1 confidence penalty, and must still pass the server's bounded
+edit check. The ordinary positive-evidence, pronunciation/spelling-distance,
+and confidence checks still apply. Twerk phrases are shared between routing and
+the recovery catalog.
 An unknown single-word er/ir/ur spelling before a consonant (for example `twirk`)
 can also match a unique supported command with the same bounded sound spelling.
 This pronunciation match returns heuristic confidence 0.90 without requiring BERT

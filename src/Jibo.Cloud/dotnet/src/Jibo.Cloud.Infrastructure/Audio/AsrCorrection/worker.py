@@ -36,6 +36,14 @@ def sound_spelling(word):
     return re.sub(r"[eiu]r(?=[bcdfghjklmnpqrstvwxyz]|$)", "er", word)
 
 
+def complete_final_stop(word):
+    # ASR sometimes drops the written k of a final /k/: "twic" -> "twick".
+    # Apply only to an unknown single word with a vowel before final c.
+    if len(word) >= 4 and word[-1] == "c" and word[-2] in "aeiou":
+        return word + "k"
+    return word
+
+
 def distance(a, b):
     previous = list(range(len(b) + 1))
     for i, x in enumerate(a):
@@ -116,12 +124,13 @@ class Corrector:
             if len(heard) != 1 or len(candidate) != 1:
                 return None
             old, new = heard[0], candidate[0]
+            completed = complete_final_stop(old) if new.endswith("k") else old
             if (not 4 <= len(old) <= 16 or not 4 <= len(new) <= 16 or old == new
                     or not old.isalpha() or not new.isalpha() or old[:2] != new[:2]
                     or old in self.pronunciations or self.protected(old) or self.protected(new)
-                    or distance(list(old), list(new)) > 2 / max(len(old), len(new))):
+                    or distance(list(completed), list(new)) > 2 / max(len(completed), len(new))):
                 return None
-            acoustic = self.span_distance(heard, candidate)
+            acoustic = self.span_distance([completed], candidate)
             return (acoustic, [(0, 1, 0, 1, False)]) if acoustic <= 0.45 else None
         # Keep protected words in order; only the existing malformed question
         # exception may replace initial 'my' with a question word.
@@ -260,7 +269,12 @@ class Corrector:
         for cost, phrase, candidate, edits in nearby:
             if time.monotonic() >= deadline:
                 return None
-            gain = self.evidence(heard, candidate, edits, deadline)
+            # The LM evaluates the complete spelling so a missing final stop
+            # letter does not make a partial tokenizer fragment look like a word.
+            scoring_heard = heard
+            if len(heard) == len(candidate) == 1 and candidate[0].endswith("k"):
+                scoring_heard = [complete_final_stop(heard[0])]
+            gain = self.evidence(scoring_heard, candidate, edits, deadline)
             if gain is not None:
                 ranked.append((3 * gain - 4 * cost, phrase, gain))
         if not ranked or time.monotonic() >= deadline:
@@ -273,6 +287,8 @@ class Corrector:
             # independent rejection threshold. The host applies MinimumConfidence.
             margin = ranked[0][0] - ranked[1][0]
             confidence = min(confidence, 1 / (1 + math.exp(-min(margin, 60))))
+        if len(heard) == 1 and phrase.endswith("k") and complete_final_stop(heard[0]) != heard[0]:
+            confidence = max(0, confidence - 0.1)
         return {
             "text": phrase,
             "confidence": confidence,

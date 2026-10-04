@@ -78,12 +78,13 @@ public sealed class JiboWebSocketServiceTests
         }
         model.Verify(m => m.TryCorrectAsync("make a peter sir", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal("pizza", store.FindSessionByToken(setup.Token!)!.LastIntent);
-        var listen = Assert.Single(replies.Where(reply => ReadReplyType(reply) == "LISTEN"));
+        var listen = Assert.Single(replies, reply => ReadReplyType(reply) == "LISTEN");
         using var payload = JsonDocument.Parse(listen.Text!);
         Assert.Equal("pizza", payload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
     }
 
     [Theory]
+    [InlineData("twic", 0.85, true)]
     [InlineData("twirk", 0.9, true)]
     [InlineData("twick", 0.85, true)]
     [InlineData("twelc", 0.85, true)]
@@ -118,7 +119,7 @@ public sealed class JiboWebSocketServiceTests
         {
             using var readyDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while (!model.IsReady) await Task.Delay(20, readyDeadline.Token);
-            foreach (var heard in new[] { "twirk", "twick", "twelc" })
+            foreach (var heard in new[] { "twic", "twirk", "twick", "twelc" })
             {
                 var (session, replies) = await FinalizeShortSpeechCommand(heard, model);
                 Assert.Equal("twerk", session.LastIntent);
@@ -149,7 +150,8 @@ public sealed class JiboWebSocketServiceTests
         FinalizeShortSpeechCommand(string heard, IAsrCorrectionModel model)
     {
         var store = new InMemoryCloudStateStore();
-        var service = CreateService(store, sttStrategies: [new QueuedBufferedAudioSttStrategy(heard)],
+        var stt = new QueuedBufferedAudioSttStrategy(heard);
+        var service = CreateService(store, sttStrategies: [stt],
             asrCorrectionModel: model);
         WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
         {
@@ -165,6 +167,7 @@ public sealed class JiboWebSocketServiceTests
         session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-9);
         session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
         var replies = await service.HandleIdleAsync(session, setup);
+        Assert.Equal(1, stt.TranscriptionCount);
         return (session, replies);
     }
 
@@ -11201,6 +11204,7 @@ public sealed class JiboWebSocketServiceTests
     private sealed class QueuedBufferedAudioSttStrategy(params string[] transcripts) : ISttStrategy
     {
         private readonly Queue<string> _transcripts = new(transcripts);
+        public int TranscriptionCount { get; private set; }
 
         public string Name => "queued-buffered-audio";
 
@@ -11211,6 +11215,7 @@ public sealed class JiboWebSocketServiceTests
 
         public Task<SttResult> TranscribeAsync(TurnContext turn, CancellationToken cancellationToken = default)
         {
+            TranscriptionCount++;
             return Task.FromResult(new SttResult
             {
                 Text = _transcripts.Dequeue(),
