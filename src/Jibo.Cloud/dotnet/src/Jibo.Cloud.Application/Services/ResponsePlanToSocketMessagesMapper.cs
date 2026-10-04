@@ -621,7 +621,11 @@ public sealed class ResponsePlanToSocketMessagesMapper
         ];
     }
 
-    public static IReadOnlyList<SocketReplyPlan> MapNoInput(string transId, IReadOnlyList<string> rules)
+    public static IReadOnlyList<SocketReplyPlan> MapNoInput(string transId, IReadOnlyList<string> rules) =>
+        MapNoInput(transId, rules, final: true);
+
+    private static IReadOnlyList<SocketReplyPlan> MapNoInput(
+        string transId, IReadOnlyList<string> rules, bool final)
     {
         return
         [
@@ -629,12 +633,16 @@ public sealed class ResponsePlanToSocketMessagesMapper
             {
                 type = "LISTEN",
                 transID = transId,
+                final,
                 data = new
                 {
                     asr = new
                     {
                         confidence = 0.95,
                         final = true,
+                        // The robot checks this before launch/no-match handling.
+                        // Empty text alone otherwise triggers Idle's quoted "" response.
+                        annotation = "SOS_TIMEOUT",
                         text = string.Empty
                     },
                     nlu = new
@@ -663,7 +671,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         string skillId,
         int redirectDelayMs = 0)
     {
-        var messages = new List<SocketReplyPlan>(MapNoInput(transId, rules))
+        var messages = new List<SocketReplyPlan>(MapNoInput(transId, rules, final: false))
         {
             new(JsonSerializer.Serialize(BuildSkillRedirectPayload(
                     transId,
@@ -671,7 +679,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
                     string.Empty,
                     string.Empty,
                     [],
-                    new Dictionary<string, object?>())),
+                    new Dictionary<string, object?>(),
+                    final: true)),
                 redirectDelayMs)
         };
 
@@ -1096,6 +1105,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 mimType);
         }
 
+        // Hub completion belongs on the envelope (native LhubClient::run);
+        // The nested data.final marker alone does not close the native Hub turn.
         var jcp = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["type"] = "SLIM",
@@ -1107,6 +1118,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
             return new
             {
                 type = "SKILL_ACTION",
+                final = true,
                 ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 msgID = CloudMessageIdFactory.CreateHubMessageId(),
                 transID = transId,
@@ -1135,6 +1147,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         return new
         {
             type = "SKILL_ACTION",
+            final = true,
             ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             msgID = CloudMessageIdFactory.CreateHubMessageId(),
             transID = transId,
@@ -1192,6 +1205,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         return new
         {
             type = "SKILL_ACTION",
+            final = true,
             ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             msgID = CloudMessageIdFactory.CreateHubMessageId(),
             transID = transId,
@@ -1237,6 +1251,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         return new
         {
             type = "SKILL_ACTION",
+            final = true,
             ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             msgID = CloudMessageIdFactory.CreateHubMessageId(),
             transID = transId,
@@ -1307,11 +1322,13 @@ public sealed class ResponsePlanToSocketMessagesMapper
         string outboundIntent,
         string outboundAsrText,
         IReadOnlyList<string> outboundRules,
-        object entities)
+        object entities,
+        bool final = false)
     {
         return new
         {
             type = "SKILL_REDIRECT",
+            final,
             ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             msgID = CloudMessageIdFactory.CreateHubMessageId(),
             transID = transId,

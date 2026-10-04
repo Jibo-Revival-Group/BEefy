@@ -1339,6 +1339,9 @@ public sealed class WebSocketTurnFinalizationService(
                 session.LastTranscript = string.Empty;
                 session.LastIntent = null;
                 session.LastListenType = "no-input";
+                logger.LogInformation(
+                    "Closing no-speech turn session={SessionId} transId={TransId} reason=auto_finalize_hotphrase_non_command_no_input annotation=SOS_TIMEOUT",
+                    session.SessionId, turnState.TransId);
                 await sink.RecordTurnDiagnosticAsync("auto_finalize_hotphrase_non_command_no_input",
                     BuildTurnDiagnosticSnapshot(session, envelope, new Dictionary<string, object?>
                     {
@@ -1568,6 +1571,9 @@ public sealed class WebSocketTurnFinalizationService(
                     session.LastTranscript = string.Empty;
                     session.LastIntent = null;
                     session.LastListenType = "no-input";
+                    logger.LogInformation(
+                        "Closing no-speech turn session={SessionId} transId={TransId} reason=auto_finalize_hotphrase_no_input annotation=SOS_TIMEOUT",
+                        session.SessionId, turnState.TransId);
                     await sink.RecordTurnDiagnosticAsync("auto_finalize_hotphrase_no_input",
                         BuildTurnDiagnosticSnapshot(session, envelope, new Dictionary<string, object?>
                         {
@@ -1688,6 +1694,9 @@ public sealed class WebSocketTurnFinalizationService(
                 session.LastTranscript = string.Empty;
                 session.LastIntent = null;
                 session.LastListenType = "no-input";
+                logger.LogInformation(
+                    "Closing no-speech turn session={SessionId} transId={TransId} reason=auto_finalize_hotphrase_only_no_input annotation=SOS_TIMEOUT",
+                    session.SessionId, turnState.TransId);
                 await sink.RecordTurnDiagnosticAsync("auto_finalize_hotphrase_only_no_input",
                     BuildTurnDiagnosticSnapshot(session, envelope, new Dictionary<string, object?>
                     {
@@ -2002,8 +2011,9 @@ public sealed class WebSocketTurnFinalizationService(
                 }),
                 cancellationToken);
             logger.LogInformation(
-                "Finalize turn plan session={SessionId} messageType={MessageType} intent={Intent} actionCount={ActionCount} keepMicOpen={KeepMicOpen} followUpOpen={FollowUpOpen} transcript={Transcript}",
+                "Finalize turn plan session={SessionId} transId={TransId} messageType={MessageType} intent={Intent} actionCount={ActionCount} keepMicOpen={KeepMicOpen} followUpOpen={FollowUpOpen} transcript={Transcript}",
                 session.SessionId,
+                turnState.TransId,
                 messageType,
                 plan.IntentName,
                 plan.Actions.Count,
@@ -2071,9 +2081,10 @@ public sealed class WebSocketTurnFinalizationService(
                     ["lastTranscript"] = finalizedTurn.NormalizedTranscript ?? finalizedTurn.RawTranscript
                 }),
                 cancellationToken);
-            logger.LogDebug(
-                "Finalize turn replies emitted session={SessionId} messageType={MessageType} intent={Intent} replyCount={ReplyCount} hasEos={HasEos} replyTypes={ReplyTypes}",
+            logger.LogInformation(
+                "Finalize turn replies emitted session={SessionId} transId={TransId} messageType={MessageType} intent={Intent} replyCount={ReplyCount} hasEos={HasEos} replyTypes={ReplyTypes}",
                 session.SessionId,
+                turnState.TransId,
                 messageType,
                 plan.IntentName,
                 replies.Length,

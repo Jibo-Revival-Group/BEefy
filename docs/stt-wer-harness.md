@@ -207,7 +207,7 @@ recovery behavior, not a population-level accuracy guarantee.
 ### Twerk response compatibility
 
 Twerk closes recognized speech with EOS, then sends a non-final cloud LISTEN for
-`chitchat-skill`, followed by its SKILL_ACTION. The robot Skills Service Manager
+`chitchat-skill`, followed by its final SKILL_ACTION. The robot Skills Service Manager
 remaps that cloud skill to `@be/nimbus`; the wire ID must identify the cloud skill
 rather than the local renderer. The playback payload uses the original
 `RA_JBO_Twerk_AN_01` prompt and `&(music, twerk), !(short)` animation selector,
@@ -215,3 +215,27 @@ including `endNeutral=true`, from the bundled legacy MIM. Correctly recognized
 `twerk` and pronunciation-recovered commands use this same response path.
 Already-recognized `CLIENT_NLU` twerk commands also emit the cloud playback action,
 even when the robot supplies only the intent and no transcript text.
+
+### Hub transaction completion on native robots
+
+Final playback replies set `final = true` on the SKILL_ACTION envelope as well as
+inside `data`. The native `LhubClient::run` reads the envelope flag and forwards it
+to `ListenLoop::phw_jm_hub_skill_info`, which closes the Hub turn. Nimbus receives
+the action data separately. A nested-only flag leaves the native Hub transaction open,
+even when the server has finalized its turn and supplied valid playback.
+
+Standalone no-input LISTEN replies are final. When a no-input reply is followed
+by a skill redirect, LISTEN remains non-final and the redirect closes the turn.
+
+### Empty timeout responses on native robots
+
+Empty LISTEN closures carry `asr.annotation = SOS_TIMEOUT`. The native SDK's
+`SharedGlobalEvents` checks this annotation before deciding that a result with
+`launch` in its NLU rules and no match is an unknown command. Without it, a silent
+turn can trigger Idle's no-match animation, empty quoted text, and “I don't know
+what this means.” Local skill listens still receive empty text and intent.
+This does not mark real unmatched speech as a timeout.
+
+Production logs include transaction IDs on finalized plans and reply summaries,
+plus the reason and annotation for empty hotphrase closures, to distinguish a
+recognized command from a later no-speech transaction.

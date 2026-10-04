@@ -138,6 +138,7 @@ public sealed class JiboWebSocketServiceTests
     private static void AssertTwerkPlaybackPayload(WebSocketReply reply)
     {
         using var action = JsonDocument.Parse(reply.Text!);
+        Assert.True(action.RootElement.GetProperty("final").GetBoolean());
         var play = action.RootElement.GetProperty("data").GetProperty("action")
             .GetProperty("config").GetProperty("jcp").GetProperty("config").GetProperty("play");
         Assert.Contains("filter='&(music, twerk), !(short)'", play.GetProperty("esml").GetString());
@@ -6511,6 +6512,8 @@ public sealed class JiboWebSocketServiceTests
         Assert.False(match.GetProperty("onRobot").GetBoolean());
         Assert.True(match.GetProperty("launch").GetBoolean());
         using var action = JsonDocument.Parse(replies[2].Text!);
+        // Native LhubClient reads final on the envelope, not only inside data.
+        Assert.True(action.RootElement.GetProperty("final").GetBoolean());
         Assert.Equal(match.GetProperty("skillID").GetString(),
             action.RootElement.GetProperty("data").GetProperty("skill").GetProperty("id").GetString());
         var play = action.RootElement.GetProperty("data").GetProperty("action")
