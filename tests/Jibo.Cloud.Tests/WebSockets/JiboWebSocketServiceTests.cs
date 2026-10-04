@@ -1,3 +1,4 @@
+using Moq;
 using System.Text;
 using System.Text.Json;
 using Jibo.Cloud.Application.Abstractions;
@@ -35,6 +36,48 @@ public sealed class JiboWebSocketServiceTests
             _store,
             new NullWebSocketTelemetrySink(),
             turnFinalizationService);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SpeechRecovery_InitialClientAsrAndBufferedAudioReachModel(bool bufferedAudio)
+    {
+        var store = new InMemoryCloudStateStore();
+        var model = new Mock<IAsrCorrectionModel>();
+        model.Setup(m => m.TryCorrectAsync("make a peter sir", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AsrCorrection("make a pizza", 0.88, "test-model"));
+        var service = CreateService(store,
+            sttStrategies: [new QueuedBufferedAudioSttStrategy("Hey Jibo, make a peter sir")],
+            asrCorrectionModel: model.Object);
+        WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = "hub-speech-recovery-token", Text = text, Binary = binary
+        };
+        var setup = Envelope("""{"type":"LISTEN","transID":"speech-recovery","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}""");
+        await service.HandleMessageAsync(setup);
+        IReadOnlyList<WebSocketReply> replies;
+        if (bufferedAudio)
+        {
+            foreach (var frame in new[] { BuildOggFrame(0x02, "OpusHead"), BuildOggFrame(0x00, "OpusTags"),
+                         BuildOggFrame(0x00), BuildOggFrame(0x00), BuildOggFrame(0x00) })
+                await service.HandleMessageAsync(Envelope(binary: frame));
+            var session = store.FindSessionByToken(setup.Token!)!;
+            session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-9);
+            session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+            replies = await service.HandleIdleAsync(session, setup);
+        }
+        else
+        {
+            replies = await service.HandleMessageAsync(Envelope(
+                """{"type":"CLIENT_ASR","transID":"speech-recovery","data":{"text":"make a peter sir"}}"""));
+        }
+        model.Verify(m => m.TryCorrectAsync("make a peter sir", It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal("pizza", store.FindSessionByToken(setup.Token!)!.LastIntent);
+        var listen = Assert.Single(replies.Where(reply => ReadReplyType(reply) == "LISTEN"));
+        using var payload = JsonDocument.Parse(listen.Text!);
+        Assert.Equal("pizza", payload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
     }
 
     [Fact]
@@ -10692,7 +10735,8 @@ public sealed class JiboWebSocketServiceTests
         ICommuteReportProvider? commuteReportProvider = null,
         INewsBriefingProvider? newsBriefingProvider = null,
         IReadOnlyList<ISttStrategy>? sttStrategies = null,
-        IJiboRandomizer? randomizer = null)
+        IJiboRandomizer? randomizer = null,
+        IAsrCorrectionModel? asrCorrectionModel = null)
     {
         var contentRepository = new InMemoryJiboExperienceContentRepository();
         var contentCache = new JiboExperienceContentCache(contentRepository);
@@ -10703,7 +10747,7 @@ public sealed class JiboWebSocketServiceTests
             weatherReportProvider,
             calendarReportProvider,
             commuteReportProvider,
-            newsBriefingProvider);
+            newsBriefingProvider, asrCorrectionModel: asrCorrectionModel);
         var conversationBroker = new DemoConversationBroker(interactionService);
         var sttSelector = new DefaultSttStrategySelector(sttStrategies ?? [new SyntheticBufferedAudioSttStrategy()]);
         var sink = new NullTurnTelemetrySink();

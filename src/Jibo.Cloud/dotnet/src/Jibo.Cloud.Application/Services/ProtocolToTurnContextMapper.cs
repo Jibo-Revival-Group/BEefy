@@ -104,10 +104,17 @@ public sealed class ProtocolToTurnContextMapper
 
         if (turnState.FinalizeAttemptCount > 0) attributes["finalizeAttemptCount"] = turnState.FinalizeAttemptCount;
 
+        // Audio transports deliver recognized text too; that does not make the
+        // originating turn typed input. Keep speech recovery eligible on first turns.
+        var hasSpeechInput = turnState.BufferedAudioBytes > 0 ||
+            string.Equals(messageType, "CLIENT_ASR", StringComparison.OrdinalIgnoreCase) ||
+            attributes.ContainsKey("clientAsr");
+
         return new TurnContext
         {
             SessionId = session.SessionId,
-            InputMode = session.FollowUpOpen ? TurnInputMode.FollowUp : TurnInputMode.DirectText,
+            InputMode = session.FollowUpOpen ? TurnInputMode.FollowUp :
+                hasSpeechInput ? TurnInputMode.WakeWord : TurnInputMode.DirectText,
             SourceKind = TurnSourceKind.Api,
             RawTranscript = text,
             NormalizedTranscript = text?.Trim(),
@@ -167,6 +174,12 @@ public sealed class ProtocolToTurnContextMapper
 
             if (data.TryGetProperty("entities", out var entities) && entities.ValueKind == JsonValueKind.Object)
                 attributes["clientEntities"] = entities.Clone();
+
+            if (data.TryGetProperty("asr", out var speechResult) &&
+                speechResult.ValueKind == JsonValueKind.Object &&
+                speechResult.TryGetProperty("text", out var speechText) &&
+                speechText.ValueKind == JsonValueKind.String)
+                attributes["clientAsr"] = true;
 
             if (data.TryGetProperty("text", out var transcript) && transcript.ValueKind == JsonValueKind.String)
                 return transcript.GetString();

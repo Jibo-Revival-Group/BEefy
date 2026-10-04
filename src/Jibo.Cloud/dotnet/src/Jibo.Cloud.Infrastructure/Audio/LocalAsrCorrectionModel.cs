@@ -31,10 +31,13 @@ public sealed class LocalAsrCorrectionModel(
             OperatingSystem.IsWindows() ? "Scripts/python.exe" : "bin/python");
         var script = options.WorkerPath ?? Path.Combine(AppContext.BaseDirectory, "Audio", "AsrCorrection", "worker.py");
         var model = Path.Combine(root, "model");
-        if (!File.Exists(python) || !File.Exists(script) ||
-            !File.Exists(Path.Combine(model, "onnx", "model_quantized.onnx")))
+        var weights = Path.Combine(model, "onnx", "model_quantized.onnx");
+        if (!File.Exists(python) || !File.Exists(script) || !File.Exists(weights))
         {
-            logger.LogInformation("ASR correction model is not installed at {Directory}; normal routing remains active. Run setup-asr-correction-model.py to install it.", root);
+            logger.LogWarning("ASR correction model is not installed at {Directory}; normal routing remains active. " +
+                "Python={PythonPath} exists={PythonExists}; worker={WorkerPath} exists={WorkerExists}; weights={WeightsPath} exists={WeightsExists}. " +
+                "Run setup-asr-correction-model.py to install model assets and rebuild the API if the worker is missing.",
+                root, python, File.Exists(python), script, File.Exists(script), weights, File.Exists(weights));
             return;
         }
 

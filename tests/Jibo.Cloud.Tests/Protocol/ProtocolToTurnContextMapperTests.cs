@@ -1,10 +1,36 @@
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
+using Jibo.Runtime.Abstractions;
 
 namespace Jibo.Cloud.Tests.Protocol;
 
 public sealed class ProtocolToTurnContextMapperTests
 {
+    [Theory]
+    [InlineData("AUTO_FINALIZE", true, false, TurnInputMode.WakeWord)]
+    [InlineData("CLIENT_ASR", false, false, TurnInputMode.WakeWord)]
+    [InlineData("CLIENT_NLU", false, true, TurnInputMode.WakeWord)]
+    [InlineData("LISTEN", false, false, TurnInputMode.DirectText)]
+    public void MapListenMessage_ClassifiesSpeechSeparatelyFromTypedText(
+        string messageType, bool bufferedAudio, bool nestedAsr, TurnInputMode expected)
+    {
+        var session = new CloudSession();
+        if (bufferedAudio)
+        {
+            session.TurnState.BufferedAudioBytes = 3;
+            session.TurnState.BufferedAudioFrames.Add([1, 2, 3]);
+        }
+        var envelope = new WebSocketMessageEnvelope
+        {
+            Text = nestedAsr ? """{"data":{"asr":{"text":"make a peter sir"}}}""" :
+                """{"data":{"text":"make a peter sir"}}"""
+        };
+        Assert.Equal(expected, ProtocolToTurnContextMapper.MapListenMessage(envelope, session, messageType).InputMode);
+        session.FollowUpExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(1);
+        Assert.Equal(TurnInputMode.FollowUp,
+            ProtocolToTurnContextMapper.MapListenMessage(envelope, session, messageType).InputMode);
+    }
+
     [Fact]
     public void MapListenMessage_PreservesHouseholdListMetadata()
     {

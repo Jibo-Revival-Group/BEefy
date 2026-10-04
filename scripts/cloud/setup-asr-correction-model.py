@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import shutil
 import urllib.request
-import venv
 
 MODEL_ID = "prajjwal1/bert-mini"
 REVISION = "5e123abc2480f0c4b4cac186d3b3f09299c258fc"
@@ -36,12 +36,77 @@ def download(url, target, expected):
     temporary.replace(target)
 
 
-def environment(directory):
-    python = directory / (
-        "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+def python_version(python):
+    result = subprocess.run(
+        [str(python), "-c", "import json,sys; print(json.dumps(list(sys.version_info[:2])))"],
+        capture_output=True, text=True, check=True,
     )
+    return tuple(json.loads(result.stdout))
+
+
+def compatible_python(configured=None):
+    candidates = [configured] if configured else [
+        sys.executable, *(shutil.which(f"python3.{minor}") for minor in (12, 13, 11, 10))
+    ]
+    for candidate in dict.fromkeys(path for path in candidates if path):
+        try:
+            version = python_version(candidate)
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            continue
+        if (3, 10) <= version <= (3, 13):
+            return str(candidate)
+    raise RuntimeError(
+        "The pinned ASR packages require Python 3.10–3.13 (Python 3.12 recommended). "
+        "Install a compatible interpreter with its venv/ensurepip support, then retry "
+        "with --python /path/to/python3.12. Python 3.14 is not supported by these pins."
+    )
+
+
+def environment(directory, interpreter):
+    python = directory / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    selected_version = python_version(interpreter)
+    if python.exists():
+        try:
+            existing_version = python_version(python)
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            existing_version = None
+        if existing_version != selected_version:
+            # Preserve existing environments rather than rewriting their interpreter.
+            backup = directory.with_name(directory.name + ".previous")
+            number = 1
+            while backup.exists():
+                backup = directory.with_name(f"{directory.name}.previous-{number}")
+                number += 1
+            directory.rename(backup)
+            print(f"Preserved incompatible environment at {backup}", flush=True)
     if not python.exists():
-        venv.EnvBuilder(with_pip=True).create(directory)
+        result = subprocess.run(
+            [str(interpreter), "-m", "venv", str(directory)],
+            capture_output=True, text=True,
+        )
+        if result.returncode:
+            raise RuntimeError(
+                f"Could not create {directory} with {interpreter}. Install the matching "
+                f"Python {selected_version[0]}.{selected_version[1]} venv package "
+                f"(on Ubuntu: python{selected_version[0]}.{selected_version[1]}-venv). "
+                + (result.stderr or result.stdout).strip()
+            )
+    check = subprocess.run(
+        [str(python), "-m", "pip", "--version"], capture_output=True, text=True,
+    )
+    if check.returncode:
+        print(f"Bootstrapping missing pip in {directory}", flush=True)
+        bootstrap = subprocess.run(
+            [str(python), "-m", "ensurepip", "--upgrade", "--default-pip"],
+            capture_output=True, text=True,
+        )
+        if bootstrap.returncode:
+            raise RuntimeError(
+                f"pip is missing in {directory} and ensurepip could not repair it. "
+                f"Install python{selected_version[0]}.{selected_version[1]}-venv "
+                "on Ubuntu, then rerun setup. " + (bootstrap.stderr or bootstrap.stdout).strip()
+            )
+        subprocess.run([str(python), "-m", "pip", "--version"], check=True)
     return python
 
 
@@ -57,11 +122,17 @@ def main():
         action="store_true",
         help="Skip installing the inference runtime",
     )
+    parser.add_argument(
+        "--python", dest="python_path",
+        help="Python 3.10–3.13 interpreter for both virtual environments (auto-detected by default)",
+    )
     args = parser.parse_args()
+    interpreter = compatible_python(args.python_path)
+    print(f"Using compatible Python: {interpreter}", flush=True)
     root = args.directory.resolve()
     root.mkdir(parents=True, exist_ok=True)
     if not args.model_only:
-        python = environment(root / "venv")
+        python = environment(root / "venv", interpreter)
         subprocess.run(
             [
                 str(python),
@@ -107,7 +178,7 @@ def main():
                 root / "source" / name,
                 digest,
             )
-        exporter = environment(root / "export-venv")
+        exporter = environment(root / "export-venv", interpreter)
         subprocess.run(
             [
                 str(exporter),
@@ -171,4 +242,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as error:
+        sys.exit(f"ASR setup failed: {error}")

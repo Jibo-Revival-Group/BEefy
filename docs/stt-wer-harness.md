@@ -85,7 +85,16 @@ From the BEefy repository root, install the model and its isolated Python runtim
 python3 scripts/cloud/setup-asr-correction-model.py
 ```
 
-Python 3.10 or newer with venv/pip is required. Setup verifies pinned checkpoint,
+The pinned dependencies require Python 3.10–3.13 with venv/ensurepip support;
+Python 3.12 is recommended. Python 3.14 is incompatible with the NumPy pin.
+Setup uses the current interpreter when compatible, otherwise searches for
+`python3.12`, `python3.13`, `python3.11`, or `python3.10`. Pass
+`--python /path/to/python3.12` to select one explicitly. Existing environments
+using another Python version are preserved as `venv.previous` or
+`export-venv.previous` (with numbered suffixes if needed) before recreation.
+Existing environments without pip are repaired with `ensurepip`; if unavailable,
+install the matching Ubuntu package, such as `python3.12-venv`, and retry.
+Setup verifies pinned checkpoint,
 tokenizer, and dictionary hashes, then exports and quantizes the full masked-LM
 head. The pretrained ONNX feature extractor alone cannot score words. The inference
 weights occupy about 19 MB under the ignored `App_Data/asr-correction/model` directory.
@@ -129,6 +138,23 @@ model, contextual score, and elapsed time in `stt:modelCorrectedTranscript`,
 The existing turn-phase metrics record `asr_correction` outcomes. Repeating an
 accepted command reuses its corrected normalized text without another inference.
 
+Initial buffered microphone turns and `CLIENT_ASR` messages are classified as
+speech (`WakeWord`); explicit typed text remains `DirectText`. This distinction
+keeps recovery eligible for the actual robot audio path, not just synthetic tests.
+
+If startup says `ASR correction model is not installed`, recovery is inactive even
+when `Enabled=true`. Assets are ignored by Git and must be installed on each server:
+
+```sh
+cd /home/ubuntu/BEefy
+python3 scripts/cloud/setup-asr-correction-model.py
+```
+
+After installing and restarting, confirm startup reports
+`Local quantized contextual BERT ASR correction model is ready.` The missing-model
+warning reports the checked interpreter, worker script, and weights paths to
+separate absent assets from a missing published worker.
+
 Rebuild and restart the deployed API to load worker and dispatcher changes. An
 explicit `OpenJibo__Stt__Correction__MinimumConfidence` override takes precedence
 over the 0.75 default; update it to `0.75` if a previous deployment set `0.8`.
@@ -137,7 +163,7 @@ Run the dependency-free pronunciation and ambiguity tests, then the real
 installed-model smoke/latency tests:
 
 ```sh
-python3 -B tests/python/test_asr_correction_alignment.py
+python3 -B -m unittest discover -s tests/python -p 'test_*.py'
 dotnet test tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj \
   --filter 'FullyQualifiedName~AsrModelFallbackTests|FullyQualifiedName~LocalAsrCorrectionModelTests' \
   --logger 'console;verbosity=detailed'

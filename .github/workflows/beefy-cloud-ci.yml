@@ -21,8 +21,8 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Test pronunciation recovery
-        run: python3 -B tests/python/test_asr_correction_alignment.py
+      - name: Test pronunciation recovery and model setup
+        run: python3 -B -m unittest discover -s tests/python -p 'test_*.py'
 
       - name: Restore and test
         run: |
