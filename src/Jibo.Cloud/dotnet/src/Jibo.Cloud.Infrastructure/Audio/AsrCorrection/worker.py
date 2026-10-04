@@ -44,6 +44,15 @@ def complete_final_stop(word):
     return word
 
 
+def suffix_transpositions(word):
+    # Leave the first two letters in place: a short command has no other anchor.
+    for index in range(2, len(word) - 1):
+        if word[index] != word[index + 1]:
+            letters = list(word)
+            letters[index], letters[index + 1] = letters[index + 1], letters[index]
+            yield "".join(letters)
+
+
 def distance(a, b):
     previous = list(range(len(b) + 1))
     for i, x in enumerate(a):
@@ -127,10 +136,19 @@ class Corrector:
             completed = complete_final_stop(old) if new.endswith("k") else old
             if (not 4 <= len(old) <= 16 or not 4 <= len(new) <= 16 or old == new
                     or not old.isalpha() or not new.isalpha() or old[:2] != new[:2]
-                    or old in self.pronunciations or self.protected(old) or self.protected(new)
-                    or distance(list(completed), list(new)) > 2 / max(len(completed), len(new))):
+                    or old in self.pronunciations or self.protected(old) or self.protected(new)):
                 return None
-            acoustic = self.span_distance([completed], candidate)
+            spellings = []
+            if distance(list(completed), list(new)) <= 2 / max(len(completed), len(new)):
+                spellings.append((completed, 0))
+            if completed == old:
+                # One adjacent suffix swap plus at most one remaining edit.
+                spellings.extend((variant, 0.1) for variant in suffix_transpositions(old)
+                                 if distance(list(variant), list(new)) <= 1 / max(len(variant), len(new)))
+            if not spellings:
+                return None
+            acoustic = min(self.span_distance([spelling], candidate) + penalty
+                           for spelling, penalty in spellings)
             return (acoustic, [(0, 1, 0, 1, False)]) if acoustic <= 0.45 else None
         # Keep protected words in order; only the existing malformed question
         # exception may replace initial 'my' with a question word.
@@ -289,6 +307,12 @@ class Corrector:
             confidence = min(confidence, 1 / (1 + math.exp(-min(margin, 60))))
         if len(heard) == 1 and phrase.endswith("k") and complete_final_stop(heard[0]) != heard[0]:
             confidence = max(0, confidence - 0.1)
+        if len(heard) == 1 and " " not in phrase:
+            completed = complete_final_stop(heard[0]) if phrase.endswith("k") else heard[0]
+            if distance(list(completed), list(phrase)) > 2 / max(len(completed), len(phrase)):
+                # The LM can strongly prefer a command over garbled text; a
+                # transposition still warrants a conservative heuristic cap.
+                confidence = min(confidence, 0.85)
         return {
             "text": phrase,
             "confidence": confidence,

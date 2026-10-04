@@ -86,7 +86,20 @@ internal static class AsrCorrectionAcceptance
         before.AsSpan(0, 2).SequenceEqual(after.AsSpan(0, 2)) &&
         (CharacterDistance(before, after) <= 2 ||
          (before.EndsWith('c') && "aeiou".Contains(before[^2]) && after.EndsWith('k') &&
-          CharacterDistance(before + "k", after) <= 2));
+          CharacterDistance(before + "k", after) <= 2) ||
+         IsSuffixTranspositionEdit(before, after));
+
+    private static bool IsSuffixTranspositionEdit(string before, string after)
+    {
+        var letters = before.ToCharArray();
+        for (var index = 2; index < letters.Length - 1; index++)
+        {
+            (letters[index], letters[index + 1]) = (letters[index + 1], letters[index]);
+            if (CharacterDistance(new string(letters), after) <= 1) return true;
+            (letters[index], letters[index + 1]) = (letters[index + 1], letters[index]);
+        }
+        return false;
+    }
 
     private static string[] Tokens(string value) => TranscriptTextNormalizer.NormalizeLooseText(value)
         .Replace("'", string.Empty, StringComparison.Ordinal).Split(' ', StringSplitOptions.RemoveEmptyEntries)

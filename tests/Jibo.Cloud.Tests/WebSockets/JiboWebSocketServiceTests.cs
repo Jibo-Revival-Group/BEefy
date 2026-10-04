@@ -85,6 +85,7 @@ public sealed class JiboWebSocketServiceTests
 
     [Theory]
     [InlineData("twic", 0.85, true)]
+    [InlineData("twke", 0.85, true)]
     [InlineData("twirk", 0.9, true)]
     [InlineData("twick", 0.85, true)]
     [InlineData("twelc", 0.85, true)]
@@ -119,7 +120,7 @@ public sealed class JiboWebSocketServiceTests
         {
             using var readyDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while (!model.IsReady) await Task.Delay(20, readyDeadline.Token);
-            foreach (var heard in new[] { "twic", "twirk", "twick", "twelc" })
+            foreach (var heard in new[] { "twic", "twke", "twirk", "twick", "twelc" })
             {
                 var (session, replies) = await FinalizeShortSpeechCommand(heard, model);
                 Assert.Equal("twerk", session.LastIntent);

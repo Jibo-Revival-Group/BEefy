@@ -91,6 +91,12 @@ raw transcript. This completion is limited to candidate commands ending in
 edit check. The ordinary positive-evidence, pronunciation/spelling-distance,
 and confidence checks still apply. Twerk phrases are shared between routing and
 the recovery catalog.
+For unknown short commands, one adjacent swap after the first two letters plus
+at most one remaining spelling edit is also eligible. The worker checks the
+swapped spelling for proximity, then scores the original transcript with the
+LM. The observed `twke` resolves to `twerk` this way; such matches carry an
+additional distance cost and their heuristic confidence is capped at 0.85.
+Known words and ambiguous candidates remain protected.
 An unknown single-word er/ir/ur spelling before a consonant (for example `twirk`)
 can also match a unique supported command with the same bounded sound spelling.
 This pronunciation match returns heuristic confidence 0.90 without requiring BERT

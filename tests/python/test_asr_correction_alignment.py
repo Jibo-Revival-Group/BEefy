@@ -35,9 +35,10 @@ class AlignmentTests(unittest.TestCase):
         self.assertIsNotNone(self.match('tell me a story', 'tell me a store ree'))
 
     def test_single_command_unknown_spellings_and_boundaries(self):
-        for heard in ['twic', 'twirk', 'twick', 'twelc']:
+        for heard in ['twic', 'twke', 'twirk', 'twick', 'twelc']:
             self.assertIsNotNone(self.match(heard, 'twerk'))
         for heard in ['work', 'twice', 'Tim', 'not', 'twic tomorrow', 'do not twic', 'twic 2',
+                      'twke tomorrow', 'do not twke', 'twke 2',
                       'twick tomorrow', 'do not twick', 'twick 2']:
             self.assertIsNone(self.match(heard, 'twerk'))
         self.assertIsNone(self.match('twick', 'can you twerk'))
@@ -84,6 +85,15 @@ class AlignmentTests(unittest.TestCase):
         result = self.corrector.correct('make a peter', ['make a pizza', 'make a pita'])
         self.assertIsNotNone(result)
         self.assertLess(result['confidence'], 0.75)
+        result = self.corrector.correct('twke', ['twerk', 'tweak'])
+        self.assertIsNotNone(result)
+        self.assertLess(result['confidence'], 0.75)
+
+    def test_transposed_single_word_confidence_is_capped(self):
+        self.corrector.evidence = lambda *_: 3
+        result = self.corrector.correct('twke', ['twerk'])
+        self.assertEqual('twerk', result['text'])
+        self.assertEqual(0.85, result['confidence'])
 
     def test_positive_evidence_below_threshold_remains_low_confidence(self):
         self.corrector.evidence = lambda *_: 0.2
