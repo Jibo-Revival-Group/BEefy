@@ -11,9 +11,6 @@ import sys
 import time
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-import numpy as np
-import onnxruntime as ort
-from tokenizers import Tokenizer
 
 FUNCTIONS = set(
     "what whats which who how is are was do does did a an the to of my your you it its".split()
@@ -62,6 +59,9 @@ def distance(a, b):
 
 class Corrector:
     def __init__(self, directory):
+        import onnxruntime as ort
+        from tokenizers import Tokenizer
+
         root = Path(directory)
         self.tokenizer = Tokenizer.from_file(str(root / "tokenizer.json"))
         options = ort.SessionOptions()
@@ -114,7 +114,7 @@ class Corrector:
         matches = []
 
         def align(i, j, cost, edits, content, anchors):
-            if len(edits) > 2 or content > 1:
+            if len(edits) > 2 or content > 1 or len(edits) - content > 1:
                 return
             if i == len(heard) and j == len(candidate):
                 if edits and anchors >= 1 and anchors >= len(heard) // 2:
@@ -147,6 +147,8 @@ class Corrector:
         return min(matches, key=lambda match: match[0]) if matches else None
 
     def span_log_probability(self, phrase, start, size, deadline):
+        import numpy as np
+
         encoded = self.tokenizer.encode(phrase + ["?" if phrase[0] in {"what", "which", "who", "how", "where", "do"} else "."], is_pretokenized=True)
         positions = [i for i, word in enumerate(encoded.word_ids)
                      if word is not None and start <= word < start + size]
@@ -182,7 +184,7 @@ class Corrector:
                 if old is None:
                     return None
                 gain = new - old
-                if gain < (3 if function else 0.5):
+                if (function and gain < 3) or (not function and gain <= 0):
                     return None
             else:
                 if new < -3:
@@ -218,12 +220,16 @@ class Corrector:
         if not ranked or time.monotonic() >= deadline:
             return None
         ranked.sort(reverse=True)
-        if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < 2:
-            return None
         _, phrase, gain = ranked[0]
+        confidence = 1 / (1 + math.exp(-min(3 * gain, 60)))
+        if len(ranked) > 1:
+            # A close competitor lowers confidence instead of imposing a second,
+            # independent rejection threshold. The host applies MinimumConfidence.
+            margin = ranked[0][0] - ranked[1][0]
+            confidence = min(confidence, 1 / (1 + math.exp(-min(margin, 60))))
         return {
             "text": phrase,
-            "confidence": 1 / (1 + math.exp(-min(3 * gain, 60))),
+            "confidence": confidence,
             "durationMs": (time.monotonic() - started) * 1000,
         }
 

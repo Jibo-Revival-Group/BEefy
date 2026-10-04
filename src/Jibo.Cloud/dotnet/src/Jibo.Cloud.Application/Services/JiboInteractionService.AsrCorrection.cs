@@ -26,7 +26,7 @@ public sealed partial class JiboInteractionService
             if (correction is null) return null;
             outcome = "rejected";
             var minimumConfidence = double.IsFinite(_asrCorrectionOptions.MinimumConfidence)
-                ? Math.Clamp(_asrCorrectionOptions.MinimumConfidence, 0, 1) : 0.8;
+                ? Math.Clamp(_asrCorrectionOptions.MinimumConfidence, 0, 1) : 0.75;
             if (!double.IsFinite(correction.Confidence) || correction.Confidence is < 0 or > 1 ||
                 correction.Confidence < minimumConfidence ||
                 string.IsNullOrWhiteSpace(correction.Text) ||

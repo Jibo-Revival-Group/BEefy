@@ -54,19 +54,30 @@ error reduction and accidental corrections before widening the accepted grammar.
 The server uses a quantized masked language model from
 [`prajjwal1/bert-mini`](https://huggingface.co/prajjwal1/bert-mini) (4 layers,
 256 hidden units). This scores words in their sentence context rather than fixing
-spelling or generating chat responses. The preference catalog supplies supported
-command hypotheses; [CMUdict](https://github.com/cmusphinx/cmudict) supplies
-pronunciations for finding acoustically nearby words. There is no error-specific
-`paper -> favorite` or `my -> what` table.
+spelling or generating chat responses. A shared catalog supplies supported fixed
+commands for pizza, dance, jokes,
+stories, greetings, time/date, weather, and preference questions;
+[CMUdict](https://github.com/cmusphinx/cmudict) supplies pronunciations.
+Routing and recovery reuse these phrase lists. Existing weather/leather aliases
+remain in routing but are excluded from recovery hypotheses.
 
-For example, the model compares `paper` and `favorite` in `what is your ___ color?`,
-and `my` and `what` in `___ time is it?`. It requires similar sounds (or a grammar
-word edit), a plausible replacement, strong contextual improvement, and a clear
-winning hypothesis. At most two word edits and one content-word substitution are
-allowed. Whole sentences are aligned; unknown subjects and trailing clauses do
-not get forced into a command. Multi-wordpiece replacements are currently excluded.
-This is command-domain context, not conversation history or unrestricted intent
-inference. Real microphone WER gains still require a recorded corpus.
+The worker aligns whole phrases with at most one content-span correction and one
+grammar edit. It concatenates pronunciations across a single word boundary, so
+`make a pit sir` and `make a peter sir` can match `make a pizza`. Commands with two
+or more words are eligible. Protected ownership, numbers, negation, unrelated
+trailing clauses, and personal names cannot be discarded to force a match.
+
+For acoustically nearby hypotheses, the masked LM scores each changed tokenizer
+piece in its phrase context. Mean log probabilities allow comparisons across
+word splits and multiple tokenizer pieces. Content replacements require positive
+contextual improvement; grammar substitutions retain a stronger evidence check.
+Candidates are ranked by contextual improvement and pronunciation distance. The
+returned confidence is sigmoid(3 × minimum contextual gain), capped by the
+sigmoid of the winning score margin when there is a competing hypothesis.
+A close competitor therefore lowers confidence instead of triggering a separate
+fixed ambiguity cutoff. These are heuristic scores, not calibrated probabilities
+of the user's intent. The host accepts scores at or above 75% by default.
+Real microphone accuracy still requires a recorded corpus.
 
 From the BEefy repository root, install the model and its isolated Python runtime:
 
@@ -85,9 +96,13 @@ and `venv`. The checkpoint model card declares MIT licensing; CMUdict's license 
 The worker script is copied into .NET build and publish outputs.
 
 At startup, the server loads and warms a single CPU-thread worker in the background.
-Only an unresolved speech command invokes it. Already recognized commands,
-Phoenix-handled turns, direct text, non-English input, yes/no prompts, skill-owned
-listens, and clock-value/cloud-owned follow-ups preserve their existing paths.
+Only an unresolved speech command invokes it. Confident recovery runs before the
+Phoenix conversation handler and dispatches the recovered command directly, so a
+conversational "I don't understand" response cannot preempt an accepted match.
+When recovery is rejected or unavailable, Phoenix and the normal fallback still
+run. Already recognized commands, direct text, non-English input, yes/no prompts,
+skill-owned listens, and clock-value/cloud-owned follow-ups retain their existing
+handling and do not invoke the correction model.
 The server retries command matching once and accepts a proposal only if it maps to
 a supported intent and passes bounded edit checks. It preserves numeric tokens,
 negation, and preference ownership and rejects wholesale rewrites. A malformed
@@ -106,7 +121,7 @@ Configuration under `OpenJibo:Stt:Correction` (environment variable example:
 | `PythonPath` | Python in that venv | Optional custom interpreter. |
 | `WorkerPath` | Published `Audio/AsrCorrection/worker.py` | Optional custom worker location. |
 | `TimeoutMilliseconds` | `150` | Correction budget, clamped to 1–500 ms; normal command matching follows. |
-| `MinimumConfidence` | `0.8` | Minimum sigmoid of contextual logit improvement; this is **not calibrated intent confidence**. |
+| `MinimumConfidence` | `0.75` | Accept a valid match at or above this heuristic confidence, including the ambiguity cap; **not calibrated intent confidence**. |
 
 Accepted corrections keep `RawTranscript` unchanged and record the corrected text,
 model, contextual score, and elapsed time in `stt:modelCorrectedTranscript`,
@@ -114,9 +129,15 @@ model, contextual score, and elapsed time in `stt:modelCorrectedTranscript`,
 The existing turn-phase metrics record `asr_correction` outcomes. Repeating an
 accepted command reuses its corrected normalized text without another inference.
 
-Run unit tests and the real installed-model smoke/latency test:
+Rebuild and restart the deployed API to load worker and dispatcher changes. An
+explicit `OpenJibo__Stt__Correction__MinimumConfidence` override takes precedence
+over the 0.75 default; update it to `0.75` if a previous deployment set `0.8`.
+
+Run the dependency-free pronunciation and ambiguity tests, then the real
+installed-model smoke/latency tests:
 
 ```sh
+python3 -B tests/python/test_asr_correction_alignment.py
 dotnet test tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj \
   --filter 'FullyQualifiedName~AsrModelFallbackTests|FullyQualifiedName~LocalAsrCorrectionModelTests' \
   --logger 'console;verbosity=detailed'
@@ -127,8 +148,10 @@ it never downloads them itself. Recognized commands incur no model inference.
 Unrecognized commands can add up to the configured inference budget, so evaluate
 latency and accidental corrections alongside error recovery on deployment hardware.
 
-The installed-model test checks real-word recovery (`paper color`, `my time is it`,
-`choke`/`joke`), grammar insertion, and unchanged ownership, negation, names,
+The installed-model test checks pizza recovery (`peter`, `pit sir`, `peter sir`),
+dance/story confusions, multi-piece words and word splits, existing real-word
+recovery (`paper color`, `my time is it`, `choke`/`joke`), grammar insertion, and
+unchanged ownership, negation, names,
 numeric commands, unknown speech, and legitimate poem requests. Its timing loop
 runs uncached model inference through the Python pipe. These examples verify
 recovery behavior, not a population-level accuracy guarantee.

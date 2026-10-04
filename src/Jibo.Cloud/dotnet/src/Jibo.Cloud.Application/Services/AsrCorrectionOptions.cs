@@ -7,5 +7,5 @@ public sealed class AsrCorrectionOptions
     public string? PythonPath { get; set; }
     public string? WorkerPath { get; set; }
     public int TimeoutMilliseconds { get; set; } = 150;
-    public double MinimumConfidence { get; set; } = 0.8;
+    public double MinimumConfidence { get; set; } = 0.75;
 }

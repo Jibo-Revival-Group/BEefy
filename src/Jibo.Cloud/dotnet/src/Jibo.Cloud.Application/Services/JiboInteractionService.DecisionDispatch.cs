@@ -54,15 +54,6 @@ public sealed partial class JiboInteractionService
         var isTimerValueTurn = IsClockTimerValueTurn(clientRules, listenRules);
         var isAlarmValueTurn = IsClockAlarmValueTurn(clientRules, listenRules);
 
-        if (!isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
-            !string.IsNullOrWhiteSpace(transcript) &&
-            phoenixConversation is not null)
-        {
-            var phoenixDecision = await phoenixConversation.TryDecideAsync(transcript, cancellationToken);
-            if (phoenixDecision is not null)
-                return phoenixDecision;
-        }
-
         var semanticIntent = ResolveSemanticIntent(
             lowered,
             referenceLocalTime,
@@ -80,6 +71,7 @@ public sealed partial class JiboInteractionService
         if (SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
             semanticIntent = "chat";
 
+        var modelRecoveredCommand = false;
         if (semanticIntent == "chat" && !isYesNoTurn && !isSkillOwnedListen &&
             !isTimerValueTurn && !isAlarmValueTurn && !SkillListenOwnership.IsCloudOwnedFollowUp(turn) &&
             turn.InputMode is not (TurnInputMode.DirectText or TurnInputMode.System))
@@ -90,11 +82,21 @@ public sealed partial class JiboInteractionService
                     isYesNoTurn, isTimerValueTurn, isAlarmValueTurn, isSkillOwnedListen), cancellationToken);
             if (correction is { } accepted)
             {
+                modelRecoveredCommand = true;
                 transcript = accepted.Transcript;
                 lowered = transcript.ToLowerInvariant();
                 semanticIntent = accepted.Intent;
                 turn = WithModelCorrectedTranscript(turn, transcript);
             }
+        }
+
+        if (!modelRecoveredCommand && !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
+            !string.IsNullOrWhiteSpace(transcript) &&
+            phoenixConversation is not null)
+        {
+            var phoenixDecision = await phoenixConversation.TryDecideAsync(transcript, cancellationToken);
+            if (phoenixDecision is not null)
+                return phoenixDecision;
         }
 
         if (ShouldTreatAsHaClimateClarify(turn, lowered, semanticIntent))

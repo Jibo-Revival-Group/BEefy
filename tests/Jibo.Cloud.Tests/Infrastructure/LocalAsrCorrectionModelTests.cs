@@ -34,6 +34,9 @@ public sealed class LocalAsrCorrectionModelTests(ITestOutputHelper output)
             foreach (var (heard, corrected, intent) in new[] {
                 ("what's your paper color", "what is your favorite color", "robot_favorite_color"),
                 ("make a peter", "make a pizza", "pizza"),
+                ("make a peter sir", "make a pizza", "pizza"),
+                ("tell me a store ree", "tell me a story", "robot_story"),
+                ("tell me a storee", "tell me a story", "robot_story"),
                 ("make a pit sir", "make a pizza", "pizza"),
                 ("do a dense", "do a dance", "dance"),
                 ("tell me a storey", "tell me a story", "robot_story"),

@@ -12,6 +12,7 @@ public sealed class AsrModelFallbackTests
     [Theory]
     [InlineData("what's your paper color", "what is your favorite color", "robot_favorite_color")]
     [InlineData("my time is it", "what time is it", "time")]
+    [InlineData("make a peter sir", "make a pizza", "pizza")]
     [InlineData("make a peter", "make a pizza", "pizza")]
     [InlineData("make a pit sir", "make a pizza", "pizza")]
     [InlineData("make peter", "make pizza", "pizza")]
@@ -22,6 +23,46 @@ public sealed class AsrModelFallbackTests
         var model = Model(corrected);
         Assert.Equal(intent, (await Service(model.Object).BuildDecisionAsync(Turn(heard))).IntentName);
         model.Verify(m => m.TryCorrectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(0.749, false)]
+    [InlineData(0.75, true)]
+    [InlineData(0.79, true)]
+    public async Task DefaultThreshold_AcceptsAt75Percent(double confidence, bool accepted)
+    {
+        var turn = Turn("make a peter sir");
+        var decision = await Service(Model("make a pizza", confidence).Object).BuildDecisionAsync(turn);
+        Assert.Equal(accepted, decision.IntentName == "pizza");
+        Assert.Equal(accepted, turn.Attributes.ContainsKey(JiboInteractionService.ModelCorrectedTranscriptKey));
+        Assert.Equal("make a peter sir", turn.RawTranscript);
+    }
+
+    [Theory]
+    [InlineData(0.749, false)]
+    [InlineData(0.75, true)]
+    public async Task ConfidentRecovery_PrecedesPhoenixConversation(double confidence, bool recovered)
+    {
+        var phoenix = new Mock<IPhoenixConversationClient>();
+        var fallback = new JiboInteractionDecision("chat", "I don't understand.");
+        phoenix.Setup(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(fallback);
+        var service = Service(Model("make a pizza", confidence).Object, phoenix: phoenix.Object);
+        var decision = await service.BuildDecisionAsync(Turn("make a peter sir"));
+        Assert.Equal(recovered ? "pizza" : "chat", decision.IntentName);
+        phoenix.Verify(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            recovered ? Times.Never() : Times.Once());
+        if (!recovered) Assert.Same(fallback, decision);
+    }
+
+    [Fact]
+    public async Task RecognizedCommand_PreservesPhoenixPathAndSkipsInference()
+    {
+        var model = Model("make a pizza");
+        var phoenix = new Mock<IPhoenixConversationClient>();
+        var response = new JiboInteractionDecision("requestMakePizza", "One pizza, coming right up.");
+        phoenix.Setup(p => p.TryDecideAsync("make a pizza", It.IsAny<CancellationToken>())).ReturnsAsync(response);
+        Assert.Same(response, await Service(model.Object, phoenix: phoenix.Object).BuildDecisionAsync(Turn("make a pizza")));
+        model.Verify(m => m.TryCorrectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never());
     }
 
     [Fact]
@@ -183,10 +224,10 @@ public sealed class AsrModelFallbackTests
     };
 
     private static JiboInteractionService Service(IAsrCorrectionModel? model = null,
-        AsrCorrectionOptions? options = null, RepeatLastCommandStore? store = null, ITransportMetrics? metrics = null) => new(
+        AsrCorrectionOptions? options = null, RepeatLastCommandStore? store = null, ITransportMetrics? metrics = null, IPhoenixConversationClient? phoenix = null) => new(
         new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
         new FirstRandomizer(), new InMemoryPersonalMemoryStore(), repeatLastCommandStore: store,
-        asrCorrectionModel: model, asrCorrectionOptions: options, transportMetrics: metrics);
+        asrCorrectionModel: model, asrCorrectionOptions: options, transportMetrics: metrics, phoenixConversation: phoenix);
 
     private sealed class FirstRandomizer : IJiboRandomizer
     {
