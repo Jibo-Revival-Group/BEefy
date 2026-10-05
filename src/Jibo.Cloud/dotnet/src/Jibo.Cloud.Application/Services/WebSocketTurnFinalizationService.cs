@@ -43,6 +43,7 @@ public sealed class WebSocketTurnFinalizationService(
     private const int AutoFinalizeHotphraseOggContinuousProbeMinBufferedAudioBytes = 7_000;
     private const int AutoFinalizeHotphraseOggContinuousProbeMinAudioPages = 4;
     private const string GlsmPhaseMetadataKey = "glsmPhase";
+    private const string CompletedSleepTransIdKey = "completedSleepTransId";
     private const int AutoFinalizeContinuationDeferralMaxAttempts = 4;
     private static readonly TimeSpan AutoFinalizeReconnectGrace = TimeSpan.FromSeconds(4);
     // Fast path when Opus content-silence (VAD) confirms end-of-speech.
@@ -277,6 +278,7 @@ public sealed class WebSocketTurnFinalizationService(
 
     public static void ObserveIncomingMessage(CloudSession session, string? text)
     {
+        if (IsCompletedSleepTransaction(session, text)) return;
         if (!TryReadTransId(text, out var nextTransId) || string.IsNullOrWhiteSpace(nextTransId)) return;
 
         if (!string.Equals(session.TurnState.TransId, nextTransId, StringComparison.Ordinal))
@@ -491,6 +493,7 @@ public sealed class WebSocketTurnFinalizationService(
         WebSocketMessageEnvelope envelope,
         CancellationToken cancellationToken = default)
     {
+        if (IsCompletedSleepTransaction(session, envelope.Text)) return [];
         try
         {
             var turnState = session.TurnState;
@@ -662,6 +665,8 @@ public sealed class WebSocketTurnFinalizationService(
         string messageType,
         CancellationToken cancellationToken = default)
     {
+        if (IsCompletedSleepTransaction(session, envelope.Text)) return [];
+        MarkFreshHotphraseWake(session, envelope.Text);
         logger.LogDebug("Turn direct message entered session={SessionId} messageType={MessageType} transId={TransId}",
             session.SessionId,
             messageType,
@@ -731,6 +736,34 @@ public sealed class WebSocketTurnFinalizationService(
         }
     }
 
+    internal static bool IsCompletedSleepTransaction(CloudSession session, string? text)
+    {
+        if (!session.Metadata.TryGetValue(CompletedSleepTransIdKey, out var completed)) return false;
+        return TryReadTransId(text, out var transId) && !string.IsNullOrWhiteSpace(transId) &&
+               string.Equals(completed?.ToString(), transId, StringComparison.Ordinal);
+    }
+
+    private static bool IsFreshHotphraseListen(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            return document.RootElement.TryGetProperty("data", out var data) &&
+                   data.ValueKind == JsonValueKind.Object &&
+                   data.TryGetProperty("hotphrase", out var hotphrase) && hotphrase.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static void MarkFreshHotphraseWake(CloudSession session, string? text)
+    {
+        if (IsFreshHotphraseListen(text) &&
+            session.Metadata.TryGetValue("sleepState", out var sleepState) &&
+            string.Equals(sleepState?.ToString(), "sleeping", StringComparison.OrdinalIgnoreCase))
+            session.Metadata["sleepState"] = "awake";
+    }
+
     public IReadOnlyList<WebSocketReply> HandleListenSetup(CloudSession session,
         WebSocketMessageEnvelope envelope)
     {
@@ -738,11 +771,10 @@ public sealed class WebSocketTurnFinalizationService(
         logger.LogDebug("Listen setup entered session={SessionId} transId={TransId}",
             session.SessionId,
             turnState.TransId);
-        // A live listen request is affirmative activity from the robot. Do not
-        // leave the portal row in Sleeping after the robot has resumed listening.
-        if (session.Metadata.TryGetValue("sleepState", out var sleepState) &&
-            string.Equals(sleepState?.ToString(), "sleeping", StringComparison.OrdinalIgnoreCase))
-            session.Metadata["sleepState"] = "awake";
+        // Late packets from the sleep command must not reopen its completed listen.
+        if (IsCompletedSleepTransaction(session, envelope.Text)) return [];
+        // A fresh hotphrase is a wake event; passive local skill listens are not.
+        MarkFreshHotphraseWake(session, envelope.Text);
         logger.LogDebug(
             "Listen setup state session={SessionId} transId={TransId} awaiting={Awaiting} sawListen={SawListen} sawContext={SawContext} bufferedBytes={BufferedBytes} bufferedChunks={BufferedChunks} firstAudioUtc={FirstAudioUtc} lastAudioUtc={LastAudioUtc} followUpOpen={FollowUpOpen}",
             session.SessionId,
@@ -3333,6 +3365,10 @@ public sealed class WebSocketTurnFinalizationService(
 
             session.Metadata[pair.Key] = pair.Value;
         }
+
+        if (string.Equals(intentName, "sleep", StringComparison.OrdinalIgnoreCase) &&
+            TryReadTransId(envelope.Text, out var sleepTransId) && !string.IsNullOrWhiteSpace(sleepTransId))
+            session.Metadata[CompletedSleepTransIdKey] = sleepTransId;
 
         var nextState = ReadMetadataString(session.Metadata, PersonalReportOrchestrator.StateMetadataKey);
         var nextNoMatchCount = ReadMetadataInt(session.Metadata, PersonalReportOrchestrator.NoMatchCountMetadataKey);

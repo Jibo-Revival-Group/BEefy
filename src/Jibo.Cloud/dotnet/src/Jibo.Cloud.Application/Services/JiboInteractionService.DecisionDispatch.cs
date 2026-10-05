@@ -91,6 +91,7 @@ public sealed partial class JiboInteractionService
         }
 
         if (!modelRecoveredCommand && !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
+            semanticIntent is not ("sleep" or "wake_up" or "volume_up" or "volume_down" or "volume_to_value") &&
             !string.IsNullOrWhiteSpace(transcript) &&
             phoenixConversation is not null)
         {

@@ -70,6 +70,12 @@ public sealed class JiboWebSocketService(
         }
 
         var parsedType = ReadMessageType(envelope.Text);
+        if (WebSocketTurnFinalizationService.IsCompletedSleepTransaction(session, envelope.Text))
+        {
+            logger.LogDebug("Ignoring completed sleep transaction packet session={SessionId} messageType={MessageType}",
+                session.SessionId, parsedType);
+            return [];
+        }
         session.LastMessageType = parsedType;
         logger.LogDebug("WebSocket parsed message session={SessionId} messageType={MessageType} glsmPhase={GlsmPhase}",
             session.SessionId,

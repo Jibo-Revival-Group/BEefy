@@ -2228,7 +2228,10 @@ public sealed partial class JiboInteractionService
     private static bool IsVolumeUpRequest(string loweredTranscript)
     {
         return MatchesAny(
-            loweredTranscript,
+            NormalizeCommandPhrase(loweredTranscript),
+            "volume up",
+            "raise volume",
+            "increase volume",
             "turn it up",
             "turn this up",
             "turn that up",
@@ -2251,7 +2254,10 @@ public sealed partial class JiboInteractionService
     private static bool IsVolumeDownRequest(string loweredTranscript)
     {
         return MatchesAny(
-            loweredTranscript,
+            NormalizeCommandPhrase(loweredTranscript),
+            "volume down",
+            "lower volume",
+            "decrease volume",
             "turn it down",
             "turn this down",
             "turn that down",

@@ -22,24 +22,49 @@ public static class OggOpusAudioNormalizer
         // Canonicalize them to one stream because browsers reject interleaved stream serials.
         var streamSerial = parsed[0].StreamSerial;
         var preSkip = ReadOpusPreSkip(parsed);
-        var decodedSamples = (ulong)preSkip;
+        // Granules count decoded samples, including pre-skip. Pre-skip is
+        // subtracted by the decoder, not added to the encoded timeline.
+        var decodedSamples = 0UL;
         var pendingPacket = new List<byte>();
-        var hasDecodedAudio = false;
+        ulong? previousAudioGranule = null;
         var normalized = new List<byte[]>(parsed.Length);
 
         for (var index = 0; index < parsed.Length; index += 1)
         {
             var parsedPage = parsed[index];
             var output = parsedPage.Content.ToArray();
+            var pageSamples = 0UL;
+            var completedMetadata = false;
             foreach (var packet in ReadCompletedPackets(parsedPage, pendingPacket))
             {
-                if (IsOpusMetadata(packet)) continue;
-                if (!TryGetOpusPacketSampleCount(packet, out var samples)) continue;
+                if (IsOpusMetadata(packet))
+                {
+                    completedMetadata = true;
+                    continue;
+                }
+                if (!TryGetOpusPacketSampleCount(packet, out var samples))
+                    throw new InvalidOperationException("Buffered Opus packet has an invalid sample duration.");
                 decodedSamples += samples;
-                hasDecodedAudio = true;
+                pageSamples += samples;
             }
 
-            var newGranule = hasDecodedAudio ? decodedSamples : 0UL;
+            var originalGranule = BinaryPrimitives.ReadUInt64LittleEndian(output.AsSpan(6, 8));
+            var newGranule = pageSamples > 0 ? decodedSamples : completedMetadata ? 0UL : ulong.MaxValue;
+            if (pageSamples > 0)
+            {
+                // Jetstream can start at an arbitrary signed 64-bit origin. Never
+                // trust the absolute origin; a bounded final-page delta can still
+                // describe valid end trimming, even across signed overflow.
+                if ((output[5] & 0x04) != 0 && originalGranule != ulong.MaxValue)
+                {
+                    var finalSamples = previousAudioGranule is { } previous
+                        ? unchecked(originalGranule - previous)
+                        : originalGranule;
+                    if (finalSamples <= pageSamples && decodedSamples - pageSamples + finalSamples >= preSkip)
+                        newGranule = decodedSamples - pageSamples + finalSamples;
+                }
+                previousAudioGranule = originalGranule;
+            }
             BinaryPrimitives.WriteUInt64LittleEndian(output.AsSpan(6, 8), newGranule);
             BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(14, 4), streamSerial);
             BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(18, 4), (uint)index);
@@ -195,7 +220,7 @@ public static class OggOpusAudioNormalizer
         if (frameCount == 0) return false;
 
         var samplesPerFrame = configuration < 12
-            ? 480 << (configuration & 0x03)
+            ? (configuration & 0x03) == 3 ? 2880 : 480 << (configuration & 0x03)
             : configuration < 16
                 ? 480 << (configuration & 0x01)
                 : 120 << (configuration & 0x03);

@@ -6140,6 +6140,41 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("@be/idle", decision.SkillName);
     }
 
+    [Theory]
+    [InlineData("volume up", "volume_up", "volumeUp")]
+    [InlineData("Hey Jibo, volume up please.", "volume_up", "volumeUp")]
+    [InlineData("please raise volume", "volume_up", "volumeUp")]
+    [InlineData("volume down", "volume_down", "volumeDown")]
+    [InlineData("Hey Jibo, volume down.", "volume_down", "volumeDown")]
+    [InlineData("please lower volume", "volume_down", "volumeDown")]
+    public async Task BuildDecisionAsync_ShortVolumeCommands_UseNativeActions(string text, string intent, string globalIntent)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = text, NormalizedTranscript = text
+        });
+        Assert.Equal(intent, decision.IntentName);
+        Assert.Equal(globalIntent, decision.SkillPayload!["globalIntent"]);
+        Assert.Equal("null", decision.SkillPayload["volumeLevel"]);
+    }
+
+    [Theory]
+    [InlineData("go to sleep", "sleep")]
+    [InlineData("wake up", "wake_up")]
+    [InlineData("volume up", "volume_up")]
+    [InlineData("volume down", "volume_down")]
+    [InlineData("set volume to six", "volume_to_value")]
+    public async Task BuildDecisionAsync_NativeSleepAndVolumeCommands_AreNotReplacedByPhoenixSpeech(string text, string intent)
+    {
+        var phoenix = new Moq.Mock<IPhoenixConversationClient>(Moq.MockBehavior.Strict);
+        var decision = await CreateService(phoenixConversation: phoenix.Object).BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = text, NormalizedTranscript = text
+        });
+        Assert.Equal(intent, decision.IntentName);
+        phoenix.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_TurnItUp_MapsToGlobalVolumeUpCommand()
     {
@@ -7346,7 +7381,8 @@ public sealed class JiboInteractionServiceTests
         IKnowledgeSearchService? knowledgeSearchService = null,
         ITurnProgressPublisher? turnProgressPublisher = null,
         IJiboExperienceContentRepository? contentRepository = null,
-        IJiboRandomizer? randomizer = null)
+        IJiboRandomizer? randomizer = null,
+        IPhoenixConversationClient? phoenixConversation = null)
     {
         return new JiboInteractionService(
             new JiboExperienceContentCache(contentRepository ?? new InMemoryJiboExperienceContentRepository()),
@@ -7363,7 +7399,8 @@ public sealed class JiboInteractionServiceTests
             measurementConversionCatalog,
             knowledgeSearchService,
             turnProgressPublisher,
-            cloudStateStore);
+            cloudStateStore,
+            phoenixConversation: phoenixConversation);
     }
 
     private static string StripMarkup(string text)

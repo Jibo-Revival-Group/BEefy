@@ -5044,6 +5044,70 @@ public sealed class JiboWebSocketServiceTests
         Assert.Equal("ASLEEP", WebSocketTurnFinalizationService.ResolveGlsmPhase(session));
     }
 
+    [Theory]
+    [InlineData("@be/idle")]
+    [InlineData("@be/nimbus")]
+    public async Task Sleep_CompletedPacketsCannotRestartSleepOrOverwriteFreshWake(string activeSkill)
+    {
+        const string token = "sleep-lifecycle-token";
+        Task<IReadOnlyList<WebSocketReply>> Send(string type, string transId, object data) =>
+            _service.HandleMessageAsync(new WebSocketMessageEnvelope
+            {
+                HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = token,
+                Text = JsonSerializer.Serialize(new { type, transID = transId, data })
+            });
+        await Send("LISTEN", "sleep-command", new { hotphrase = true, rules = new[] { "launch" } });
+        await Send("CONTEXT", "sleep-command", new { skill = new { id = activeSkill } });
+        var replies = await Send("CLIENT_ASR", "sleep-command", new { text = "go to sleep" });
+        Assert.Equal(new[] { "LISTEN", "EOS" }, replies.Select(ReadReplyType));
+        var session = _store.FindSessionByToken(token)!;
+        foreach (var type in new[] { "LISTEN", "CONTEXT", "CLIENT_ASR", "CLIENT_NLU", "EOS" })
+            Assert.Empty(await Send(type, "sleep-command", new { text = "go to sleep", hotphrase = true, intent = "sleep" }));
+        Assert.Equal("sleeping", session.Metadata["sleepState"]);
+        Assert.False(session.TurnState.AwaitingTurnCompletion);
+
+        // An unrelated passive local listen is not proof that the robot woke.
+        await Send("LISTEN", "passive", new { hotphrase = false, rules = new[] { "settings/menu" } });
+        Assert.Equal("sleeping", session.Metadata["sleepState"]);
+        await Send("LISTEN", "fresh-wake", new { hotphrase = true, rules = new[] { "launch" } });
+        Assert.Equal("awake", session.Metadata["sleepState"]);
+        Assert.Equal("fresh-wake", session.TurnState.TransId);
+        Assert.Empty(await Send("LISTEN", "sleep-command", new { hotphrase = true }));
+        Assert.Equal("fresh-wake", session.TurnState.TransId);
+        Assert.True(session.TurnState.AwaitingTurnCompletion);
+        await Send("CLIENT_ASR", "fresh-wake", new { text = "go to sleep" });
+        Assert.Equal("sleeping", session.Metadata["sleepState"]);
+        await Send("LISTEN", "inline-wake", new { hotphrase = true, text = "volume up" });
+        Assert.Equal("awake", session.Metadata["sleepState"]);
+    }
+
+    [Theory]
+    [InlineData("volume up", "volumeUp", "null")]
+    [InlineData("volume down", "volumeDown", "null")]
+    [InlineData("please raise volume", "volumeUp", "null")]
+    [InlineData("please lower volume", "volumeDown", "null")]
+    [InlineData("set volume to one", "volumeToValue", "1")]
+    [InlineData("set volume to ten", "volumeToValue", "10")]
+    public async Task Volume_EmitsOneNativeCommandAndSilentCompletion(string text, string intent, string level)
+    {
+        var replies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "native-volume-token",
+            Text = JsonSerializer.Serialize(new { type = "LISTEN", transID = "volume", data = new { text, hotphrase = true } })
+        });
+        Assert.Equal(new[] { "LISTEN", "EOS", "SKILL_ACTION" }, replies.Select(ReadReplyType));
+        using var listen = JsonDocument.Parse(replies[0].Text!);
+        var nlu = listen.RootElement.GetProperty("data").GetProperty("nlu");
+        Assert.Equal(intent, nlu.GetProperty("intent").GetString());
+        Assert.Equal("global_commands", nlu.GetProperty("domain").GetString());
+        Assert.Equal(level, nlu.GetProperty("entities").GetProperty("volumeLevel").GetString());
+        using var completion = JsonDocument.Parse(replies[2].Text!);
+        var config = completion.RootElement.GetProperty("data").GetProperty("action").GetProperty("config").GetProperty("jcp").GetProperty("config");
+        Assert.False(config.TryGetProperty("listen", out _));
+        Assert.DoesNotContain("Opening volume", replies[2].Text!, StringComparison.Ordinal);
+        Assert.False(_store.FindSessionByToken("native-volume-token")!.FollowUpOpen);
+    }
+
     [Fact]
     public async Task ClientAsr_WakeUp_RoutesDirectlyToLocalGreetings()
     {
