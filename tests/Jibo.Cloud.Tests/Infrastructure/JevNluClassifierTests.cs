@@ -2,6 +2,8 @@ using System.Net;
 using System.Text.Json;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Infrastructure.Nlu;
+using Jibo.Cloud.Application.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -20,10 +22,22 @@ public sealed class JevNluClassifierTests
             Assert.Equal("test-key", request.Headers.Authorization.Parameter);
             using var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
             Assert.Equal("hello", json.RootElement.GetProperty("state").GetProperty("transcript").GetString());
-            var question = json.RootElement.GetProperty("questions").GetProperty("intent");
-            Assert.Equal("choice", question.GetProperty("type").GetString());
-            Assert.True(question.GetProperty("criteria").TryGetProperty("time", out _));
-            Assert.True(question.GetProperty("criteria").TryGetProperty("unknown", out _));
+            Assert.Equal("typesafe/jev-1.13", json.RootElement.GetProperty("model").GetString());
+            Assert.Equal("application/json", request.Content.Headers.ContentType!.MediaType);
+            var questions = json.RootElement.GetProperty("questions");
+            Assert.True(questions.TryGetProperty("intent_group", out _));
+            var seen = new HashSet<string>();
+            foreach (var question in questions.EnumerateObject())
+            {
+                Assert.Equal("choice", question.Value.GetProperty("type").GetString());
+                var criteria = question.Value.GetProperty("criteria");
+                Assert.InRange(criteria.EnumerateObject().Count(), 2, 255);
+                Assert.True(criteria.TryGetProperty("unknown", out _));
+                if (question.Name != "intent_group")
+                    foreach (var option in criteria.EnumerateObject().Where(p => p.Name != "unknown"))
+                        Assert.True(seen.Add(option.Name), $"Duplicate leaf intent: {option.Name}");
+            }
+            Assert.Equal(NluIntentCatalog.Criteria.Keys.Where(k => k != "unknown").Order(), seen.Order());
             return Response(Answer("time", "0.9"));
         });
         var result = await Client(handler).ClassifyAsync("hello");
@@ -60,6 +74,7 @@ public sealed class JevNluClassifierTests
     }
 
     [Theory]
+    [InlineData(400)]
     [InlineData(401)]
     [InlineData(429)]
     [InlineData(500)]
@@ -149,12 +164,87 @@ public sealed class JevNluClassifierTests
         Assert.Equal(0, handler.Calls);
     }
 
-    private static string Answer(string intent, string probability)
+    [Theory]
+    [InlineData("robot_can_dance")]
+    [InlineData("robot_favorite_color")]
+    [InlineData("fun_fact")]
+    public async Task GroupedProtocol_PreservesIntentsAcrossTheFullCatalog(string intent)
+    {
+        Assert.Equal(intent, (await Client(new Handler((_, _) => Task.FromResult(Response(Answer(intent, "0.95")))))
+            .ClassifyAsync("hello"))!.Intent);
+    }
+
+    [Theory]
+    [InlineData(0.95, 0.9, true)]
+    [InlineData(0.9, 0.9, false)]
+    [InlineData(0.8, 1, false)]
+    public async Task GroupAndLeaf_ShareAnAcceptanceThreshold(double groupProbability, double leafProbability, bool accepted)
+    {
+        var handler = new Handler((_, _) => Task.FromResult(Response(Answer("time",
+            leafProbability.ToString(System.Globalization.CultureInfo.InvariantCulture), groupProbability))));
+        var result = await Client(handler).ClassifyAsync("hello");
+        Assert.Equal(accepted, result is not null);
+        if (accepted) Assert.Equal(groupProbability * leafProbability, result!.Probability);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Theory]
+    [InlineData("invented", "time")]
+    [InlineData("robot_abilities", "time")]
+    [InlineData("unknown", "time")]
+    public async Task InvalidGroupOrCrossGroupLeaf_IsRejected(string group, string intent)
+    {
+        var response = JsonSerializer.Serialize(new { answers = new Dictionary<string, object>
+        {
+            ["intent_group"] = Choice(group, 1), [group] = Choice(intent, 1)
+        } });
+        Assert.Null(await Client(new Handler((_, _) => Task.FromResult(Response(response)))).ClassifyAsync("hello"));
+    }
+
+    [Fact]
+    public async Task OnlySelectedGroupIsUsed_EvenIfOtherGroupsAreConfident()
+    {
+        var body = JsonSerializer.Serialize(new { answers = new Dictionary<string, object>
+        {
+            ["intent_group"] = Choice("commands_and_user", 1),
+            ["commands_and_user"] = Choice("time", 0.95),
+            ["robot_abilities"] = Choice("robot_can_dance", 1)
+        } });
+        Assert.Equal("time", (await Client(new Handler((_, _) => Task.FromResult(Response(body)))).ClassifyAsync("hello"))!.Intent);
+    }
+
+    [Fact]
+    public async Task RejectedRequest_LogsValidationReason_WithoutCredentialsOrTranscript()
+    {
+        var logs = new Mock<ILogger<JevNluClassifier>>();
+        var handler = new Handler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { error = new
+            { message = "Choice accepts at most 255 options: test-key; hello; sk-or-othersecret\n" } }))
+        }));
+        var classifier = new JevNluClassifier(new HttpClient(handler), new JevNluOptions
+        { Enabled = true, ApiKey = "test-key" }, logs.Object);
+        Assert.Null(await classifier.ClassifyAsync("hello"));
+        var messages = logs.Invocations.Where(i => i.Method.Name == "Log")
+            .Select(i => i.Arguments[2].ToString()).ToArray();
+        Assert.Contains(messages, message => message!.Contains("HTTP 400") && message.Contains("255 options"));
+        Assert.DoesNotContain(messages, message => message!.Contains("test-key") || message.Contains("hello") || message.Contains("sk-or-othersecret"));
+    }
+
+    private static object Choice(string choice, double probability) => new
+    { type = "choice", choice, probabilities = new Dictionary<string, double> { [choice] = probability } };
+
+    private static string Answer(string intent, string probability, double groupProbability = 1)
     {
         using var parsed = JsonDocument.Parse(probability);
-        return JsonSerializer.Serialize(new { model = "typesafe/test-snapshot", answers = new
-        { intent = new { type = "choice", choice = intent, confidence = 0.1,
-            probabilities = new Dictionary<string, JsonElement> { [intent] = parsed.RootElement.Clone() } } } });
+        var group = JevIntentQuestions.Groups.FirstOrDefault(g => intent != "unknown" && g.Value.ContainsKey(intent)).Key
+            ?? "commands_and_user";
+        return JsonSerializer.Serialize(new { model = "typesafe/test-snapshot", answers = new Dictionary<string, object>
+        {
+            ["intent_group"] = Choice(group, groupProbability),
+            [group] = new { type = "choice", choice = intent, confidence = 0.1,
+                probabilities = new Dictionary<string, JsonElement> { [intent] = parsed.RootElement.Clone() } }
+        } });
     }
     private static HttpResponseMessage Response(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
     private static JevNluClassifier Client(Handler handler, JevNluOptions? options = null, ITransportMetrics? metrics = null) =>

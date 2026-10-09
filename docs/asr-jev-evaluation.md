@@ -19,11 +19,17 @@ model is `typesafe/jev-1.13`. Override the full endpoint URL and model to use
 another gateway implementing the same Decisions request/response format. This
 is not a chat-completions API. See the [OpenRouter Decisions reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request).
 
-Jev chooses one supported BEefy semantic intent or `unknown`. It receives the
+Jev chooses one supported BEefy semantic intent or `unknown`. Each Choice
+question is limited to 255 options. The catalog is split into command/user,
+robot ability and robot personality groups (further chunked if a group grows).
+A group selector and conditional intent questions are evaluated in parallel in
+one HTTP request. Only the selected group's intent is eligible for dispatch. It receives the
 current transcript, intent descriptions, and classifier instructions. It does
 not receive credentials in the request body or supply arbitrary entity values.
-The default acceptance threshold is 0.85 on the chosen option's probability,
-not the response's distribution-confidence field. Tune this threshold against
+The default acceptance threshold is 0.85 on the product of the chosen group's
+probability and its selected intent's probability. This conservative routing
+score is not a calibrated joint probability and does not use the response's
+distribution-confidence field. Tune this threshold against
 labeled commands and negative examples before lowering it.
 
 Configured Jev runs first on ordinary speech and direct-text turns, even when
@@ -39,7 +45,9 @@ A request gets at most `OPENJIBO_JEV_TIMEOUT_MS` milliseconds (1–1000; default
 network calls. This deadline is separate from the 200 ms ASR allowance.
 The `nlu` turn-phase metric reports provider duration and outcomes. Debug logs
 record model, intent and selected probability without logging credentials or
-remote error bodies; accepted turns carry `nlu:provider`, `nlu:model`,
+raw remote error bodies. Rejected requests log the HTTP status and a bounded
+structured validation message with the configured key and transcript redacted;
+accepted turns carry `nlu:provider`, `nlu:model`,
 `nlu:probability` and `nlu:outcome` attributes. A classification rejected by local
 value extraction records `nlu:outcome=missing_values`.
 
