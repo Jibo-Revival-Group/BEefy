@@ -29,7 +29,8 @@ public sealed partial class JiboInteractionService(
     ILogger<JiboInteractionService>? logger = null,
     IAsrCorrectionModel? asrCorrectionModel = null,
     AsrCorrectionOptions? asrCorrectionOptions = null,
-    ITransportMetrics? transportMetrics = null)
+    ITransportMetrics? transportMetrics = null,
+    INluClassifier? nluClassifier = null)
 {
     private readonly AsrCorrectionOptions _asrCorrectionOptions = asrCorrectionOptions ?? new();
     private readonly ITransportMetrics _asrCorrectionMetrics = transportMetrics ?? NullTransportMetrics.Instance;

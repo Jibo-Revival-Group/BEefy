@@ -23,6 +23,8 @@ public static class SttWerHarness
         double AverageWer,
         IReadOnlyList<CaseResult> Cases);
 
+    public static int CountWords(string text) => Tokenize(text).Length;
+
     public static double ComputeWer(string reference, string hypothesis)
     {
         var refTokens = Tokenize(reference);

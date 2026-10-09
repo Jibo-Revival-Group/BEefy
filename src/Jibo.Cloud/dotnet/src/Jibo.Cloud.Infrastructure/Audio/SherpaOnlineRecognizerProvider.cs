@@ -65,13 +65,10 @@ public sealed class SherpaOnlineRecognizerProvider : IDisposable
                 return _recognizer;
 
             _recognizer?.Dispose();
-            // Endpoint rules stay on so incremental sessions and batch finalize share one recognizer.
-            // Batch calls InputFinished and ignores IsEndpoint.
             _recognizer = CreateRecognizer(model, rule3);
             _recognizerDirectory = model.Directory;
-            _logger.LogInformation(
-                "Initialized Sherpa streaming recognizer from {Directory}",
-                model.Directory);
+            _logger.LogInformation("Initialized Sherpa recognizer from {Directory}, decoding={Decoding}, paths={Paths}",
+                model.Directory, _sttOptions.SherpaDecodingMethod, _sttOptions.SherpaMaxActivePaths);
             return _recognizer;
         }
     }
@@ -92,6 +89,12 @@ public sealed class SherpaOnlineRecognizerProvider : IDisposable
         SherpaModelLocator.ModelPaths model,
         float rule3MinUtteranceLengthSeconds)
     {
+        return new OnlineRecognizer(BuildConfig(model, rule3MinUtteranceLengthSeconds));
+    }
+
+    internal OnlineRecognizerConfig BuildConfig(SherpaModelLocator.ModelPaths model,
+        float rule3MinUtteranceLengthSeconds)
+    {
         var config = new OnlineRecognizerConfig();
         config.FeatConfig.SampleRate = 16000;
         config.FeatConfig.FeatureDim = 80;
@@ -99,11 +102,13 @@ public sealed class SherpaOnlineRecognizerProvider : IDisposable
         config.ModelConfig.Transducer.Encoder = model.Encoder;
         config.ModelConfig.Transducer.Decoder = model.Decoder;
         config.ModelConfig.Transducer.Joiner = model.Joiner;
-        config.ModelConfig.NumThreads = _sttOptions.WhisperThreads > 0
-            ? _sttOptions.WhisperThreads
+        config.ModelConfig.NumThreads = _sttOptions.SherpaThreads > 0
+            ? _sttOptions.SherpaThreads
             : Math.Max(1, Environment.ProcessorCount / 2);
         config.ModelConfig.Provider = "cpu";
-        config.DecodingMethod = "greedy_search";
+        _sttOptions.ValidateSherpaSettings();
+        config.DecodingMethod = _sttOptions.SherpaDecodingMethod;
+        config.MaxActivePaths = _sttOptions.SherpaMaxActivePaths;
         config.EnableEndpoint = 1;
         config.Rule1MinTrailingSilence = Math.Max(0.1f, _listenOptions.Rule1MinTrailingSilenceSeconds);
         config.Rule2MinTrailingSilence = Math.Max(
@@ -115,7 +120,7 @@ public sealed class SherpaOnlineRecognizerProvider : IDisposable
         // tokens, so word-level hotwords like "Jibo" fail to encode and force a broken
         // modified_beam_search path (see sherpa EncodeBase / InitHotwords warnings).
 
-        return new OnlineRecognizer(config);
+        return config;
     }
 
     public void Dispose()

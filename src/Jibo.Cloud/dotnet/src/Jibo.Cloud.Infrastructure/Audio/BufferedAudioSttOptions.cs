@@ -10,6 +10,10 @@ public sealed class BufferedAudioSttOptions
     /// Model files are auto-downloaded on first use when missing.
     /// </summary>
     public bool EnableStreamingSherpa { get; set; }
+    public string SherpaDecodingMethod { get; set; } = "greedy_search";
+    public int SherpaMaxActivePaths { get; set; } = 4;
+    /// <summary>0 selects half the available processors; independent of Whisper.</summary>
+    public int SherpaThreads { get; set; }
     /// <summary>
     /// When true (default), the API process starts a local whisper-server for loopback
     /// WhisperServerUrl values if one is not already listening. Applies to dotnet run,
@@ -41,4 +45,12 @@ public sealed class BufferedAudioSttOptions
     public int WhisperBeamSize { get; set; } = 1;
     public string? TempDirectory { get; set; }
     public bool CleanupTempFiles { get; set; }
+
+    internal void ValidateSherpaSettings()
+    {
+        if (SherpaDecodingMethod is not ("greedy_search" or "modified_beam_search"))
+            throw new ArgumentException("SherpaDecodingMethod must be greedy_search or modified_beam_search.");
+        if (SherpaMaxActivePaths is < 1 or > 16 || SherpaThreads < 0)
+            throw new ArgumentException("Sherpa paths must be 1–16 and threads must be nonnegative.");
+    }
 }

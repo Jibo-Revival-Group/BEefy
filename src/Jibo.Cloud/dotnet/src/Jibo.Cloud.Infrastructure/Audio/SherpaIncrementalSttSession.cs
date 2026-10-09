@@ -19,7 +19,7 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
     private readonly OggOpusIncrementalPcmDecoder _pcmDecoder = new();
     private readonly object _sessionLock = new();
     private readonly ILogger _logger;
-    private string _partialText = string.Empty;
+    private readonly StreamingTranscriptAccumulator _transcript = new();
     private bool _isEndpoint;
     private bool _disposed;
 
@@ -40,7 +40,7 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
         get
         {
             lock (_sessionLock)
-                return _partialText;
+                return _transcript.Text;
         }
     }
 
@@ -69,7 +69,7 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
                     _recognizer.Decode(_stream);
 
                 var text = _recognizer.GetResult(_stream).Text?.Trim() ?? string.Empty;
-                _partialText = AudioTranscriptNormalizer.NormalizeLooseTranscript(text);
+                _transcript.Update(AudioTranscriptNormalizer.NormalizeLooseTranscript(text));
                 _isEndpoint = _recognizer.IsEndpoint(_stream);
             });
         }
@@ -82,10 +82,12 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
         {
             _provider.WithRecognizerLock(() =>
             {
+                if (!_isEndpoint) return;
                 _recognizer.Reset(_stream);
+                _transcript.Commit();
                 _isEndpoint = false;
             });
-            _logger.LogDebug("Sherpa incremental endpoint reset; partial={Partial}", _partialText);
+            _logger.LogDebug("Sherpa incremental endpoint reset; partial={Partial}", _transcript.Text);
         }
     }
 

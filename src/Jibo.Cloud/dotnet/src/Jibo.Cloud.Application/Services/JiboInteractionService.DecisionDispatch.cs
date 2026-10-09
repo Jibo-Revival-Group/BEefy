@@ -54,6 +54,15 @@ public sealed partial class JiboInteractionService
         var isTimerValueTurn = IsClockTimerValueTurn(clientRules, listenRules);
         var isAlarmValueTurn = IsClockAlarmValueTurn(clientRules, listenRules);
 
+        NluClassification? classification = null;
+        if (nluClassifier is not null && !isYesNoTurn && !isSkillOwnedListen &&
+            !isTimerValueTurn && !isAlarmValueTurn &&
+            turn.InputMode != TurnInputMode.System && !string.IsNullOrWhiteSpace(transcript) &&
+            string.IsNullOrWhiteSpace(pendingProactivityOffer))
+        {
+            classification = await nluClassifier.ClassifyAsync(transcript, cancellationToken);
+        }
+
         var semanticIntent = ResolveSemanticIntent(
             lowered,
             referenceLocalTime,
@@ -68,11 +77,27 @@ public sealed partial class JiboInteractionService
             isAlarmValueTurn,
             isSkillOwnedListen);
 
+        var jevAccepted = classification is not null && NluIntentCatalog.IsSupported(classification.Intent) &&
+            double.IsFinite(classification.Probability) && classification.Probability is >= 0 and <= 1 &&
+            HasNluRequiredValues(classification.Intent, semanticIntent, lowered, clientEntities, referenceLocalTime);
+        if (jevAccepted)
+        {
+            semanticIntent = classification!.Intent;
+            turn.Attributes["nlu:provider"] = classification.Provider;
+            turn.Attributes["nlu:model"] = classification.Model;
+            turn.Attributes["nlu:probability"] = classification.Probability;
+            turn.Attributes["nlu:outcome"] = "accepted";
+        }
+        else if (classification is not null)
+        {
+            turn.Attributes["nlu:outcome"] = "missing_values";
+        }
+
         if (SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
             semanticIntent = "chat";
 
         var modelRecoveredCommand = false;
-        if (semanticIntent == "chat" && !isYesNoTurn && !isSkillOwnedListen &&
+        if (!jevAccepted && semanticIntent == "chat" && !isYesNoTurn && !isSkillOwnedListen &&
             !isTimerValueTurn && !isAlarmValueTurn && !SkillListenOwnership.IsCloudOwnedFollowUp(turn) &&
             turn.InputMode is not (TurnInputMode.DirectText or TurnInputMode.System))
         {
@@ -90,7 +115,7 @@ public sealed partial class JiboInteractionService
             }
         }
 
-        if (!modelRecoveredCommand && !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
+        if (!jevAccepted && !modelRecoveredCommand && !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
             semanticIntent is not ("sleep" or "wake_up" or "volume_up" or "volume_down" or "volume_to_value") &&
             !string.IsNullOrWhiteSpace(transcript) &&
             phoenixConversation is not null)

@@ -1,0 +1,136 @@
+# ASR tuning and Jev NLU
+
+BEefy keeps the current warmed streaming Zipformer model and greedy decoding by
+default. The new beam-search controls are available for measured experiments;
+no recorded-audio accuracy or latency improvement has been established in this
+checkout. There is no installed Sherpa model, labeled microphone corpus, or Jev
+API key here, so native-model replay and live Jev acceptance remain unverified.
+
+## Configure Jev
+
+Use the separate `OPENJIBO_JEV_*` settings documented in `.env.example`. Supply
+these variables to the API process using the same launch environment mechanism
+as the existing search settings; editing an example file does not configure a
+running process. Jev is off by default. To enable it, set
+`OPENJIBO_JEV_ENABLED=true` and supply `OPENJIBO_JEV_API_KEY`.
+
+The default endpoint is `https://openrouter.ai/api/alpha/decisions`, and the
+model is `typesafe/jev-1.13`. Override the full endpoint URL and model to use
+another gateway implementing the same Decisions request/response format. This
+is not a chat-completions API. See the [OpenRouter Decisions reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request).
+
+Jev chooses one supported BEefy semantic intent or `unknown`. It receives the
+current transcript, intent descriptions, and classifier instructions. It does
+not receive credentials in the request body or supply arbitrary entity values.
+The default acceptance threshold is 0.85 on the chosen option's probability,
+not the response's distribution-confidence field. Tune this threshold against
+labeled commands and negative examples before lowering it.
+
+Configured Jev runs first on ordinary speech and direct-text turns, even when
+local grammar would match. Triggers, system input, skill-owned listens, yes/no
+prompts, clock-value follow-ups and pending proactive offers keep local handling.
+Accepted decisions bypass Phoenix reclassification and local ASR correction.
+Value-bearing commands must pass existing local extraction; otherwise the
+original local/Phoenix path runs. No-match, low probability, malformed responses,
+HTTP failures and timeouts also fall back. Caller cancellation propagates.
+
+A request gets at most `OPENJIBO_JEV_TIMEOUT_MS` milliseconds (1–1000; default
+1000), with one call and no retries. Missing or invalid configuration disables
+network calls. This deadline is separate from the 200 ms ASR allowance.
+The `nlu` turn-phase metric reports provider duration and outcomes. Debug logs
+record model, intent and selected probability without logging credentials or
+remote error bodies; accepted turns carry `nlu:provider`, `nlu:model`,
+`nlu:probability` and `nlu:outcome` attributes. A classification rejected by local
+value extraction records `nlu:outcome=missing_values`.
+
+## Tune Sherpa
+
+These .NET configuration settings apply to both streaming and buffered ASR:
+
+| Environment variable | Default | Meaning |
+| --- | --- | --- |
+| `OpenJibo__Stt__SherpaDecodingMethod` | `greedy_search` | `greedy_search` or `modified_beam_search` |
+| `OpenJibo__Stt__SherpaMaxActivePaths` | `4` | Active paths for beam search, 1–16 |
+| `OpenJibo__Stt__SherpaThreads` | `0` | 0 uses half the available processors; positive values set CPU threads |
+
+Sherpa no longer reads Whisper's thread setting. Model weights stay resident,
+warmup is retained, and hotword biasing stays disabled. Incomplete utterance
+endpoint resets commit the preceding partial transcript so later hypotheses
+retain the full utterance. Existing silence thresholds are unchanged.
+
+## Replay recorded audio
+
+Create a JSON corpus with unique names, paths to actual Ogg/Opus robot recordings,
+reference transcripts and expected BEefy semantic intents. Paths are relative
+to the corpus file. Do not substitute server hypotheses for reference labels.
+
+```json
+[
+  {"name":"time-quiet", "audioFile":"audio/time-quiet.ogg", "reference":"what time is it", "expectedIntent":"time"},
+  {"name":"pause-lights", "audioFile":"audio/pause-lights.ogg", "reference":"turn on the living room lights", "expectedIntent":"ha_lights_on"}
+]
+```
+
+Include short commands, names, numbers, negation, noisy/distant speech,
+non-command speech and mid-sentence pauses. Use an independent holdout corpus
+for the final acceptance decision. With model files already installed, run on
+the target server, using the same CPU allocation and representative load:
+
+```sh
+dotnet run --project tools/SpeechEvaluation -- \
+  --corpus /path/to/recordings.json --model /path/to/zipformer \
+  --repetitions 30 --concurrency 1 --threads 2 > /tmp/asr-report.json
+```
+
+Repeat at representative concurrency. The tool warms each recording, compares
+greedy, beam2 and beam4, and reports per-sample hypotheses, corpus-weighted WER,
+command errors and ASR p50/p95 processing times. File reads and local intent
+routing are outside ASR timing. Routing uses isolated in-memory state and no
+Jev calls. No model downloads occur, and no production settings are changed.
+Unlabeled command cases keep the recommendation at greedy.
+
+The recommended candidate must reduce WER, avoid increasing command errors and
+stay within baseline p95 + 200 ms. Candidates tied on WER are ordered by p95;
+otherwise greedy remains selected. This is **warm buffered processing latency**,
+not live microphone-to-final-transcript latency: it excludes endpoint silence
+and live receive/streaming timing. Before changing production defaults, replay
+through the real WebSocket path and compare audio-end-to-final-transcript p95,
+including pause cases. Keep ASR and Jev NLU measurements separate. The replay
+report explicitly flags this required live endpoint validation.
+
+## Evaluate Jev live
+
+Prepare a labeled NLU corpus:
+
+```json
+[
+  {"name":"time-paraphrase", "text":"Could I get the current time?", "expectedIntent":"time"},
+  {"name":"ability", "text":"can you dance", "expectedIntent":"robot_can_dance"},
+  {"name":"negated", "text":"do not turn on the lights", "expectedIntent":"unknown"}
+]
+```
+
+With Jev enabled and credentials supplied in the process environment:
+
+```sh
+dotnet run --project tools/SpeechEvaluation -- \
+  --nlu-corpus /path/to/intents.json > /tmp/jev-report.json
+```
+
+This mode makes paid live requests and reports classifications, probabilities,
+accuracy and p50/p95 NLU latency. Test dispatch and entity extraction separately
+using the automated routing tests. Reports contain corpus text/hypotheses but
+no API keys.
+
+## Rollback and checks
+
+Set `OPENJIBO_JEV_ENABLED=false` to restore the existing local/Phoenix path.
+Set `OpenJibo__Stt__SherpaDecodingMethod=greedy_search` to restore greedy ASR.
+Restart the API after changing these startup settings. No persistence migrations
+or robot wire-format changes are required.
+
+```sh
+dotnet test tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj \
+  --filter 'FullyQualifiedName~JevNlu|FullyQualifiedName~SherpaAccuracy|FullyQualifiedName~SttReplayHarness|FullyQualifiedName~ModelEndpointingFinalization|FullyQualifiedName~AsrModelFallback|FullyQualifiedName~OggOpus'
+python3 -B -m unittest discover -s tests/python -p 'test_*.py'
+```

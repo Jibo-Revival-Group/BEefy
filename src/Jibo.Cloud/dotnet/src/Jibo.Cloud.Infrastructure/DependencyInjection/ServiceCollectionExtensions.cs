@@ -10,6 +10,7 @@ using Jibo.Cloud.Infrastructure.FunFacts;
 using Jibo.Cloud.Infrastructure.Holidays;
 using Jibo.Cloud.Infrastructure.Media;
 using Jibo.Cloud.Infrastructure.News;
+using Jibo.Cloud.Infrastructure.Nlu;
 using Jibo.Cloud.Infrastructure.Persistence;
 using Jibo.Cloud.Infrastructure.Search;
 using Jibo.Cloud.Infrastructure.Telemetry;
@@ -85,6 +86,8 @@ public static class ServiceCollectionExtensions
             searchSection?.GetValue("FailureCacheTtlSeconds", 45) ?? 45,
             llmInstructions);
 
+        services.AddSingleton(JevNluOptions.Resolve(configuration));
+        services.AddHttpClient<INluClassifier, JevNluClassifier>(client => client.Timeout = Timeout.InfiniteTimeSpan);
         services.AddSingleton(asrCorrectionOptions);
         services.AddSingleton<LocalAsrCorrectionModel>();
         services.AddSingleton<IAsrCorrectionModel>(provider => provider.GetRequiredService<LocalAsrCorrectionModel>());

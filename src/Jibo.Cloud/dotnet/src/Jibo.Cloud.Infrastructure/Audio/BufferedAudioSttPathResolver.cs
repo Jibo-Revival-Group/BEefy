@@ -79,6 +79,9 @@ public static class BufferedAudioSttPathResolver
                 source.WhisperServerUrl,
                 ["OPENJIBO_STT_WHISPER_SERVER_URL", "WHISPER_SERVER_URL"],
                 getEnvironmentVariable) ?? "http://127.0.0.1:8090",
+            SherpaDecodingMethod = source.SherpaDecodingMethod,
+            SherpaMaxActivePaths = source.SherpaMaxActivePaths,
+            SherpaThreads = source.SherpaThreads,
             SherpaModelDirectory = source.SherpaModelDirectory,
             AutoDownloadSherpaModel = source.AutoDownloadSherpaModel,
             AzureSpeechRegion = source.AzureSpeechRegion,
@@ -199,6 +202,7 @@ public static class BufferedAudioSttPathResolver
         Func<string, WhisperCppProbeResult> probeWhisperCpp)
     {
         var resolved = Resolve(source, getEnvironmentVariable, fileExists, homeDirectory, platform);
+        if (resolved.EnableStreamingSherpa) resolved.ValidateSherpaSettings();
         if (!resolved.EnableLocalWhisperCpp && !resolved.EnableAzureSpeech && !resolved.EnableWhisperServer)
             return;
 
