@@ -68,6 +68,7 @@ public sealed partial class JiboInteractionService
             isAlarmValueTurn,
             isSkillOwnedListen);
 
+        var localNluRecognized = semanticIntent != "chat";
         if (SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
             semanticIntent = "chat";
 
@@ -106,7 +107,7 @@ public sealed partial class JiboInteractionService
         // chance. "chat" is the local parser's no-match sentinel, not a recognized
         // Phoenix conversation result. Known decisions never invoke Jev.
         NluClassification? classification = null;
-        if (semanticIntent == "chat" && nluClassifier is not null &&
+        if (!localNluRecognized && semanticIntent == "chat" && nluClassifier is not null &&
             !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
             turn.InputMode != TurnInputMode.System && !string.IsNullOrWhiteSpace(transcript) &&
             string.IsNullOrWhiteSpace(pendingProactivityOffer))

@@ -12,44 +12,99 @@ public sealed class JevNluRoutingTests
     [Theory]
     [InlineData(TurnInputMode.DirectText)]
     [InlineData(TurnInputMode.WakeWord)]
-    public async Task PrimaryDecision_BypassesPhoenixAndAsrCorrection(TurnInputMode mode)
+    public async Task UnknownTurn_UsesJevAfterPhoenixMiss(TurnInputMode mode)
     {
+        var phoenixCalled = false;
         var classifier = Classifier("time");
-        var phoenix = new Mock<IPhoenixConversationClient>(MockBehavior.Strict);
-        var correction = new Mock<IAsrCorrectionModel>(MockBehavior.Strict);
-        var turn = Turn("Could I get the hour?", mode);
-        Assert.Equal("time", (await Service(classifier.Object, phoenix.Object, correction.Object).BuildDecisionAsync(turn)).IntentName);
+        classifier.Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => Assert.True(phoenixCalled))
+            .ReturnsAsync(new NluClassification("time", 0.95, "jev", "test"));
+        var phoenix = new Mock<IPhoenixConversationClient>();
+        phoenix.Setup(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => phoenixCalled = true).ReturnsAsync((JiboInteractionDecision?)null);
+        var turn = Turn("flurble zorp", mode);
+        Assert.Equal("time", (await Service(classifier.Object, phoenix.Object).BuildDecisionAsync(turn)).IntentName);
         Assert.Equal("jev", turn.Attributes["nlu:provider"]);
         Assert.Equal("accepted", turn.Attributes["nlu:outcome"]);
+        classifier.Verify(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        phoenix.Verify(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("what time is it", "time")]
+    [InlineData("hello", "hello")]
+    [InlineData("tell me a joke", "joke")]
+    public async Task KnownLocalIntent_SkipsJev(string transcript, string intent)
+    {
+        var classifier = new Mock<INluClassifier>(MockBehavior.Strict);
+        Assert.Equal(intent, (await Service(classifier.Object).BuildDecisionAsync(Turn(transcript))).IntentName);
+    }
+
+    [Theory]
+    [InlineData("requestTellAboutThing")]
+    [InlineData("chat")]
+    public async Task RecognizedPhoenixDecision_SkipsJev(string intent)
+    {
+        var classifier = new Mock<INluClassifier>(MockBehavior.Strict);
+        var phoenix = new Mock<IPhoenixConversationClient>();
+        var response = new JiboInteractionDecision(intent, "hello");
+        phoenix.Setup(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(response);
+        Assert.Same(response, await Service(classifier.Object, phoenix.Object).BuildDecisionAsync(Turn("flurble zorp")));
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("not_understood")]
+    [InlineData("unrecognized")]
+    [InlineData("no_match")]
+    public async Task UnknownPhoenixDecision_AllowsJev(string intent)
+    {
+        var phoenix = new Mock<IPhoenixConversationClient>();
+        phoenix.Setup(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JiboInteractionDecision(intent, "I did not understand."));
+        Assert.Equal("time", (await Service(Classifier("time").Object, phoenix.Object)
+            .BuildDecisionAsync(Turn("flurble zorp"))).IntentName);
+    }
+
+    [Fact]
+    public async Task JevNoMatch_PreservesOriginalUnknownPhoenixReply()
+    {
+        var classifier = new Mock<INluClassifier>();
+        var phoenix = new Mock<IPhoenixConversationClient>();
+        var response = new JiboInteractionDecision("not_understood", "I did not understand.");
+        phoenix.Setup(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(response);
+        Assert.Same(response, await Service(classifier.Object, phoenix.Object).BuildDecisionAsync(Turn("flurble zorp")));
         classifier.Verify(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task PrimaryClassification_OverridesConfidentLocalMatch()
-    {
-        Assert.Equal("date", (await Service(Classifier("date").Object).BuildDecisionAsync(Turn("what time is it"))).IntentName);
-    }
-
-    [Fact]
-    public async Task NoMatch_RetainsPhoenixFallback()
+    public async Task UnknownWithoutPhoenix_CallsJevOnce_AndRetainsLocalFallbackOnMiss()
     {
         var classifier = new Mock<INluClassifier>();
-        var phoenix = new Mock<IPhoenixConversationClient>();
-        var response = new JiboInteractionDecision("phoenix", "hello");
-        phoenix.Setup(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(response);
-        Assert.Same(response, await Service(classifier.Object, phoenix.Object).BuildDecisionAsync(Turn("hello")));
-        phoenix.Verify(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        var result = await Service(classifier.Object).BuildDecisionAsync(Turn("flurble zorp"));
+        Assert.Equal("not_understood", result.IntentName);
+        classifier.Verify(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task NoMatch_RetainsBoundedAsrRecovery()
+    public async Task RecoveredAsrCommand_SkipsJev()
     {
         var correction = new Mock<IAsrCorrectionModel>();
         correction.Setup(c => c.TryCorrectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AsrCorrection("twerk", 0.95, "test"));
-        var classifier = new Mock<INluClassifier>();
+        var classifier = new Mock<INluClassifier>(MockBehavior.Strict);
         Assert.Equal("twerk", (await Service(classifier.Object, correction: correction.Object)
             .BuildDecisionAsync(Turn("twke", TurnInputMode.WakeWord))).IntentName);
+    }
+
+    [Fact]
+    public async Task KnownLocalIntent_WithUnknownPhoenixReply_SkipsJev()
+    {
+        var phoenix = new Mock<IPhoenixConversationClient>();
+        phoenix.Setup(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JiboInteractionDecision("unknown", "I did not understand."));
+        Assert.Equal("time", (await Service(new Mock<INluClassifier>(MockBehavior.Strict).Object, phoenix.Object)
+            .BuildDecisionAsync(Turn("what time is it"))).IntentName);
     }
 
     [Theory]
@@ -62,7 +117,7 @@ public sealed class JevNluRoutingTests
     [InlineData("ha_climate_set_temp")]
     public async Task MissingRequiredValue_RejectsClassification(string intent)
     {
-        var turn = Turn("hello");
+        var turn = Turn("flurble zorp");
         Assert.NotEqual(intent, (await Service(Classifier(intent).Object).BuildDecisionAsync(turn)).IntentName);
         Assert.Equal("missing_values", turn.Attributes["nlu:outcome"]);
     }
@@ -73,7 +128,8 @@ public sealed class JevNluRoutingTests
     [InlineData("alarm_value", "set an alarm for 7:30 am")]
     public async Task ExtractableValue_ReusesLocalParser(string intent, string transcript)
     {
-        Assert.Equal(intent, (await Service(Classifier(intent).Object).BuildDecisionAsync(Turn(transcript))).IntentName);
+        Assert.Equal(intent, (await Service(new Mock<INluClassifier>(MockBehavior.Strict).Object)
+            .BuildDecisionAsync(Turn(transcript))).IntentName);
     }
 
     [Theory]
@@ -103,7 +159,7 @@ public sealed class JevNluRoutingTests
     [InlineData("invented")]
     public async Task NonExecutableIntent_IsRejected(string intent)
     {
-        Assert.NotEqual(intent, (await Service(Classifier(intent).Object).BuildDecisionAsync(Turn("hello"))).IntentName);
+        Assert.NotEqual(intent, (await Service(Classifier(intent).Object).BuildDecisionAsync(Turn("flurble zorp"))).IntentName);
     }
 
     private static Mock<INluClassifier> Classifier(string intent)
