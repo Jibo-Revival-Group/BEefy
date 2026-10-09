@@ -45,7 +45,7 @@ npm install --prefix conversation
 
 ## Speech and NLU tuning
 
-Jev can serve as the primary server NLU classifier with independent
+Jev can classify unknown intents after the existing NLU, using independent
 `OPENJIBO_JEV_*` endpoint, key and model settings. It is disabled until configured.
 Sherpa supports configurable greedy or bounded beam decoding; greedy remains the
 default until real recordings meet the accuracy and 200 ms latency gates. See

@@ -2,6 +2,13 @@ namespace Jibo.Cloud.Application.Services;
 
 public sealed partial class JiboInteractionService
 {
+    private static bool IsUnknownNluDecision(JiboInteractionDecision decision) =>
+        string.IsNullOrWhiteSpace(decision.IntentName) ||
+        decision.IntentName.Equals("unknown", StringComparison.OrdinalIgnoreCase) ||
+        decision.IntentName.Equals("not_understood", StringComparison.OrdinalIgnoreCase) ||
+        decision.IntentName.Equals("unrecognized", StringComparison.OrdinalIgnoreCase) ||
+        decision.IntentName.Equals("no_match", StringComparison.OrdinalIgnoreCase);
+
     private static bool HasNluRequiredValues(string intent, string localIntent, string transcript,
         IReadOnlyDictionary<string, string> entities, DateTimeOffset? localTime) => intent switch
     {

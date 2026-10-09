@@ -54,15 +54,6 @@ public sealed partial class JiboInteractionService
         var isTimerValueTurn = IsClockTimerValueTurn(clientRules, listenRules);
         var isAlarmValueTurn = IsClockAlarmValueTurn(clientRules, listenRules);
 
-        NluClassification? classification = null;
-        if (nluClassifier is not null && !isYesNoTurn && !isSkillOwnedListen &&
-            !isTimerValueTurn && !isAlarmValueTurn &&
-            turn.InputMode != TurnInputMode.System && !string.IsNullOrWhiteSpace(transcript) &&
-            string.IsNullOrWhiteSpace(pendingProactivityOffer))
-        {
-            classification = await nluClassifier.ClassifyAsync(transcript, cancellationToken);
-        }
-
         var semanticIntent = ResolveSemanticIntent(
             lowered,
             referenceLocalTime,
@@ -77,27 +68,11 @@ public sealed partial class JiboInteractionService
             isAlarmValueTurn,
             isSkillOwnedListen);
 
-        var jevAccepted = classification is not null && NluIntentCatalog.IsSupported(classification.Intent) &&
-            double.IsFinite(classification.Probability) && classification.Probability is >= 0 and <= 1 &&
-            HasNluRequiredValues(classification.Intent, semanticIntent, lowered, clientEntities, referenceLocalTime);
-        if (jevAccepted)
-        {
-            semanticIntent = classification!.Intent;
-            turn.Attributes["nlu:provider"] = classification.Provider;
-            turn.Attributes["nlu:model"] = classification.Model;
-            turn.Attributes["nlu:probability"] = classification.Probability;
-            turn.Attributes["nlu:outcome"] = "accepted";
-        }
-        else if (classification is not null)
-        {
-            turn.Attributes["nlu:outcome"] = "missing_values";
-        }
-
         if (SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
             semanticIntent = "chat";
 
         var modelRecoveredCommand = false;
-        if (!jevAccepted && semanticIntent == "chat" && !isYesNoTurn && !isSkillOwnedListen &&
+        if (semanticIntent == "chat" && !isYesNoTurn && !isSkillOwnedListen &&
             !isTimerValueTurn && !isAlarmValueTurn && !SkillListenOwnership.IsCloudOwnedFollowUp(turn) &&
             turn.InputMode is not (TurnInputMode.DirectText or TurnInputMode.System))
         {
@@ -115,15 +90,48 @@ public sealed partial class JiboInteractionService
             }
         }
 
-        if (!jevAccepted && !modelRecoveredCommand && !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
+        JiboInteractionDecision? unknownPhoenixDecision = null;
+        if (!modelRecoveredCommand && !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
             semanticIntent is not ("sleep" or "wake_up" or "volume_up" or "volume_down" or "volume_to_value") &&
             !string.IsNullOrWhiteSpace(transcript) &&
             phoenixConversation is not null)
         {
             var phoenixDecision = await phoenixConversation.TryDecideAsync(transcript, cancellationToken);
-            if (phoenixDecision is not null)
+            if (phoenixDecision is not null && !IsUnknownNluDecision(phoenixDecision))
                 return phoenixDecision;
+            unknownPhoenixDecision = phoenixDecision;
         }
+
+        // Existing local parsing, bounded ASR recovery and Phoenix have the first
+        // chance. "chat" is the local parser's no-match sentinel, not a recognized
+        // Phoenix conversation result. Known decisions never invoke Jev.
+        NluClassification? classification = null;
+        if (semanticIntent == "chat" && nluClassifier is not null &&
+            !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
+            turn.InputMode != TurnInputMode.System && !string.IsNullOrWhiteSpace(transcript) &&
+            string.IsNullOrWhiteSpace(pendingProactivityOffer))
+        {
+            classification = await nluClassifier.ClassifyAsync(transcript, cancellationToken);
+        }
+
+        var jevAccepted = classification is not null && NluIntentCatalog.IsSupported(classification.Intent) &&
+            double.IsFinite(classification.Probability) && classification.Probability is >= 0 and <= 1 &&
+            HasNluRequiredValues(classification.Intent, semanticIntent, lowered, clientEntities, referenceLocalTime);
+        if (jevAccepted)
+        {
+            semanticIntent = classification!.Intent;
+            turn.Attributes["nlu:provider"] = classification.Provider;
+            turn.Attributes["nlu:model"] = classification.Model;
+            turn.Attributes["nlu:probability"] = classification.Probability;
+            turn.Attributes["nlu:outcome"] = "accepted";
+        }
+        else if (classification is not null)
+        {
+            turn.Attributes["nlu:outcome"] = "missing_values";
+        }
+
+        if (jevAccepted && SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
+            semanticIntent = "chat";
 
         if (ShouldTreatAsHaClimateClarify(turn, lowered, semanticIntent))
             semanticIntent = "ha_climate_clarify";
@@ -159,6 +167,9 @@ public sealed partial class JiboInteractionService
         {
             if (isSkillOwnedListen)
                 return new JiboInteractionDecision("skill_listen", string.Empty);
+
+            if (!jevAccepted && unknownPhoenixDecision is not null)
+                return unknownPhoenixDecision;
 
             return await BuildChatFallbackDecisionAsync(
                 catalog,

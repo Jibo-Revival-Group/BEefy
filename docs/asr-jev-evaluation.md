@@ -32,12 +32,15 @@ score is not a calibrated joint probability and does not use the response's
 distribution-confidence field. Tune this threshold against
 labeled commands and negative examples before lowering it.
 
-Configured Jev runs first on ordinary speech and direct-text turns, even when
-local grammar would match. Triggers, system input, skill-owned listens, yes/no
+Configured Jev runs only when the existing local parser, bounded ASR command
+recovery and Phoenix conversation path have not recognized the turn. A known
+local intent or recognized Phoenix response (including conversation) skips Jev.
+An unavailable Phoenix service counts as no match only when local parsing is
+also unresolved. Triggers, system input, skill-owned listens, yes/no
 prompts, clock-value follow-ups and pending proactive offers keep local handling.
-Accepted decisions bypass Phoenix reclassification and local ASR correction.
+Accepted fallback decisions dispatch without rerunning Phoenix or ASR correction.
 Value-bearing commands must pass existing local extraction; otherwise the
-original local/Phoenix path runs. No-match, low probability, malformed responses,
+original unknown-response path runs. No-match, low probability, malformed responses,
 HTTP failures and timeouts also fall back. Caller cancellation propagates.
 
 A request gets at most `OPENJIBO_JEV_TIMEOUT_MS` milliseconds (1–1000; default
