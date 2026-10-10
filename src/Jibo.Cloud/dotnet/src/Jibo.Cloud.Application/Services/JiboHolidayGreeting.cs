@@ -71,6 +71,13 @@ internal static class JiboHolidayGreeting
         ("holi", "Holi")
     ];
 
+    internal static IReadOnlyDictionary<string, string> GreetingTranscripts { get; } =
+        HolidayNamePhrases.DistinctBy(p => p.Claim).ToDictionary(
+            p => "holiday_greeting/" + p.Claim.ToLowerInvariant().Replace(' ', '_'),
+            p => (p.Claim.StartsWith("Christmas", StringComparison.Ordinal) ? "merry " : "happy ") + p.Phrase)
+        .Concat(new[] { new KeyValuePair<string, string>("holiday_greeting/holidays", "happy holidays") })
+        .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+
     private static readonly Dictionary<string, string[]> HolidayAliases =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -91,6 +98,19 @@ internal static class JiboHolidayGreeting
         if (string.IsNullOrWhiteSpace(loweredTranscript)) return false;
 
         var normalized = NormalizeTranscript(loweredTranscript);
+
+        // Recover this observed ASR homophone only as a standalone greeting.
+        // Names and questions such as "who is Mary Christmas" keep their meaning.
+        if (System.Text.RegularExpressions.Regex.IsMatch(normalized,
+                @"^(?:hey jibo )?mary christmas(?: eve)?(?: jibo| to you| to you too)?$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+        {
+            holidayClaim = normalized.Contains("christmas eve", StringComparison.OrdinalIgnoreCase)
+                ? "Christmas Eve" : "Christmas";
+            return true;
+        }
+
 
         foreach (var (phrase, claim) in ExplicitGreetingPhrases)
         {

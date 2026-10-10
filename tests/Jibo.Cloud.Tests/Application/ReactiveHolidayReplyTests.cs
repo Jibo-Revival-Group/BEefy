@@ -28,6 +28,28 @@ public sealed class ReactiveHolidayReplyTests
     }
 
     [Theory]
+    [InlineData("mary christmas", "Christmas")]
+    [InlineData("Mary Christmas!", "Christmas")]
+    [InlineData("hey jibo mary christmas", "Christmas")]
+    [InlineData("mary christmas to you too", "Christmas")]
+    [InlineData("mary christmas eve", "Christmas Eve")]
+    public void ObservedMaryChristmasHomophoneRetainsHolidayClaim(string transcript, string claim)
+    {
+        Assert.True(JiboHolidayGreeting.TryExtractHolidayClaim(transcript, out var actual));
+        Assert.Equal(claim, actual);
+    }
+
+    [Theory]
+    [InlineData("who is mary christmas")]
+    [InlineData("my name is mary christmas")]
+    [InlineData("mary likes christmas")]
+    [InlineData("tell me about mary christmas")]
+    public void MaryChristmasNamesAndQuestionsAreNotHolidayGreetings(string transcript)
+    {
+        Assert.False(JiboHolidayGreeting.TryExtractHolidayClaim(transcript, out _));
+    }
+
+    [Theory]
     [InlineData("happy thanksgiving", "Thanksgiving")]
     [InlineData("merry christmas", "Christmas")]
     [InlineData("have a happy easter", "Easter")]

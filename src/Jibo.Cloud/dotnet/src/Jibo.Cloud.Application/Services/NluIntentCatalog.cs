@@ -5,6 +5,9 @@ namespace Jibo.Cloud.Application.Services;
 /// <summary>Only executable server intents; contextual skill replies stay local.</summary>
 public static class NluIntentCatalog
 {
+    public static IReadOnlyDictionary<string, string> HolidayGreetings { get; } =
+        JiboHolidayGreeting.GreetingTranscripts;
+
     public static IReadOnlyDictionary<string, string> Criteria { get; } =
         new ReadOnlyDictionary<string, string>(AddNativeCommands(new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -383,6 +386,12 @@ public static class NluIntentCatalog
     {
         foreach (var (key, command) in NativeCommandRegistry.Instance.ClassifierCommands)
             criteria[key] = $"Launch {command.Skill} with command {command.Intent}; do not invent command parameters.";
+        foreach (var key in NativeScriptedResponseCatalog.Commands.Keys)
+            criteria[key] = NativeScriptedResponseCatalog.Describe(key);
+        foreach (var (key, transcript) in HolidayGreetings)
+            criteria[key] = $"The user offers the holiday greeting '{transcript}' to Jibo; not a question about the holiday." +
+                (key == "holiday_greeting/christmas" ? " Standalone ASR 'mary christmas' also means Merry Christmas; it is not a person's name in this greeting." : string.Empty);
+        criteria["native/greetings/happyHoliday"] = "General happy-holiday greeting without a specific holiday; choose the specific holiday_greeting option when the holiday is identifiable.";
         return criteria;
     }
     public static bool IsSupported(string intent) => intent != "unknown" && Criteria.ContainsKey(intent);

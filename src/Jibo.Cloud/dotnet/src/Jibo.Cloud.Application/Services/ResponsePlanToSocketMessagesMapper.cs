@@ -954,8 +954,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
         var esml = ReadPayloadString(skillPayload, "esml") ?? (isDance
             ? "<speak>Okay.<break size='0.2'/> Watch this.<anim cat='dance' filter='music, rom-upbeat' /></speak>"
             : isJoke
-                ? $"<speak><es cat='happy' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeXmlText(speak.Text)}</es></speak>"
-                : $"<speak><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeXmlText(speak.Text)}</es></speak>");
+                ? $"<speak><es cat='happy' filter='!ssa-only, !sfx-only' endNeutral='true'>{LegacyMimPromptNormalizer.ToEsmlBody(speak.Text)}</es></speak>"
+                : $"<speak><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{LegacyMimPromptNormalizer.ToEsmlBody(speak.Text)}</es></speak>");
         var mimId = ReadPayloadString(skillPayload, "mim_id") ?? (isJoke ? "runtime-joke" : "runtime-chat");
         var mimType = ReadPayloadString(skillPayload, "mim_type") ?? "announcement";
         var promptId = ReadPayloadString(skillPayload, "prompt_id") ?? "RUNTIME_PROMPT";
@@ -1427,14 +1427,6 @@ public sealed class ResponsePlanToSocketMessagesMapper
             .Replace("<", "&lt;", StringComparison.Ordinal)
             .Replace(">", "&gt;", StringComparison.Ordinal)
             .Replace("\"", "&quot;", StringComparison.Ordinal);
-    }
-
-    private static string EscapeXmlText(string value)
-    {
-        return value
-            .Replace("&", "&amp;", StringComparison.Ordinal)
-            .Replace("<", "&lt;", StringComparison.Ordinal)
-            .Replace(">", "&gt;", StringComparison.Ordinal);
     }
 
     private static string? ReadPayloadString(IDictionary<string, object?>? payload, string key)

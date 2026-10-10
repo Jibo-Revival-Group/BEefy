@@ -19,18 +19,48 @@ model is `typesafe/jev-1.13`. Override the full endpoint URL and model to use
 another gateway implementing the same Decisions request/response format. This
 is not a chat-completions API. See the [OpenRouter Decisions reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request).
 
-Jev chooses one supported BEefy semantic intent or `unknown`. Each Choice
-question is limited to 255 options. The catalog is split into command/user,
-robot ability and robot personality groups (further chunked if a group grows).
-A group selector and conditional intent questions are evaluated in parallel in
-one HTTP request. Only the selected group's intent is eligible for dispatch. It receives the
-current transcript, intent descriptions, and classifier instructions. It does
-not receive credentials in the request body or supply arbitrary entity values.
-The default acceptance threshold is 0.85 on the product of the chosen group's
-probability and its selected intent's probability. This conservative routing
-score is not a calibrated joint probability and does not use the response's
-distribution-confidence field. Tune this threshold against
-labeled commands and negative examples before lowering it.
+Jev is a text-only typed decision model, not a speech recognizer or text generator.
+Its Choice primitive selects from supplied options; Noul returns a yes/no
+probability, and Score evaluates a rubric. TypeSafe's documented limits are
+255 options per Choice, 64k tokens per request, and 32k tokens for state plus the
+longest question. Questions in the same call are independent: a leaf question
+cannot read the group selector's answer. See the official
+[API reference](https://docs.typesafe.ai/api),
+[model limits](https://docs.typesafe.ai/models), and
+[speculative fan-out pattern](https://docs.typesafe.ai/patterns/fan-out).
+The OpenRouter endpoint uses the
+[Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request),
+which has the same typed question shape.
+
+The catalog includes existing semantic commands, holiday greetings (including
+Merry Christmas), and all 4,656 registered native chitchat responses. Native
+responses retain their manifest MIM and fixed entities. Responses requiring
+open-ended entity values still require local extraction; Jev cannot invent them.
+Known local parsing remains the fast path. Standalone `mary christmas` (including
+short greeting suffixes) preserves the Christmas claim locally; names or questions
+about Mary are not rewritten. Greetings and holidays have an explicit selector
+group so they are not described solely as requests to perform an action. Holiday greetings are also included
+in the contextual ASR correction candidates.
+
+The top-level selector has no unknown option and is advisory. All actual response
+groups are evaluated independently, each with its own unknown option. The highest
+valid non-unknown leaf probability wins if it meets `OPENJIBO_JEV_MIN_PROBABILITY`
+(default 0.85). Group selector probabilities are neither gates nor multipliers.
+For example, a Christmas leaf at 0.87 passes a 0.85 threshold even when the top
+selector prefers another group. If every group selects unknown, or the best
+non-unknown match is below the configured threshold, local fallback runs.
+
+The scripted response families are partitioned by semantic topic into leaf groups
+with at most 254 responses plus unknown. All leaf questions are packed into
+parallel requests using conservative UTF-8 byte bounds for the 32k/64k context
+budgets; the full catalog is never serialized into one request. Every response
+remains reachable without trusting a top-level branch selection. Evaluating all
+groups uses more provider requests and input tokens than selected-branch traversal.
+All batches share one deadline and have no retries. Reported leaf scores are not
+a calibrated global probability across groups and do not use the
+distribution-confidence field. Live accuracy and latency must be evaluated with
+labeled microphone transcripts; mocks verify coverage, dispatch, bounds, and
+fallback behavior, not recognition quality.
 
 Configured Jev runs only when the existing local parser, bounded ASR command
 recovery and native conversation path have not recognized the turn. A known
@@ -38,13 +68,13 @@ local intent or recognized native response (including conversation) skips Jev.
 The native parser returns no match only when local parsing is
 also unresolved. Triggers, system input, skill-owned listens, yes/no
 prompts, clock-value follow-ups and pending proactive offers keep local handling.
-Accepted fallback decisions dispatch without rerunning native grammar or ASR correction.
+Accepted fallback decisions dispatch directly; scripted responses needing open-ended entities must pass local extraction.
 Value-bearing commands must pass existing local extraction; otherwise the
 original unknown-response path runs. No-match, low probability, malformed responses,
 HTTP failures and timeouts also fall back. Caller cancellation propagates.
 
 A request gets at most `OPENJIBO_JEV_TIMEOUT_MS` milliseconds (1–1000; default
-1000), with one call and no retries. Missing or invalid configuration disables
+1000), across all parallel batches, with no retries. Missing or invalid configuration disables
 network calls. This deadline is separate from the 200 ms ASR allowance.
 The `nlu` turn-phase metric reports provider duration and outcomes. Debug logs
 record model, intent and selected probability without logging credentials or
@@ -145,3 +175,11 @@ dotnet test tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj \
   --filter 'FullyQualifiedName~JevNlu|FullyQualifiedName~SherpaAccuracy|FullyQualifiedName~SttReplayHarness|FullyQualifiedName~ModelEndpointingFinalization|FullyQualifiedName~AsrModelFallback|FullyQualifiedName~OggOpus'
 python3 -B -m unittest discover -s tests/python -p 'test_*.py'
 ```
+
+## Legacy speech markup
+
+Some imported greeting and holiday lines retain legacy pause tags. When constructing
+ESML from plain SpeakAction text, recognized numeric `break size` tags are emitted
+as markup; residual tags are removed before spoken text is XML-escaped. Explicit
+ESML payloads from native scripts and performances retain their existing handling.
+This prevents Jibo from pronouncing escaped TTS tags such as `break size`.

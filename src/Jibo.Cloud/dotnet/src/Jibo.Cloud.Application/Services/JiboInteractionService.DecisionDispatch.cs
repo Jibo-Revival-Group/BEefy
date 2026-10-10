@@ -134,6 +134,33 @@ public sealed partial class JiboInteractionService
             turn.Attributes["nlu:outcome"] = "missing_values";
         }
 
+        if (jevAccepted && NativeScriptedResponseCatalog.Commands.TryGetValue(semanticIntent, out var scripted))
+        {
+            var entities = new Dictionary<string, object?>(StringComparer.Ordinal);
+            var needsEntities = false;
+            if (scripted.Constraints.ValueKind == System.Text.Json.JsonValueKind.Array)
+                foreach (var constraint in scripted.Constraints.EnumerateArray())
+                {
+                    if (constraint.GetProperty("value").ToString() == "*" ||
+                        constraint.TryGetProperty("matchRule", out var matchRule) && matchRule.GetString() == "NOT")
+                        needsEntities = true;
+                    else entities[constraint.GetProperty("name").GetString()!] = constraint.GetProperty("value").ToString();
+                }
+            var parsed = needsEntities ? NativeGrammar.Instance.Parse(transcript) :
+                new NativeParseResult(scripted.Intent, scripted.Skill, "chitchat", ["launch"], null, entities);
+            if (parsed is not null && (!needsEntities || NativeCommandRegistry.Instance.Resolve(parsed)?.Memo.ToString() == scripted.Memo.ToString()))
+                return NativeScriptedReplies.Build(scripted, parsed, turn, catalog, randomizer,
+                    ResolvePreferredGreetingName(turn, greetingPresence), referenceLocalTime);
+            turn.Attributes["nlu:outcome"] = "missing_values";
+            semanticIntent = "chat";
+        }
+
+        if (jevAccepted && NluIntentCatalog.HolidayGreetings.TryGetValue(semanticIntent, out var holidayGreeting))
+        {
+            lowered = holidayGreeting;
+            semanticIntent = "seasonal_holiday_greeting";
+        }
+
         if (jevAccepted && BuildNativeClassifierDecision(semanticIntent) is { } classifiedNative)
             return classifiedNative;
 

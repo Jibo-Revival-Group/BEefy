@@ -20,6 +20,38 @@ public sealed class JevNluRoutingTests
         Assert.Equal(intent, (await Service(classifier.Object).BuildDecisionAsync(Turn(transcript))).IntentName);
     }
 
+    [Theory]
+    [InlineData("mary christmas")]
+    [InlineData("Mary Christmas!")]
+    [InlineData("mary christmas jibo")]
+    public async Task MaryChristmasGreetingRoutesLocallyWithoutWaitingForJev(string transcript)
+    {
+        var classifier = new Mock<INluClassifier>(MockBehavior.Strict);
+        var decision = await Service(classifier.Object).BuildDecisionAsync(Turn(transcript));
+        Assert.Equal("seasonal_holiday_greeting", decision.IntentName);
+        classifier.Verify(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task JevCanSelectChristmasGreetingWithoutExactTranscriptMatch()
+    {
+        var turn = Turn("flurble zorp");
+        var decision = await Service(Classifier("holiday_greeting/christmas").Object).BuildDecisionAsync(turn);
+        Assert.Equal("seasonal_holiday_greeting", decision.IntentName);
+        Assert.Equal("accepted", turn.Attributes["nlu:outcome"]);
+        Assert.NotEqual("not_understood", decision.IntentName);
+    }
+
+    [Fact]
+    public async Task JevCanSelectRegisteredScriptedResponseWithManifestEntities()
+    {
+        var intent = NativeScriptedResponseCatalog.Commands.First(p =>
+            p.Value.Memo.GetProperty("mim").GetString() == "RI_JBO_LikesCats").Key;
+        var decision = await Service(Classifier(intent).Object).BuildDecisionAsync(Turn("flurble zorp"));
+        Assert.Equal("RI_JBO_LikesCats", decision.SkillPayload!["mim_id"]);
+        Assert.Contains("<speak>", decision.SkillPayload["esml"]!.ToString());
+    }
+
     [Fact]
     public async Task UnknownWithoutNativeMatch_CallsJevOnce_AndRetainsLocalFallbackOnMiss()
     {

@@ -51,6 +51,35 @@ public static class LegacyMimPromptNormalizer
         @"<[^>]+>",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private static readonly Regex SpeechBreakPattern = new(
+        @"<break\s+size\s*=\s*['""](?<size>\d*\.?\d+)['""]\s*/?>",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Plain SpeakAction text may contain imported legacy tags. Preserve recognized
+    // pauses as ESML; remove residual markup before XML-escaping spoken words.
+    public static string ToEsmlBody(string? prompt)
+    {
+        var text = WebUtility.HtmlDecode(prompt ?? string.Empty);
+        var builder = new System.Text.StringBuilder();
+        var offset = 0;
+        foreach (Match pause in SpeechBreakPattern.Matches(text))
+        {
+            AppendWords(text[offset..pause.Index]);
+            builder.Append("<break size='").Append(pause.Groups["size"].Value).Append("'/>");
+            offset = pause.Index + pause.Length;
+        }
+        AppendWords(text[offset..]);
+        return builder.ToString().Trim();
+
+        void AppendWords(string words)
+        {
+            var clean = Normalize(words, preservePlaceholders: false).Text;
+            if (clean.Length > 0) builder.Append(clean.Replace("&", "&amp;", StringComparison.Ordinal)
+                .Replace("<", "&lt;", StringComparison.Ordinal)
+                .Replace(">", "&gt;", StringComparison.Ordinal)).Append(' ');
+        }
+    }
+
     public static Result Normalize(string? prompt, bool preservePlaceholders, bool preserveTtsMarkup = false)
     {
         if (string.IsNullOrWhiteSpace(prompt)) return new Result();

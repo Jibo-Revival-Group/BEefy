@@ -30,40 +30,19 @@ public sealed class JevNluClassifier(HttpClient http, JevNluOptions options,
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(options.TimeoutMs);
-            using var request = new HttpRequestMessage(HttpMethod.Post, options.Endpoint);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
-            request.Content = JsonContent.Create(new
-            {
-                model = options.Model,
-                state = new { transcript },
-                questions = JevIntentQuestions.Questions
-            });
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-            if (!response.IsSuccessStatusCode)
-            {
-                outcome = "http_error";
-                await LogRejectedRequestAsync(response, transcript, deadline.Token);
-                return null;
-            }
-            using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
-            using var json = await JsonDocument.ParseAsync(stream, cancellationToken: deadline.Token);
-            var root = json.RootElement;
-            if (!root.TryGetProperty("answers", out var answers) || answers.ValueKind != JsonValueKind.Object ||
-                !TryReadChoice(answers, JevIntentQuestions.GroupQuestion, JevIntentQuestions.GroupCriteria,
-                    out var group, out var groupProbability))
-            { outcome = "malformed"; return null; }
-            if (group == "unknown") { outcome = "unknown"; return null; }
-            if (groupProbability < options.MinProbability) { outcome = "low_probability"; return null; }
-            if (!JevIntentQuestions.Groups.TryGetValue(group, out var criteria) ||
-                !TryReadChoice(answers, group, criteria, out var intent, out var intentProbability))
-            { outcome = "malformed"; return null; }
-            if (!NluIntentCatalog.IsSupported(intent)) { outcome = "unknown"; return null; }
-            // Conservative routing score: confidence must survive both decisions.
-            // This product is an acceptance score, not a calibrated probability.
-            var selected = groupProbability * intentProbability;
-            if (selected < options.MinProbability) { outcome = "low_probability"; return null; }
-            var model = root.TryGetProperty("model", out var modelElement) && modelElement.ValueKind == JsonValueKind.String
-                ? modelElement.GetString()! : options.Model;
+            var batches = BuildQuestionBatches(transcript);
+            if (batches is null) { outcome = "input_too_large"; return null; }
+            var results = await Task.WhenAll(batches.Select(batch => EvaluateBatchAsync(transcript, batch, deadline.Token)));
+            var failure = results.FirstOrDefault(result => result.Error is not null);
+            if (failure?.Error is not null) { outcome = failure.Error; return null; }
+            var best = results.SelectMany(result => result.Candidates)
+                .OrderByDescending(candidate => candidate.Probability)
+                .ThenBy(candidate => candidate.Intent, StringComparer.Ordinal).FirstOrDefault();
+            if (best is null) { outcome = "unknown"; return null; }
+            if (best.Probability < options.MinProbability) { outcome = "low_probability"; return null; }
+            var intent = best.Intent;
+            var selected = best.Probability;
+            var model = best.Model;
             outcome = "classified";
             logger.LogDebug("Jev classified intent={Intent}, model={Model}, probability={Probability}", intent, model, selected);
             return new NluClassification(intent, selected, "jev", model);
@@ -86,6 +65,67 @@ public sealed class JevNluClassifier(HttpClient http, JevNluOptions options,
             (metrics ?? NullTransportMetrics.Instance).TurnPhaseCompleted("nlu", outcome, duration);
             logger.LogDebug("Jev NLU outcome={Outcome}, durationMs={Duration}", outcome, duration);
         }
+    }
+
+    private sealed record BatchResult(IReadOnlyList<NluClassification> Candidates, string? Error = null);
+
+    private async Task<BatchResult> EvaluateBatchAsync(string transcript,
+        IReadOnlyDictionary<string, JevIntentQuestions.ChoiceQuestion> questions, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, options.Endpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
+        request.Content = JsonContent.Create(new { model = options.Model, state = new { transcript }, questions });
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+        if (!response.IsSuccessStatusCode)
+        {
+            await LogRejectedRequestAsync(response, transcript, token);
+            return new([], "http_error");
+        }
+        using var stream = await response.Content.ReadAsStreamAsync(token);
+        using var json = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+        var root = json.RootElement;
+        if (!root.TryGetProperty("answers", out var answers) || answers.ValueKind != JsonValueKind.Object)
+            return new([], "malformed");
+        var model = root.TryGetProperty("model", out var modelElement) && modelElement.ValueKind == JsonValueKind.String
+            ? modelElement.GetString()! : options.Model;
+        var candidates = new List<NluClassification>();
+        foreach (var (name, question) in questions)
+        {
+            // The top-level selector is advisory. Its score never gates a leaf match.
+            if (name == JevIntentQuestions.GroupQuestion) continue;
+            if (TryReadChoice(answers, name, question.Criteria, out var intent, out var probability) &&
+                intent != "unknown" && NluIntentCatalog.IsSupported(intent))
+                candidates.Add(new(intent, probability, "jev", model));
+        }
+        return new(candidates);
+    }
+
+    internal static IReadOnlyList<IReadOnlyDictionary<string, JevIntentQuestions.ChoiceQuestion>>? BuildQuestionBatches(string transcript)
+    {
+        var batches = new List<IReadOnlyDictionary<string, JevIntentQuestions.ChoiceQuestion>>();
+        var batch = new Dictionary<string, JevIntentQuestions.ChoiceQuestion>(StringComparer.Ordinal);
+        foreach (var (name, question) in JevIntentQuestions.Questions)
+        {
+            batch.Add(name, question);
+            if (FitsContextBudgets(transcript, batch)) continue;
+            batch.Remove(name);
+            if (batch.Count > 0) batches.Add(batch);
+            batch = new(StringComparer.Ordinal) { [name] = question };
+            if (!FitsContextBudgets(transcript, batch)) return null;
+        }
+        if (batch.Count > 0) batches.Add(batch);
+        return batches;
+    }
+
+    internal static bool FitsContextBudgets(string transcript,
+        IReadOnlyDictionary<string, JevIntentQuestions.ChoiceQuestion> questions)
+    {
+        // UTF-8 byte counts conservatively upper-bound text tokens. This avoids
+        // depending on a tokenizer and stays within TypeSafe's 32k/64k limits.
+        var stateBytes = JsonSerializer.SerializeToUtf8Bytes(new { transcript }).Length;
+        var questionBytes = questions.Values.Select(question => JsonSerializer.SerializeToUtf8Bytes(question).Length).ToArray();
+        return questionBytes.All(bytes => stateBytes + bytes < 32_000) &&
+            stateBytes + questionBytes.Sum() < 64_000;
     }
 
     private static bool TryReadChoice(JsonElement answers, string question,

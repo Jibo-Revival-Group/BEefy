@@ -160,6 +160,7 @@ public static class AsrCommandCatalog
         .Concat(Twerk)
         .Concat(Weather)
         .Concat(Greeting)
+        .Concat(NluIntentCatalog.HolidayGreetings.Values)
         .Concat(new[] { "what day is it", "what is your name", "how old are you",
             "where are you from", "what can you do" })
         .Select(TranscriptTextNormalizer.NormalizeLooseText)
