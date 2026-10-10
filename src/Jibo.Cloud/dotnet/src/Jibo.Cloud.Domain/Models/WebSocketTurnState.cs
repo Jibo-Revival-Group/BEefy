@@ -25,6 +25,8 @@ public sealed class WebSocketTurnState
     /// </summary>
     public DateTimeOffset? OrphanAudioWithoutListenSinceUtc { get; set; }
     public string? AudioTranscriptHint { get; set; }
+    public string? JevCheckedSingleTWord { get; set; }
+    public bool JevSingleTWordIsTwerk { get; set; }
     public string? LastSttError { get; set; }
     public DateTimeOffset? LastSttErrorUtc { get; set; }
     public DateTimeOffset? FirstAudioReceivedUtc { get; set; }

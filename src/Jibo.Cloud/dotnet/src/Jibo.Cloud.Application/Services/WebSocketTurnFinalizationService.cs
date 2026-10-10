@@ -20,7 +20,8 @@ public sealed class WebSocketTurnFinalizationService(
     RobotIdentitySuggestionStore? identitySuggestionStore = null,
     ITransportMetrics? transportMetrics = null,
     ListenEndpointingOptions? listenEndpointingOptions = null,
-    IIncrementalSttSessionFactory? incrementalSttSessionFactory = null
+    IIncrementalSttSessionFactory? incrementalSttSessionFactory = null,
+    INluClassifier? nluClassifier = null
 )
 {
     private readonly ITransportMetrics _metrics = transportMetrics ?? NullTransportMetrics.Instance;
@@ -1126,6 +1127,8 @@ public sealed class WebSocketTurnFinalizationService(
         session.TurnState.BufferedAudioBytes = 0;
         session.TurnState.BufferedAudioChunkCount = 0;
         session.TurnState.AudioTranscriptHint = null;
+        session.TurnState.JevCheckedSingleTWord = null;
+        session.TurnState.JevSingleTWordIsTwerk = false;
         session.TurnState.LastSttError = null;
         session.TurnState.LastSttErrorUtc = null;
         session.TurnState.FirstAudioReceivedUtc = null;
@@ -1158,6 +1161,8 @@ public sealed class WebSocketTurnFinalizationService(
         turnState.TransId = transId;
         turnState.ContextPayload = null;
         turnState.AudioTranscriptHint = null;
+        turnState.JevCheckedSingleTWord = null;
+        turnState.JevSingleTWordIsTwerk = false;
         turnState.ListenOpenedUtc = null;
         turnState.LastSttError = null;
         turnState.LastSttErrorUtc = null;
@@ -1310,6 +1315,30 @@ public sealed class WebSocketTurnFinalizationService(
                     }), cancellationToken);
             }
 
+            var singleWordTranscript = NormalizeUsableTranscript(
+                finalizedTurn.NormalizedTranscript ?? finalizedTurn.RawTranscript);
+            var checkSingleTWord = nluClassifier is not null && IsHotphraseLaunchTurn(finalizedTurn) &&
+                singleWordTranscript.StartsWith('t') &&
+                !singleWordTranscript.Contains(' ') &&
+                finalizedTurn.InputMode is not (TurnInputMode.DirectText or TurnInputMode.System);
+            if (checkSingleTWord)
+            {
+                if (!string.Equals(turnState.JevCheckedSingleTWord, singleWordTranscript, StringComparison.Ordinal))
+                {
+                    var classification = await nluClassifier!.ClassifyAsync(singleWordTranscript, cancellationToken);
+                    turnState.JevCheckedSingleTWord = singleWordTranscript;
+                    turnState.JevSingleTWordIsTwerk = classification is { Intent: "twerk" } &&
+                        double.IsFinite(classification.Probability) && classification.Probability is >= 0 and <= 1;
+                }
+
+                finalizedTurn.Attributes["nlu:singleWordTwerk"] = turnState.JevSingleTWordIsTwerk;
+                if (turnState.JevSingleTWordIsTwerk)
+                {
+                    finalizedTurn.Attributes["stt:originalTranscript"] = finalizedTurn.RawTranscript;
+                    finalizedTurn = WithSanitizedTranscript(finalizedTurn, "twerk");
+                }
+            }
+
             if (ShouldCloseHotphraseNonCommandAsNoInput(finalizedTurn, turnState, messageType,
                     allowFallbackOnMissingTranscript, out var hotphraseNonCommandReason))
             {
@@ -1342,6 +1371,10 @@ public sealed class WebSocketTurnFinalizationService(
             }
 
             var hasUsableTranscript = TryGetUsableTranscript(finalizedTurn, out var usableTranscript);
+            // A negative Jev check must not fall through to a different model's twerk repair.
+            if (checkSingleTWord && !turnState.JevSingleTWordIsTwerk &&
+                IsLowSignalSingleTokenTranscript(usableTranscript))
+                hasUsableTranscript = false;
             if (!hasUsableTranscript &&
                 IsLowSignalSingleTokenTranscript(usableTranscript) &&
                 !string.IsNullOrWhiteSpace(usableTranscript) &&

@@ -935,14 +935,92 @@ public sealed class JiboWebSocketServiceTests
         Assert.False(session.TurnState.AwaitingTurnCompletion);
     }
 
+    [Theory]
+    [InlineData("Turtle")]
+    [InlineData("twice")]
+    [InlineData("t")]
+    [InlineData("time")]
+    public async Task BufferedHotphraseOggAudio_SingleTWordUsesJevToRecoverTwerk(string heard)
+    {
+        var store = new InMemoryCloudStateStore();
+        var classifier = new Mock<INluClassifier>();
+        classifier.Setup(c => c.ClassifyAsync(heard.ToLowerInvariant(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NluClassification("twerk", 0.95, "jev", "test"));
+        var service = CreateService(store, sttStrategies: [new QueuedBufferedAudioSttStrategy(heard)],
+            nluClassifier: classifier.Object);
+        WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = "hub-single-t-word", Text = text, Binary = binary
+        };
+        var setup = Envelope(
+            """{"type":"LISTEN","transID":"single-t-word","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}""");
+        await service.HandleMessageAsync(setup);
+        foreach (var frame in new[]
+                 {
+                     BuildOggFrame(0x02, "OpusHead"), BuildOggFrame(0x00, "OpusTags"),
+                     BuildOggFrame(0x00), BuildOggFrame(0x00), BuildOggFrame(0x00)
+                 })
+            await service.HandleMessageAsync(Envelope(binary: frame));
+        var session = store.FindSessionByToken(setup.Token!)!;
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-4);
+        session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+        var replies = await service.HandleIdleAsync(session, setup);
+        Assert.Equal("twerk", session.LastIntent);
+        Assert.Contains(replies, reply => ReadReplyType(reply) == "SKILL_ACTION");
+        classifier.Verify(c => c.ClassifyAsync(heard.ToLowerInvariant(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("time")]
+    [InlineData("dance")]
+    public async Task BufferedHotphraseOggAudio_JevTwerkMissIsCachedAndTimesOut(string? intent)
+    {
+        var store = new InMemoryCloudStateStore();
+        var classifier = new Mock<INluClassifier>();
+        classifier.Setup(c => c.ClassifyAsync("twke", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(intent is null ? null : new NluClassification(intent, 0.95, "jev", "test"));
+        var correction = new Mock<IAsrCorrectionModel>(MockBehavior.Strict);
+        var service = CreateService(store,
+            sttStrategies: [new QueuedBufferedAudioSttStrategy("twke", "twke", "twke")],
+            nluClassifier: classifier.Object, asrCorrectionModel: correction.Object);
+        WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = "hub-single-t-word-miss", Text = text, Binary = binary
+        };
+        var setup = Envelope(
+            """{"type":"LISTEN","transID":"single-t-word-miss","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"],"asr":{"encoding":"OGG_OPUS","maxSpeechTimeout":20000}}}""");
+        await service.HandleMessageAsync(setup);
+        foreach (var frame in new[]
+                 {
+                     BuildOggFrame(0x02, "OpusHead"), BuildOggFrame(0x00, "OpusTags"),
+                     BuildOggFrame(0x00), BuildOggFrame(0x00), BuildOggFrame(0x00)
+                 })
+            Assert.Empty(await service.HandleMessageAsync(Envelope(binary: frame)));
+        var session = store.FindSessionByToken(setup.Token!)!;
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-4);
+        session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+        Assert.Empty(await service.HandleIdleAsync(session, setup));
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-5);
+        var replies = await service.HandleIdleAsync(session, setup);
+        Assert.Equal(new[] { "LISTEN", "EOS" }, replies.Select(ReadReplyType));
+        Assert.Equal("no-input", session.LastListenType);
+        classifier.Verify(c => c.ClassifyAsync("twke", It.IsAny<CancellationToken>()), Times.Once);
+        correction.Verify(c => c.TryCorrectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Null(session.TurnState.JevCheckedSingleTWord);
+    }
+
     [Fact]
     public async Task BufferedHotphraseOggAudio_RejectedSingleWordTimesOutAfterFiveSeconds()
     {
         var store = new InMemoryCloudStateStore();
+        var classifier = new Mock<INluClassifier>(MockBehavior.Strict);
         var service = CreateService(store, sttStrategies:
         [
             new QueuedBufferedAudioSttStrategy("volume", "volume", "volume")
-        ]);
+        ], nluClassifier: classifier.Object);
         WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
         {
             HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
@@ -10657,7 +10735,8 @@ public sealed class JiboWebSocketServiceTests
         INewsBriefingProvider? newsBriefingProvider = null,
         IReadOnlyList<ISttStrategy>? sttStrategies = null,
         IJiboRandomizer? randomizer = null,
-        IAsrCorrectionModel? asrCorrectionModel = null)
+        IAsrCorrectionModel? asrCorrectionModel = null,
+        INluClassifier? nluClassifier = null)
     {
         var contentRepository = new InMemoryJiboExperienceContentRepository();
         var contentCache = new JiboExperienceContentCache(contentRepository);
@@ -10676,7 +10755,8 @@ public sealed class JiboWebSocketServiceTests
         return new JiboWebSocketService(
             stateStore,
             new NullWebSocketTelemetrySink(),
-            new WebSocketTurnFinalizationService(conversationBroker, sttSelector, sink));
+            new WebSocketTurnFinalizationService(conversationBroker, sttSelector, sink,
+                NullLogger<WebSocketTurnFinalizationService>.Instance, nluClassifier: nluClassifier));
     }
 
     [Fact]
