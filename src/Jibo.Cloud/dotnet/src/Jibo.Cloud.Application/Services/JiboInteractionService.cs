@@ -25,12 +25,12 @@ public sealed partial class JiboInteractionService(
     HomeAssistantCommandService? homeAssistantCommandService = null,
     HomeAssistantPendingClimateStore? homeAssistantPendingClimateStore = null,
     RepeatLastCommandStore? repeatLastCommandStore = null,
-    IPhoenixConversationClient? phoenixConversation = null,
     ILogger<JiboInteractionService>? logger = null,
     IAsrCorrectionModel? asrCorrectionModel = null,
     AsrCorrectionOptions? asrCorrectionOptions = null,
     ITransportMetrics? transportMetrics = null,
-    INluClassifier? nluClassifier = null)
+    INluClassifier? nluClassifier = null,
+    IConversationHistory? conversationHistory = null)
 {
     private readonly AsrCorrectionOptions _asrCorrectionOptions = asrCorrectionOptions ?? new();
     private readonly ITransportMetrics _asrCorrectionMetrics = transportMetrics ?? NullTransportMetrics.Instance;
@@ -113,44 +113,6 @@ public sealed partial class JiboInteractionService(
             "<speak><anim cat='jiboji' filter='pizza-making' nonBlocking='true'/>My <pitch mult='1.2'>specialty </pitch>.</speak>")
     ];
 
-    private static readonly string[] PreferenceSetMarkers =
-    [
-        "my favorite ",
-        "my favourite ",
-        "my fave "
-    ];
-
-    private static readonly string[] PreferenceReverseMarkers =
-    [
-        " is my favorite ",
-        " is my favourite ",
-        " is my fave ",
-        " are my favorite ",
-        " are my favourite ",
-        " are my fave "
-    ];
-
-    // Imported from Pegasus birthday/birth-date parser phrasing so user memory
-    // stays ahead of generic date questions and robot-birthday personality routes.
-    private static readonly string[] BirthdaySetMarkers =
-    [
-        "my birthday is ",
-        "my birthday s ",
-        "my birthday's ",
-        "my bday is ",
-        "my bday s ",
-        "my bday's ",
-        "my birth date is ",
-        "my birth date s ",
-        "my birthdate is ",
-        "my birthdate s ",
-        "my birthdate's ",
-        "my birthday falls on ",
-        "my bday falls on ",
-        "my birth date falls on ",
-        "my birthdate falls on "
-    ];
-
     private static readonly string[] WeatherDateEntityKeys =
     [
         "date",
@@ -225,84 +187,6 @@ public sealed partial class JiboInteractionService(
         "i dont",
         "i don t"
     };
-
-    // Directly imported from Pegasus parser intent phrase families:
-    // userLikesThing / userDislikesThing / doesUserLikeThing / doesUserDislikeThing.
-    private static readonly (string Prefix, PersonalAffinity Affinity)[] PegasusUserAffinitySetPrefixes =
-    [
-        ("i love ", PersonalAffinity.Love),
-        ("i like ", PersonalAffinity.Like),
-        ("i like the ", PersonalAffinity.Like),
-        ("i enjoy ", PersonalAffinity.Like),
-        ("i do like ", PersonalAffinity.Like),
-        ("we love ", PersonalAffinity.Love),
-        ("we like ", PersonalAffinity.Like),
-        ("we enjoy ", PersonalAffinity.Like),
-        ("i dislike ", PersonalAffinity.Dislike),
-        ("i hate ", PersonalAffinity.Dislike),
-        ("i hate the ", PersonalAffinity.Dislike),
-        ("i loathe ", PersonalAffinity.Dislike),
-        ("i don t like ", PersonalAffinity.Dislike),
-        ("i dont like ", PersonalAffinity.Dislike),
-        ("i not like ", PersonalAffinity.Dislike),
-        ("i do not like ", PersonalAffinity.Dislike),
-        ("i did not like ", PersonalAffinity.Dislike),
-        ("i did not like the ", PersonalAffinity.Dislike),
-        ("i didn t like ", PersonalAffinity.Dislike),
-        ("i didnt like ", PersonalAffinity.Dislike),
-        ("i didn t like the ", PersonalAffinity.Dislike),
-        ("i didnt like the ", PersonalAffinity.Dislike),
-        ("i didn t really like ", PersonalAffinity.Dislike),
-        ("i didnt really like ", PersonalAffinity.Dislike),
-        ("i don t really like ", PersonalAffinity.Dislike),
-        ("i dont really like ", PersonalAffinity.Dislike),
-        ("i don t enjoy ", PersonalAffinity.Dislike),
-        ("i dont enjoy ", PersonalAffinity.Dislike),
-        ("i do not enjoy ", PersonalAffinity.Dislike),
-        ("i did not enjoy ", PersonalAffinity.Dislike),
-        ("i didn t enjoy ", PersonalAffinity.Dislike),
-        ("i didnt enjoy ", PersonalAffinity.Dislike),
-        ("i didn t really enjoy ", PersonalAffinity.Dislike),
-        ("i didnt really enjoy ", PersonalAffinity.Dislike),
-        ("i don t love ", PersonalAffinity.Dislike),
-        ("i dont love ", PersonalAffinity.Dislike),
-        ("i do not love ", PersonalAffinity.Dislike),
-        ("i don t love to ", PersonalAffinity.Dislike),
-        ("i dont love to ", PersonalAffinity.Dislike),
-        ("i do not love to ", PersonalAffinity.Dislike),
-        ("i can t stand ", PersonalAffinity.Dislike),
-        ("i cant stand ", PersonalAffinity.Dislike),
-        ("i can t stand the ", PersonalAffinity.Dislike),
-        ("i cant stand the ", PersonalAffinity.Dislike),
-        ("we dislike ", PersonalAffinity.Dislike),
-        ("we hate ", PersonalAffinity.Dislike),
-        ("we despise ", PersonalAffinity.Dislike),
-        ("we detest ", PersonalAffinity.Dislike),
-        ("we loathe ", PersonalAffinity.Dislike),
-        ("we can t stand ", PersonalAffinity.Dislike),
-        ("we cant stand ", PersonalAffinity.Dislike),
-        ("i despise ", PersonalAffinity.Dislike),
-        ("i detest ", PersonalAffinity.Dislike)
-    ];
-
-    private static readonly (string Prefix, PersonalAffinity? ExpectedAffinity)[] PegasusUserAffinityLookupPrefixes =
-    [
-        ("do i love ", PersonalAffinity.Love),
-        ("do i like ", PersonalAffinity.Like),
-        ("do i enjoy ", PersonalAffinity.Like),
-        ("do i dislike ", PersonalAffinity.Dislike),
-        ("do i hate ", PersonalAffinity.Dislike),
-        ("do i loathe ", PersonalAffinity.Dislike),
-        ("do i not like ", PersonalAffinity.Dislike),
-        ("do i despise ", PersonalAffinity.Dislike),
-        ("do i detest ", PersonalAffinity.Dislike),
-        ("do you think i like ", PersonalAffinity.Like),
-        ("do you believe i like ", PersonalAffinity.Like),
-        ("do you think i don t like ", PersonalAffinity.Dislike),
-        ("do you believe i don t like ", PersonalAffinity.Dislike),
-        ("how do i feel about ", null),
-        ("what do i think about ", null)
-    ];
 
     private static readonly HashSet<string> GenericWeatherLocationTerms = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -465,7 +349,34 @@ public sealed partial class JiboInteractionService(
         CancellationToken cancellationToken = default)
     {
         var decision = await BuildDecisionCoreAsync(turn, cancellationToken);
+        if (SkillListenOwnership.ReadListenHotphrase(turn) &&
+            NativeConversationValue.Read(decision.ContextUpdates, "chitchatNativeState") is not "color")
+        {
+            var updates = new Dictionary<string, object?>(decision.ContextUpdates ?? new Dictionary<string, object?>())
+            { ["chitchatNativeState"] = null };
+            decision = decision with { ContextUpdates = updates };
+        }
         RecordRepeatableCommand(turn, decision);
+        if (conversationHistory is not null && decision.IntentName is not ("skill_listen" or "prompt_echo" or "trigger_ignored"))
+        {
+            try
+            {
+                conversationHistory.Record(new ConversationHistoryRecord(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow,
+                    turn.DeviceId ?? "", turn.SessionId ?? "", decision.SkillName ?? "chitchat-skill", decision.IntentName,
+                    turn.NormalizedTranscript ?? turn.RawTranscript, decision.ReplyText,
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        intent = (NativeConversationValue.Read(turn.Attributes, NativeParseAttribute) as NativeParseResult)?.Intent
+                            ?? NativeConversationValue.Read(decision.SkillPayload, "localIntent")?.ToString() ?? decision.IntentName,
+                        entities = (NativeConversationValue.Read(turn.Attributes, NativeParseAttribute) as NativeParseResult)?.Entities
+                            ?? ReadEntities(turn).ToDictionary(p => p.Key, p => (object?)p.Value)
+                    })));
+            }
+            catch (Exception exception)
+            {
+                logger?.LogWarning(exception, "Conversation history could not be recorded for {RobotId}", turn.DeviceId);
+            }
+        }
         return decision;
     }
 }

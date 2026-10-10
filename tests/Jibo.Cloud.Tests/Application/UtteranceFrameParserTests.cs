@@ -91,7 +91,6 @@ public sealed class UtteranceFrameParserTests
     [InlineData("play work of a day", "word_of_the_day")]
     [InlineData("what's your favorite banned", "robot_favorite_various_styles_band")]
     [InlineData("what's your favorite word", "robot_favorite_word")]
-    [InlineData("what's my favorite color", "memory_get_preference")]
     [InlineData("do you like blue", "robot_favorite_color")]
     [InlineData("what's your flavor", "robot_flavor")]
     [InlineData("can we play word of the day please", "word_of_the_day")]

@@ -6,7 +6,7 @@ namespace Jibo.Cloud.Application.Services;
 public static class NluIntentCatalog
 {
     public static IReadOnlyDictionary<string, string> Criteria { get; } =
-        new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.Ordinal)
+        new ReadOnlyDictionary<string, string>(AddNativeCommands(new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["alarm_cancel"] = "alarm cancel.",
             ["alarm_clarify"] = "alarm clarify.",
@@ -47,16 +47,8 @@ public static class NluIntentCatalog
             ["joke"] = "Ask Jibo to tell a joke.",
             ["math_query"] = "math query.",
             ["measurement_conversion"] = "measurement conversion.",
-            ["memory_get_affinity"] = "memory get affinity.",
-            ["memory_get_birthday"] = "memory get birthday.",
-            ["memory_get_important_date"] = "memory get important date.",
-            ["memory_get_name"] = "memory get name.",
-            ["memory_get_preference"] = "memory get preference.",
-            ["memory_set_affinity"] = "memory set affinity.",
-            ["memory_set_birthday"] = "memory set birthday.",
-            ["memory_set_important_date"] = "memory set important date.",
-            ["memory_set_name"] = "The user tells Jibo their own name to remember.",
-            ["memory_set_preference"] = "memory set preference.",
+            ["memory_get_name"] = "Identify the user from the robot household roster.",
+            ["memory_set_name"] = "The user introduces their name; household names are managed in robot People settings.",
             ["news"] = "news.",
             ["order_pizza"] = "order pizza.",
             ["personal_report"] = "personal report.",
@@ -386,6 +378,12 @@ public static class NluIntentCatalog
             ["welcome_back"] = "welcome back.",
             ["whats_up"] = "whats up.",
             ["word_of_the_day"] = "word of the day.",
-        });
+        }));
+    private static Dictionary<string, string> AddNativeCommands(Dictionary<string, string> criteria)
+    {
+        foreach (var (key, command) in NativeCommandRegistry.Instance.ClassifierCommands)
+            criteria[key] = $"Launch {command.Skill} with command {command.Intent}; do not invent command parameters.";
+        return criteria;
+    }
     public static bool IsSupported(string intent) => intent != "unknown" && Criteria.ContainsKey(intent);
 }

@@ -42,33 +42,6 @@ public sealed class AsrModelFallbackTests
         Assert.Equal("make a peter sir", turn.RawTranscript);
     }
 
-    [Theory]
-    [InlineData(0.749, false)]
-    [InlineData(0.75, true)]
-    public async Task ConfidentRecovery_PrecedesPhoenixConversation(double confidence, bool recovered)
-    {
-        var phoenix = new Mock<IPhoenixConversationClient>();
-        var fallback = new JiboInteractionDecision("chat", "I don't understand.");
-        phoenix.Setup(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(fallback);
-        var service = Service(Model("make a pizza", confidence).Object, phoenix: phoenix.Object);
-        var decision = await service.BuildDecisionAsync(Turn("make a peter sir"));
-        Assert.Equal(recovered ? "pizza" : "chat", decision.IntentName);
-        phoenix.Verify(p => p.TryDecideAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            recovered ? Times.Never() : Times.Once());
-        if (!recovered) Assert.Same(fallback, decision);
-    }
-
-    [Fact]
-    public async Task RecognizedCommand_PreservesPhoenixPathAndSkipsInference()
-    {
-        var model = Model("make a pizza");
-        var phoenix = new Mock<IPhoenixConversationClient>();
-        var response = new JiboInteractionDecision("requestMakePizza", "One pizza, coming right up.");
-        phoenix.Setup(p => p.TryDecideAsync("make a pizza", It.IsAny<CancellationToken>())).ReturnsAsync(response);
-        Assert.Same(response, await Service(model.Object, phoenix: phoenix.Object).BuildDecisionAsync(Turn("make a pizza")));
-        model.Verify(m => m.TryCorrectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never());
-    }
-
     [Fact]
     public async Task UnrecognizedCommand_CorrectsOnce_AndPreservesOriginalTranscript()
     {
@@ -246,10 +219,10 @@ public sealed class AsrModelFallbackTests
     };
 
     private static JiboInteractionService Service(IAsrCorrectionModel? model = null,
-        AsrCorrectionOptions? options = null, RepeatLastCommandStore? store = null, ITransportMetrics? metrics = null, IPhoenixConversationClient? phoenix = null) => new(
+        AsrCorrectionOptions? options = null, RepeatLastCommandStore? store = null, ITransportMetrics? metrics = null) => new(
         new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
         new FirstRandomizer(), new InMemoryPersonalMemoryStore(), repeatLastCommandStore: store,
-        asrCorrectionModel: model, asrCorrectionOptions: options, transportMetrics: metrics, phoenixConversation: phoenix);
+        asrCorrectionModel: model, asrCorrectionOptions: options, transportMetrics: metrics);
 
     private sealed class FirstRandomizer : IJiboRandomizer
     {

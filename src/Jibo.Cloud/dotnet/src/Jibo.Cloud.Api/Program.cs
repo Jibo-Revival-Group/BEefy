@@ -68,15 +68,24 @@ builder.Host.UseSerilog((context, _, loggerConfiguration) =>
             "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
 });
 
-builder.Services.AddSingleton<IPhoenixConversationClient, PhoenixConversationClient>();
 builder.Services.AddOpenJiboCloud(builder.Configuration);
+builder.Services.AddSingleton<IConversationHistory>(provider =>
+{
+    var configuration = provider.GetRequiredService<IConfiguration>();
+    var path = configuration["OpenJibo:History:PersistencePath"]
+        ?? Path.ChangeExtension(configuration["OpenJibo:State:PersistencePath"] ?? "App_Data/cloud-state.json", ".history.sqlite");
+    var legacy = configuration["OpenJibo:History:LegacySnapshotPath"]
+        ?? Environment.GetEnvironmentVariable("ETCO_history_dataFile")
+        ?? "conversation/packages/history/data/store.json";
+    return new Jibo.Cloud.Infrastructure.Persistence.SqliteConversationHistory(path,
+        configuration.GetValue<bool?>("OpenJibo:History:RecordSpeech")
+            ?? string.Equals(Environment.GetEnvironmentVariable("ETCO_hub_recordSpeechHistory"), "true", StringComparison.OrdinalIgnoreCase), legacy);
+});
 builder.Services.AddSingleton<AdminConfigOverlayStore>();
 builder.Services.AddSingleton<HomeAssistantWebSocketHandler>();
 builder.Services.AddSingleton<SingleRobotHttpHubAccessGuard>();
 builder.Services.AddSingleton<WebSocketTransportPolicy>();
 builder.Services.AddSingleton<WebSocketRequestCoordinator>();
-builder.Services.AddHostedService<PhoenixConversationHost>();
-builder.Services.AddHttpClient("PhoenixConversation", client => client.Timeout = TimeSpan.FromSeconds(4));
 builder.Services.AddHttpClient(JoapUpdateProxy.ClientName, client =>
 {
     client.BaseAddress = new Uri(JoapUpdateProxy.BaseUrl);

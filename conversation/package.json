@@ -1,9 +1,0 @@
-{
-  "name": "beefy-conversation",
-  "private": true,
-  "type": "module",
-  "description": "Vendored Phoenix Hey Jibo parser and skills. Localhost only.",
-  "workspaces": [
-    "packages/*"
-  ]
-}

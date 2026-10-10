@@ -81,9 +81,6 @@ public sealed partial class JiboInteractionService
              string.Equals(loweredTranscript, clientIntent, StringComparison.OrdinalIgnoreCase)))
             return clientIntent!.ToLowerInvariant();
 
-        if (IsPreferenceRecallQuestion(loweredTranscript) || IsPreferenceRecallAttempt(loweredTranscript))
-            return "memory_get_preference";
-
         if (IsNameSetStatement(loweredTranscript)) return "memory_set_name";
 
         if (IsNameRecallQuestion(loweredTranscript)) return "memory_get_name";
@@ -129,12 +126,6 @@ public sealed partial class JiboInteractionService
 
         if (RollDiceCommandParser.TryParse(loweredTranscript, out _))
             return "roll_dice";
-
-        if (IsUserBirthdaySetStatement(loweredTranscript) || IsUserBirthdaySetAttempt(loweredTranscript))
-            return "memory_set_birthday";
-
-        if (IsUserBirthdayRecallQuestion(loweredTranscript) || IsUserBirthdayRecallAttempt(loweredTranscript))
-            return "memory_get_birthday";
 
         if (IsRobotBirthdayQuestion(loweredTranscript)) return "robot_birthday";
 
@@ -403,19 +394,6 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(loweredTranscript, "do you like football", "do you like football teams"))
             return "robot_favorite_football_team";
-
-        if (IsPreferenceSetStatement(loweredTranscript) || IsPreferenceSetAttempt(loweredTranscript))
-            return "memory_set_preference";
-
-        if (IsImportantDateSetStatement(loweredTranscript)) return "memory_set_important_date";
-
-        if (IsImportantDateRecallQuestion(loweredTranscript)) return "memory_get_important_date";
-
-        if (IsAffinitySetStatement(loweredTranscript) || IsAffinitySetAttempt(loweredTranscript))
-            return "memory_set_affinity";
-
-        if (IsAffinityRecallQuestion(loweredTranscript) || IsAffinityRecallAttempt(loweredTranscript))
-            return "memory_get_affinity";
 
         if (TryResolveRadioGenre(loweredTranscript) is not null) return "radio_genre";
 
@@ -2136,35 +2114,6 @@ public sealed partial class JiboInteractionService
         if (MatchesAny(loweredTranscript, "personal report", "my report", "daily report", "my update"))
             return "personal_report";
 
-        if (MatchesAny(
-                loweredTranscript,
-                "shopping list",
-                "grocery list",
-                "my grocery list",
-                "create grocery list",
-                "start grocery list",
-                "to do list",
-                "todo list",
-                "add to my shopping list",
-                "add to my grocery list",
-                "add to my to do list",
-                "add to my todo list",
-                "what's on my shopping list",
-                "what is on my shopping list",
-                "what's on my grocery list",
-                "what is on my grocery list",
-                "what's on my to do list",
-                "what is on my to do list",
-                "what are my tasks",
-                "what do i need to buy",
-                "what do i need to do") ||
-            IsInlineHouseholdListRequest(loweredTranscript))
-            return loweredTranscript.Contains("to do", StringComparison.OrdinalIgnoreCase) ||
-                   loweredTranscript.Contains("todo", StringComparison.OrdinalIgnoreCase) ||
-                   loweredTranscript.Contains("task", StringComparison.OrdinalIgnoreCase)
-                ? "todo_list"
-                : "shopping_list";
-
         if (IsWeatherRequest(loweredTranscript)) return "weather";
 
         if (MatchesAny(loweredTranscript, "calendar", "schedule", "what's on my calendar", "what is on my calendar"))
@@ -2961,26 +2910,6 @@ public sealed partial class JiboInteractionService
     {
         semanticIntent = UtteranceFrameParser.TryParsePastPreference(loweredTranscript);
         return semanticIntent is not null;
-    }
-
-    private static bool IsInlineHouseholdListRequest(string loweredTranscript)
-    {
-        var mentionsList = loweredTranscript.Contains("shopping list", StringComparison.OrdinalIgnoreCase) ||
-                           loweredTranscript.Contains("grocery list", StringComparison.OrdinalIgnoreCase) ||
-                           loweredTranscript.Contains("to do list", StringComparison.OrdinalIgnoreCase) ||
-                           loweredTranscript.Contains("todo list", StringComparison.OrdinalIgnoreCase);
-
-        if (!mentionsList) return false;
-
-        return loweredTranscript.StartsWith("add ", StringComparison.OrdinalIgnoreCase) ||
-               loweredTranscript.StartsWith("put ", StringComparison.OrdinalIgnoreCase) ||
-               loweredTranscript.StartsWith("buy ", StringComparison.OrdinalIgnoreCase) ||
-               loweredTranscript.StartsWith("get ", StringComparison.OrdinalIgnoreCase) ||
-               loweredTranscript.StartsWith("please add ", StringComparison.OrdinalIgnoreCase) ||
-               loweredTranscript.StartsWith("please put ", StringComparison.OrdinalIgnoreCase) ||
-               loweredTranscript.StartsWith("i need ", StringComparison.OrdinalIgnoreCase) ||
-               loweredTranscript.StartsWith("i need to ", StringComparison.OrdinalIgnoreCase) ||
-               loweredTranscript.StartsWith("remind me to ", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsFriendQuestion(string loweredTranscript)

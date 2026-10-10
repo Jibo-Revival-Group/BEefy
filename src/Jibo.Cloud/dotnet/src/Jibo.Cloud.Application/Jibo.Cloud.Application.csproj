@@ -11,6 +11,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<EmbeddedResource Include="Data/native-conversation.json.gz" LogicalName="Jibo.Cloud.Application.native-conversation.json.gz" />
 		<EmbeddedResource Include="Data/eq_words.txt" LogicalName="Jibo.Cloud.Application.eq_words.txt" />
 	</ItemGroup>
 

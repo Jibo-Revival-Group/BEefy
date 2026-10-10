@@ -307,7 +307,8 @@ public sealed partial class JiboInteractionService
     private List<string> ResolvePreferredNewsCategories(TurnContext turn, string transcript)
     {
         var categories = new List<string>();
-        var normalizedTranscript = NormalizeCommandPhrase(transcript);
+        var entities = ReadEntities(turn);
+        var normalizedTranscript = NormalizeCommandPhrase(transcript + " " + entities.GetValueOrDefault("topic") + " " + entities.GetValueOrDefault("category"));
 
         foreach (var (keyword, category) in NewsCategoryKeywordMap)
             if (normalizedTranscript.Contains(keyword, StringComparison.Ordinal))

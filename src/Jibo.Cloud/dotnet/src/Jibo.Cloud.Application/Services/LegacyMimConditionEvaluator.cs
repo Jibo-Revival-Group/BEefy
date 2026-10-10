@@ -32,7 +32,8 @@ internal static class LegacyMimConditionEvaluator
 
     private static bool MatchesAtomic(string atom, Context context)
     {
-        if (string.IsNullOrWhiteSpace(atom)) return true;
+        if (string.IsNullOrWhiteSpace(atom) || atom == "true") return true;
+        if (atom == "false") return false;
 
         if (atom.StartsWith('(') && atom.EndsWith(')'))
             return Matches(atom[1..^1].Trim(), context);

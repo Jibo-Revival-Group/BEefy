@@ -139,9 +139,9 @@ The worker script is copied into .NET build and publish outputs.
 
 At startup, the server loads and warms a single CPU-thread worker in the background.
 Only an unresolved speech command invokes it. Confident recovery runs before the
-Phoenix conversation handler and dispatches the recovered command directly, so a
+native conversation handler and dispatches the recovered command directly, so a
 conversational "I don't understand" response cannot preempt an accepted match.
-When recovery is rejected or unavailable, Phoenix and the normal fallback still
+When recovery is rejected or unavailable, native parsing and the normal fallback still
 run. Already recognized commands, direct text, non-English input, yes/no prompts,
 skill-owned listens, and clock-value/cloud-owned follow-ups retain their existing
 handling and do not invoke the correction model.

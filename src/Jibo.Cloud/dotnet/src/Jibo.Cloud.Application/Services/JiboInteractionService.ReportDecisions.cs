@@ -13,7 +13,11 @@ public sealed partial class JiboInteractionService
         var referenceLocalTime = TryResolveReferenceLocalTime(turn);
         var catalog = await contentCache.GetCatalogAsync(cancellationToken);
         var normalizedTranscript = NormalizeCommandPhrase(transcript);
-        var locationQuery = TryResolveWeatherLocationQuery(transcript);
+        var clientWeatherEntities = ReadEntities(turn);
+        var locationQuery = TryResolveWeatherLocationQuery(transcript) ?? string.Join(", ",
+            new[] { "city", "state", "country" }.Select(key => clientWeatherEntities.GetValueOrDefault(key))
+                .Where(value => !string.IsNullOrWhiteSpace(value) && value != "null"));
+        if (string.IsNullOrWhiteSpace(locationQuery)) locationQuery = null;
         var weatherDate = ResolveWeatherDateEntity(turn, transcript, normalizedTranscript, referenceLocalTime);
         var isRangeForecastRequest = IsRangeForecastRequest(normalizedTranscript);
         var isOpenEndedForecastRequest = IsOpenEndedForecastRequest(

@@ -44,7 +44,6 @@ public sealed class WebSocketTurnFinalizationService(
     private const int AutoFinalizeHotphraseOggContinuousProbeMinAudioPages = 4;
     private const string GlsmPhaseMetadataKey = "glsmPhase";
     private const string CompletedSleepTransIdKey = "completedSleepTransId";
-    private const int AutoFinalizeContinuationDeferralMaxAttempts = 4;
     private static readonly TimeSpan AutoFinalizeReconnectGrace = TimeSpan.FromSeconds(4);
     // Fast path when Opus content-silence (VAD) confirms end-of-speech.
     private static readonly TimeSpan AutoFinalizeMinTurnAge = TimeSpan.FromMilliseconds(300);
@@ -69,63 +68,9 @@ public sealed class WebSocketTurnFinalizationService(
     private static readonly TimeSpan AutoFinalizeHardBufferedAudioAge = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan AutoFinalizeNoAudioListenAge = TimeSpan.FromSeconds(9);
     private static readonly TimeSpan AutoFinalizeMissingTranscriptFallbackAge = TimeSpan.FromMilliseconds(4200);
-    private static readonly TimeSpan AutoFinalizeContinuationDeferralMaxAge = TimeSpan.FromMilliseconds(3600);
     private static readonly TimeSpan AutoFinalizeHotphraseOnlyNoInputAge = TimeSpan.FromSeconds(9);
     private static readonly TimeSpan StaleListenSetupRecoveryAge = TimeSpan.FromSeconds(9);
 
-    private static readonly HashSet<string> PegasusAffinityContinuationStems = new(StringComparer.Ordinal)
-    {
-        "i love",
-        "i like",
-        "i like the",
-        "i enjoy",
-        "i do like",
-        "we love",
-        "we like",
-        "we enjoy",
-        "i dislike",
-        "i hate",
-        "i hate the",
-        "i loathe",
-        "i not like",
-        "i dont like",
-        "i don t like",
-        "i do not like",
-        "i did not like",
-        "i didn t like",
-        "i didnt like",
-        "i didn t really like",
-        "i didnt really like",
-        "i don t really like",
-        "i dont really like",
-        "i dont enjoy",
-        "i don t enjoy",
-        "i do not enjoy",
-        "i did not enjoy",
-        "i didn t enjoy",
-        "i didnt enjoy",
-        "i didn t really enjoy",
-        "i didnt really enjoy",
-        "i dont love",
-        "i don t love",
-        "i do not love",
-        "i don t love to",
-        "i dont love to",
-        "i do not love to",
-        "i cant stand",
-        "i can t stand",
-        "i cant stand the",
-        "i can t stand the",
-        "we dislike",
-        "we hate",
-        "we despise",
-        "we detest",
-        "we loathe",
-        "we cant stand",
-        "we can t stand",
-        "i despise",
-        "i detest"
-    };
 
     private static readonly string[] YesNoAcknowledgementPrefixes =
     [
@@ -1875,28 +1820,6 @@ public sealed class WebSocketTurnFinalizationService(
                         ["bufferedAudioChunks"] = turnState.BufferedAudioChunkCount
                     }), cancellationToken);
                 finalizedTurn = WithSanitizedTranscript(finalizedTurn, trailingYesNoReply);
-            }
-
-            if (ShouldDeferForLikelyContinuation(finalizedTurn, turnState, messageType,
-                    allowFallbackOnMissingTranscript, out var deferralReason))
-            {
-                turnState.AwaitingTurnCompletion = true;
-                turnState.FinalizeAttemptCount += 1;
-                var turnAge = turnState.FirstAudioReceivedUtc.HasValue
-                    ? DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value
-                    : TimeSpan.Zero;
-                await sink.RecordTurnDiagnosticAsync("auto_finalize_deferred_for_continuation",
-                    BuildTurnDiagnosticSnapshot(session, envelope, new Dictionary<string, object?>
-                    {
-                        ["messageType"] = messageType,
-                        ["transcript"] = finalizedTurn.NormalizedTranscript ?? finalizedTurn.RawTranscript,
-                        ["reason"] = deferralReason,
-                        ["finalizeAttemptCount"] = turnState.FinalizeAttemptCount,
-                        ["turnAgeMs"] = (int)turnAge.TotalMilliseconds,
-                        ["bufferedAudioBytes"] = turnState.BufferedAudioBytes,
-                        ["bufferedAudioChunks"] = turnState.BufferedAudioChunkCount
-                    }), cancellationToken);
-                return [];
             }
 
             AmbientTurnProgressPublisher.BindTurn(finalizedTurn, session);
@@ -4124,67 +4047,6 @@ public sealed class WebSocketTurnFinalizationService(
             .Any(static rule => string.Equals(rule, "launch", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static bool ShouldDeferForLikelyContinuation(
-        TurnContext turn,
-        WebSocketTurnState turnState,
-        string messageType,
-        bool allowFallbackOnMissingTranscript,
-        out string reason)
-    {
-        reason = string.Empty;
-        if (!allowFallbackOnMissingTranscript ||
-            !string.Equals(messageType, "AUTO_FINALIZE", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        if (!turnState.FirstAudioReceivedUtc.HasValue ||
-            DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value >= AutoFinalizeContinuationDeferralMaxAge ||
-            turnState.FinalizeAttemptCount >= AutoFinalizeContinuationDeferralMaxAttempts)
-            return false;
-
-        var normalized = NormalizeUsableTranscript(turn.NormalizedTranscript ?? turn.RawTranscript);
-        if (string.IsNullOrWhiteSpace(normalized)) return false;
-
-        if (normalized is "my birthday" or "my birthday is")
-        {
-            reason = "birthday_set_incomplete";
-            return true;
-        }
-
-        if (normalized.StartsWith("my favorite ", StringComparison.Ordinal) ||
-            normalized.StartsWith("my favourite ", StringComparison.Ordinal))
-        {
-            var preferenceTail = normalized.StartsWith("my favourite ", StringComparison.Ordinal)
-                ? normalized["my favourite ".Length..].Trim()
-                : normalized["my favorite ".Length..].Trim();
-            var missingCopula = !normalized.Contains(" is ", StringComparison.Ordinal) &&
-                                !normalized.Contains(" are ", StringComparison.Ordinal);
-
-            if (normalized.EndsWith(" is", StringComparison.Ordinal) ||
-                normalized.EndsWith(" are", StringComparison.Ordinal) ||
-                (missingCopula && !LooksLikeBarePreferenceSet(preferenceTail)))
-            {
-                reason = "preference_set_incomplete";
-                return true;
-            }
-        }
-
-        if (normalized.StartsWith("what s my favorite", StringComparison.Ordinal) ||
-            normalized.StartsWith("what is my favorite", StringComparison.Ordinal) ||
-            normalized.StartsWith("what s my favourite", StringComparison.Ordinal) ||
-            normalized.StartsWith("what is my favourite", StringComparison.Ordinal))
-            if (normalized is "what s my favorite" or "what is my favorite" or "what s my favourite"
-                or "what is my favourite")
-            {
-                reason = "preference_recall_incomplete";
-                return true;
-            }
-
-        if (!LooksLikeIncompleteAffinitySet(normalized)) return false;
-
-        reason = "affinity_set_incomplete";
-        return true;
-    }
-
     private bool ShouldDeferForIncompleteUtterance(
         TurnContext turn,
         WebSocketTurnState turnState,
@@ -4265,19 +4127,6 @@ public sealed class WebSocketTurnFinalizationService(
             return "transcript_hint";
 
         return "auto_finalize";
-    }
-
-    private static bool LooksLikeIncompleteAffinitySet(string normalized)
-    {
-        return PegasusAffinityContinuationStems.Contains(normalized);
-    }
-
-    private static bool LooksLikeBarePreferenceSet(string preferenceTail)
-    {
-        if (string.IsNullOrWhiteSpace(preferenceTail)) return false;
-
-        var tokens = preferenceTail.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return tokens.Length >= 2;
     }
 
     private static void ClearListenTracking(WebSocketTurnState turnState)

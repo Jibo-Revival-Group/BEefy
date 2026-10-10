@@ -72,18 +72,28 @@ public sealed partial class JiboInteractionService
         if (SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
             semanticIntent = "chat";
 
-        var modelRecoveredCommand = false;
-        if (semanticIntent == "chat" && !isYesNoTurn && !isSkillOwnedListen &&
+        var deterministicNative = semanticIntent == "chat" && !isSkillOwnedListen
+            ? NativeGrammar.Instance.Parse(transcript) : null;
+        var executableNative = deterministicNative is not null && NativeCommandRegistry.Instance.Resolve(deterministicNative) is { OnRobot: true } registeredNative
+            && registeredNative.Skill is "@be/hue-control" or "@be/exercise" or "@be/circuit-saver" or "@be/friendly-tips"
+                or "@be/tutorial" or "@be/ifttt" or "@be/surprises-ota" or "@be/who-am-i" or "@be/main-menu";
+        if (semanticIntent == "chat" && !executableNative && !isYesNoTurn && !isSkillOwnedListen &&
             !isTimerValueTurn && !isAlarmValueTurn && !SkillListenOwnership.IsCloudOwnedFollowUp(turn) &&
             turn.InputMode is not (TurnInputMode.DirectText or TurnInputMode.System))
         {
             var correction = await TryCorrectUnrecognizedCommandAsync(turn, transcript,
-                candidate => ResolveSemanticIntent(candidate, referenceLocalTime, clientIntent,
-                    clientRules, listenRules, clientEntities, lastClockDomain, pendingProactivityOffer,
-                    isYesNoTurn, isTimerValueTurn, isAlarmValueTurn, isSkillOwnedListen), cancellationToken);
+                candidate =>
+                {
+                    var intent = ResolveSemanticIntent(candidate, referenceLocalTime, clientIntent,
+                        clientRules, listenRules, clientEntities, lastClockDomain, pendingProactivityOffer,
+                        isYesNoTurn, isTimerValueTurn, isAlarmValueTurn, isSkillOwnedListen);
+                    if (intent != "chat") return intent;
+                    var parsed = NativeGrammar.Instance.Parse(candidate);
+                    return parsed is not null && NativeCommandRegistry.Instance.Resolve(parsed) is { OnRobot: true }
+                        ? "native_command" : "chat";
+                }, cancellationToken);
             if (correction is { } accepted)
             {
-                modelRecoveredCommand = true;
                 transcript = accepted.Transcript;
                 lowered = transcript.ToLowerInvariant();
                 semanticIntent = accepted.Intent;
@@ -91,21 +101,14 @@ public sealed partial class JiboInteractionService
             }
         }
 
-        JiboInteractionDecision? unknownPhoenixDecision = null;
-        if (!modelRecoveredCommand && !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
-            semanticIntent is not ("sleep" or "wake_up" or "volume_up" or "volume_down" or "volume_to_value") &&
-            !string.IsNullOrWhiteSpace(transcript) &&
-            phoenixConversation is not null)
-        {
-            var phoenixDecision = await phoenixConversation.TryDecideAsync(transcript, cancellationToken);
-            if (phoenixDecision is not null && !IsUnknownNluDecision(phoenixDecision))
-                return phoenixDecision;
-            unknownPhoenixDecision = phoenixDecision;
-        }
+        var colorReply = TryBuildNativeColorReply(turn, transcript);
+        if (colorReply is not null) return colorReply;
+        var nativeDecision = await TryBuildNativeConversationDecisionAsync(turn, transcript, semanticIntent, catalog,
+            clientEntities, clientIntent, clientRules, listenRules, isSkillOwnedListen, isYesNoTurn, cancellationToken);
+        if (nativeDecision is not null) return nativeDecision;
 
-        // Existing local parsing, bounded ASR recovery and Phoenix have the first
-        // chance. "chat" is the local parser's no-match sentinel, not a recognized
-        // Phoenix conversation result. Known decisions never invoke Jev.
+        cancellationToken.ThrowIfCancellationRequested();
+        // All conversation routing now executes in-process. Existing native commands keep precedence.
         NluClassification? classification = null;
         if (!localNluRecognized && semanticIntent == "chat" && nluClassifier is not null &&
             !isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
@@ -131,6 +134,9 @@ public sealed partial class JiboInteractionService
             turn.Attributes["nlu:outcome"] = "missing_values";
         }
 
+        if (jevAccepted && BuildNativeClassifierDecision(semanticIntent) is { } classifiedNative)
+            return classifiedNative;
+
         if (jevAccepted && SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
             semanticIntent = "chat";
 
@@ -153,24 +159,11 @@ public sealed partial class JiboInteractionService
             cancellationToken);
         if (personalReportDecision is not null) return personalReportDecision;
 
-        var householdListDecision = await HouseholdListOrchestrator.TryBuildDecisionAsync(
-            turn,
-            semanticIntent,
-            transcript,
-            lowered,
-            randomizer,
-            personalMemoryStore,
-            turnContext => ResolveTenantScope(turnContext));
-        if (householdListDecision is not null) return householdListDecision;
-
         var preferredName = ResolvePreferredGreetingName(turn, greetingPresence);
         if (string.Equals(semanticIntent, "chat", StringComparison.OrdinalIgnoreCase))
         {
             if (isSkillOwnedListen)
                 return new JiboInteractionDecision("skill_listen", string.Empty);
-
-            if (!jevAccepted && unknownPhoenixDecision is not null)
-                return unknownPhoenixDecision;
 
             return await BuildChatFallbackDecisionAsync(
                 catalog,
@@ -1518,14 +1511,6 @@ public sealed partial class JiboInteractionService
                 "welcome back"),
             "memory_set_name" => BuildRememberNameDecision(turn, transcript),
             "memory_get_name" => BuildRecallNameDecision(turn, greetingPresence),
-            "memory_set_birthday" => BuildRememberBirthdayDecision(turn, transcript),
-            "memory_get_birthday" => BuildRecallBirthdayDecision(turn),
-            "memory_set_important_date" => BuildRememberImportantDateDecision(turn, transcript),
-            "memory_get_important_date" => BuildRecallImportantDateDecision(turn, transcript),
-            "memory_set_preference" => BuildRememberPreferenceDecision(turn, transcript),
-            "memory_get_preference" => BuildRecallPreferenceDecision(turn, transcript),
-            "memory_set_affinity" => BuildRememberAffinityDecision(turn, transcript),
-            "memory_get_affinity" => BuildRecallAffinityDecision(turn, transcript),
             "verify_me" => BuildVerifyMeDecision(turn),
             "ha_lights_off" => await BuildHaLightsOffDecisionAsync(turn, cancellationToken),
             "ha_lights_on" => await BuildHaLightsOnDecisionAsync(turn, cancellationToken),

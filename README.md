@@ -35,13 +35,7 @@ Those environment names stay as they are so an existing launch keeps working. `O
 
 ## Hey Jibo
 
-`conversation/` is the Phoenix parser and skills (nlu, skills, history, data). The API starts them on `127.0.0.1` when `node` and `conversation/node_modules` are present. They are not a second public port. If they are missing, the server still listens and the current turn handler answers.
-
-Install the local packages once:
-
-```bash
-npm install --prefix conversation
-```
+Conversations run entirely in .NET. The managed grammar matcher and native handlers use embedded, revision-pinned text resources; Node, npm, and localhost helper services are unnecessary. Existing provider configuration and personal data stores continue to work. See [native command coverage and hardware checks](docs/native-conversation.md).
 
 Say “Hey Jibo, sing me a song” for the original Twinkle Twinkle performance.
 “Sing a Christmas song” chooses from all seven original holiday song MIMs:

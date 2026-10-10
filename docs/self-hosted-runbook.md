@@ -21,4 +21,4 @@ env \
 
 Speech uses Sherpa (`OpenJibo__Stt__EnableStreamingSherpa=true`). State stays in the two Sqlite files under `/var/lib/5x1`. Robots reach this process through `api.5x1.com:443`. OTA stays on BEaker at `http://joap.5x1.com:80`.
 
-Hey Jibo needs Node and a one-time `npm install --prefix conversation`. If that is not installed, the API still boots and answers with the built-in turn handler.
+Hey Jibo runs entirely in .NET with embedded grammar and dialog resources. No Node installation or helper services are required. See [native command coverage](native-conversation.md).

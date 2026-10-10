@@ -33,12 +33,12 @@ distribution-confidence field. Tune this threshold against
 labeled commands and negative examples before lowering it.
 
 Configured Jev runs only when the existing local parser, bounded ASR command
-recovery and Phoenix conversation path have not recognized the turn. A known
-local intent or recognized Phoenix response (including conversation) skips Jev.
-An unavailable Phoenix service counts as no match only when local parsing is
+recovery and native conversation path have not recognized the turn. A known
+local intent or recognized native response (including conversation) skips Jev.
+The native parser returns no match only when local parsing is
 also unresolved. Triggers, system input, skill-owned listens, yes/no
 prompts, clock-value follow-ups and pending proactive offers keep local handling.
-Accepted fallback decisions dispatch without rerunning Phoenix or ASR correction.
+Accepted fallback decisions dispatch without rerunning native grammar or ASR correction.
 Value-bearing commands must pass existing local extraction; otherwise the
 original unknown-response path runs. No-match, low probability, malformed responses,
 HTTP failures and timeouts also fall back. Caller cancellation propagates.
@@ -135,7 +135,7 @@ no API keys.
 
 ## Rollback and checks
 
-Set `OPENJIBO_JEV_ENABLED=false` to restore the existing local/Phoenix path.
+Set `OPENJIBO_JEV_ENABLED=false` to restore the deterministic native path.
 Set `OpenJibo__Stt__SherpaDecodingMethod=greedy_search` to restore greedy ASR.
 Restart the API after changing these startup settings. No persistence migrations
 or robot wire-format changes are required.

@@ -39,7 +39,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
                             string.Equals(plan.IntentName, "radio_genre", StringComparison.OrdinalIgnoreCase);
         var isBadAppleLaunch = string.Equals(plan.IntentName, "bad_apple", StringComparison.OrdinalIgnoreCase) &&
                                string.Equals(skill?.SkillName, "@be/bad-apple", StringComparison.OrdinalIgnoreCase);
-        var isStopCommand = string.Equals(plan.IntentName, "stop", StringComparison.OrdinalIgnoreCase);
+        var isStopCommand = string.Equals(plan.IntentName, "stop", StringComparison.OrdinalIgnoreCase)
+            && NativeConversationValue.Read(skill?.Payload, "nativeLaunch") is not true;
         var isVolumeControl = string.Equals(plan.IntentName, "volume_up", StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(plan.IntentName, "volume_down", StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(plan.IntentName, "volume_to_value", StringComparison.OrdinalIgnoreCase);
@@ -52,7 +53,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
         var isWakeUpCommand = string.Equals(plan.IntentName, "wake_up", StringComparison.OrdinalIgnoreCase);
         var isTurnAroundCommand = string.Equals(plan.IntentName, "turn_around", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(plan.IntentName, "spin_around", StringComparison.OrdinalIgnoreCase);
-        var isGlobalCommand = isStopCommand || isSleepCommand || isTurnAroundCommand || isVolumeControl;
+        var isGlobalCommand = isStopCommand || isSleepCommand || isTurnAroundCommand || isVolumeControl
+            || NativeConversationValue.Read(skill?.Payload, "nativeGlobal") is true;
         var isPhotoGalleryLaunch = string.Equals(plan.IntentName, "photo_gallery", StringComparison.OrdinalIgnoreCase);
         var isPhotoCreateLaunch = string.Equals(plan.IntentName, "snapshot", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(plan.IntentName, "photobooth", StringComparison.OrdinalIgnoreCase);
@@ -62,6 +64,10 @@ public sealed class ResponsePlanToSocketMessagesMapper
         var idleRedirectDelayMs = 75;
         var idleCompletionDelayMs = isTurnAroundCommand ? 750 : 125;
         const int cloudSpeakDelayMs = 75;
+        var nativeLaunch = NativeConversationValue.Read(skill?.Payload, "nativeLaunch") is true;
+        var nativeGlobal = NativeConversationValue.Read(skill?.Payload, "nativeGlobal") is true;
+        var nativeParse = NativeConversationValue.Read(turn.Attributes, JiboInteractionService.NativeParseAttribute) as NativeParseResult;
+        var nativeContextual = isSkillListenIntent && nativeParse is not null;
         var localIntent = ReadSkillPayloadString(skill, "localIntent");
         var clockIntent = ReadSkillPayloadString(skill, "clockIntent");
         var clockDomain = ReadSkillPayloadString(skill, "domain");
@@ -158,6 +164,9 @@ public sealed class ResponsePlanToSocketMessagesMapper
                                                 : isSkillListenIntent && !string.IsNullOrWhiteSpace(primarySkillRule)
                                                     ? [primarySkillRule]
                                                     : rules;
+        if (nativeLaunch && !string.IsNullOrWhiteSpace(localIntent)) outboundIntent = localIntent;
+        if (nativeContextual) outboundIntent = nativeParse!.Intent;
+        if ((nativeLaunch || nativeContextual) && nativeParse is not null) outboundRules = nativeParse.Rules.ToArray();
         var entities = ReadEntities(
             turn,
             messageType,
@@ -180,6 +189,10 @@ public sealed class ResponsePlanToSocketMessagesMapper
             isReportSkillLaunch,
             reportDate,
             reportWeatherCondition);
+        if (nativeParse is not null)
+            entities = nativeParse.Entities.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+        else if (nativeLaunch && NativeConversationValue.Read(skill?.Payload, "nluEntities") is IReadOnlyDictionary<string, object?> nativeEntities)
+            entities = nativeEntities.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
         var isKnowledgeSearchIntent =
             string.Equals(plan.IntentName, "knowledge_search", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(plan.IntentName, "knowledge_search_not_found", StringComparison.OrdinalIgnoreCase) ||
@@ -189,7 +202,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                                      SearchThinkingPreludeFactory.AnswerSkillId,
                                      StringComparison.OrdinalIgnoreCase) ||
                                  isKnowledgeSearchIntent;
-        var localOnRobotSkillId = isWordOfDayLaunch ? "@be/word-of-the-day" :
+        var localOnRobotSkillId = nativeGlobal ? "@be/idle" : nativeLaunch ? skill?.SkillName : isWordOfDayLaunch ? "@be/word-of-the-day" :
             isRadioLaunch ? "@be/radio" :
             isBadAppleLaunch ? "@be/bad-apple" :
             isSettingsLaunch ? "@be/settings" :
@@ -200,6 +213,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
             null;
         var shouldEmitCloudSpeak = emitSkillActions &&
                                    speak is not null &&
+                                   !nativeLaunch && !nativeGlobal &&
                                    !isSkillListenIntent &&
                                    !isPromptEchoIntent &&
                                    !(isYesNoIntent && isSkillOwnedYesNoTurn);
@@ -212,7 +226,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         // context suppresses delayed SKILL_REDIRECT, so the initial LISTEN match must carry
         // the on-robot skill or Nimbus will never leave idle.
         object? listenMatch;
-        if (isSleepCommand)
+        if (isSleepCommand || nativeGlobal)
         {
             listenMatch = new
             {
@@ -307,8 +321,9 @@ public sealed class ResponsePlanToSocketMessagesMapper
                     outboundRules,
                     entities,
                     localOnRobotSkillId ??
-                    (isReportSkillLaunch ? "report-skill" : null),
-                    isGlobalCommand ? nluDomain ?? "global_commands" : null),
+                    (isReportSkillLaunch ? "report-skill" : nativeParse?.Skill),
+                    isGlobalCommand ? nluDomain ?? "global_commands" : nativeParse?.Domain ?? nluDomain,
+                    nativeParse?.Priority),
                 ["match"] = listenMatch
             }
         };
@@ -440,7 +455,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 JsonSerializer.Serialize(BuildCompletionOnlySkillPayload(transId, "@be/nimbus")),
                 cloudSpeakDelayMs));
 
-        if (isSettingsLaunch &&
+        if (isSettingsLaunch && !nativeLaunch &&
             !string.Equals(messageType, "CLIENT_NLU", StringComparison.OrdinalIgnoreCase))
         {
             messages.Add(new SocketReplyPlan(
@@ -462,7 +477,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         // local launch, which closes/reopens the clock screen and re-announces the time.
         // CLIENT_NLU menu turns and local alarm/timer follow-ups already rely on LISTEN/EOS only.
 
-        if ((isPhotoGalleryLaunch || isPhotoCreateLaunch) &&
+        if ((isPhotoGalleryLaunch || isPhotoCreateLaunch) && !nativeLaunch &&
             !string.Equals(messageType, "CLIENT_NLU", StringComparison.OrdinalIgnoreCase))
         {
             var skillId = isPhotoGalleryLaunch ? "@be/gallery" : "@be/create";
@@ -480,7 +495,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 125));
         }
 
-        if (isIntroductionsLaunch &&
+        if (isIntroductionsLaunch && !nativeLaunch &&
             !string.Equals(messageType, "CLIENT_NLU", StringComparison.OrdinalIgnoreCase))
         {
             messages.Add(new SocketReplyPlan(
@@ -912,8 +927,6 @@ public sealed class ResponsePlanToSocketMessagesMapper
         InvokeNativeSkillAction? skill, string heardTranscript = "")
     {
         var skillPayload = skill?.Payload;
-        if (skillPayload is null && IsHouseholdListFollowUpIntent(plan.IntentName ?? string.Empty))
-            skillPayload = BuildHouseholdListFollowUpPayload();
 
         if (string.Equals(ReadPayloadString(skillPayload, "cloudResponseMode"), "completion_only",
                 StringComparison.OrdinalIgnoreCase))
@@ -1192,7 +1205,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
             return new
             {
                 type = "SKILL_ACTION",
-                final = true,
+                final = !(NativeConversationValue.Read(skillPayload, "nativeCloudDialog") is true && listenContexts.Count > 0),
                 ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 msgID = CloudMessageIdFactory.CreateHubMessageId(),
                 transID = transId,
@@ -1210,7 +1223,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                         }
                     },
                     analytics = new Dictionary<string, object?>(),
-                    final = true
+                    final = !(NativeConversationValue.Read(skillPayload, "nativeCloudDialog") is true && listenContexts.Count > 0)
                 }
             };
 
@@ -1221,7 +1234,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         return new
         {
             type = "SKILL_ACTION",
-            final = true,
+            final = !(NativeConversationValue.Read(skillPayload, "nativeCloudDialog") is true && listenContexts.Count > 0),
             ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             msgID = CloudMessageIdFactory.CreateHubMessageId(),
             transID = transId,
@@ -1239,7 +1252,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                     }
                 },
                 analytics = new Dictionary<string, object?>(),
-                final = true
+                final = !(NativeConversationValue.Read(skillPayload, "nativeCloudDialog") is true && listenContexts.Count > 0)
             }
         };
     }
@@ -1249,7 +1262,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         IReadOnlyList<string> outboundRules,
         object entities,
         string? skillId,
-        string? domain = null)
+        string? domain = null, string? priority = null)
     {
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
@@ -1261,6 +1274,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
 
         if (!string.IsNullOrWhiteSpace(skillId)) payload["skill"] = skillId;
 
+        if (!string.IsNullOrWhiteSpace(priority)) payload["priority"] = priority;
         if (!string.IsNullOrWhiteSpace(domain)) payload["domain"] = domain;
 
         return payload;
@@ -1362,31 +1376,6 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 analytics = new Dictionary<string, object?>(),
                 final = true
             }
-        };
-    }
-
-    private static bool IsHouseholdListFollowUpIntent(string intentName)
-    {
-        return string.Equals(intentName, "shopping_list_prompt", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(intentName, "shopping_list_add", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(intentName, "shopping_list_no_input", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(intentName, "shopping_list_no_match", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(intentName, "todo_list_prompt", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(intentName, "todo_list_add", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(intentName, "todo_list_no_input", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(intentName, "todo_list_no_match", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static IDictionary<string, object?> BuildHouseholdListFollowUpPayload()
-    {
-        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["mim_id"] = "runtime-household-list",
-            ["mim_type"] = "question",
-            ["prompt_id"] = "RUNTIME_PROMPT",
-            ["prompt_sub_category"] = "Q",
-            ["listen_contexts"] = new[] { "household-list/follow_up_item" },
-            ["listen_asr_hints"] = new[] { "$ANYTHING" }
         };
     }
 
