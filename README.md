@@ -51,6 +51,10 @@ download or API key is required; robot audio verification is still needed.
 
 Jev can classify unknown intents after the existing NLU, using independent
 `OPENJIBO_JEV_*` endpoint, key and model settings. It is disabled until configured.
+Jev matches are cached by exact transcript in server RAM for six hours from the
+API result, shared across turns and cleared on restart. Unknown results are cached
+only when every leaf group selects Unknown with confidence strictly above 95%.
+Errors, incomplete answers, and matches below the configured threshold are not cached.
 Sherpa supports configurable greedy or bounded beam decoding; greedy remains the
 default until real recordings meet the accuracy and 200 ms latency gates. See
 [configuration, evaluation and rollback](docs/asr-jev-evaluation.md).

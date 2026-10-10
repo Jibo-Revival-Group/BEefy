@@ -13,6 +13,81 @@ namespace Jibo.Cloud.Tests.Infrastructure;
 public sealed class JevNluClassifierTests
 {
     [Fact]
+    public async Task MatchingTranscript_ReusesClassificationForSixHoursWithoutExtendingExpiry()
+    {
+        var clock = new ManualClock();
+        var handler = new Handler((_, _) => Task.FromResult(Response(Answer("holiday_greeting/christmas", "0.87"))));
+        var classifier = Client(handler, timeProvider: clock);
+        var first = await classifier.ClassifyAsync("Mary Christmas");
+        var calls = handler.Calls;
+        Assert.Equal("holiday_greeting/christmas", first!.Intent);
+        clock.Advance(TimeSpan.FromHours(6) - TimeSpan.FromSeconds(1));
+        Assert.Equal(first, await classifier.ClassifyAsync("Mary Christmas"));
+        Assert.Equal(calls, handler.Calls);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(first, await classifier.ClassifyAsync("Mary Christmas"));
+        Assert.Equal(calls * 2, handler.Calls);
+    }
+
+    [Fact]
+    public async Task CacheIsPerClassifierAndPerTranscript()
+    {
+        var handler = new Handler((_, _) => Task.FromResult(Response(Answer("time", "0.9"))));
+        var classifier = Client(handler);
+        await classifier.ClassifyAsync("first phrase");
+        var calls = handler.Calls;
+        await classifier.ClassifyAsync("different phrase");
+        Assert.Equal(calls * 2, handler.Calls);
+        await Client(handler).ClassifyAsync("first phrase");
+        Assert.Equal(calls * 3, handler.Calls);
+    }
+
+    [Theory]
+    [InlineData(0.94, false)]
+    [InlineData(0.95, false)]
+    [InlineData(0.95001, true)]
+    [InlineData(1, true)]
+    public async Task UnknownIsCachedOnlyWhenEveryLeafConfidenceIsAbove95Percent(double probability, bool cached)
+    {
+        var clock = new ManualClock();
+        var handler = new Handler(async (request, token) =>
+        {
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+            var answers = body.RootElement.GetProperty("questions").EnumerateObject()
+                .ToDictionary(q => q.Name, q => Choice(q.Name == "intent_group" ? "greetings_and_holidays" : "unknown",
+                    q.Name == "commands_and_user" ? probability : 1));
+            return Response(JsonSerializer.Serialize(new { answers }));
+        });
+        var classifier = Client(handler, timeProvider: clock);
+        Assert.Null(await classifier.ClassifyAsync("unsupported speech"));
+        var calls = handler.Calls;
+        Assert.Null(await classifier.ClassifyAsync("unsupported speech"));
+        Assert.Equal(calls * (cached ? 1 : 2), handler.Calls);
+        clock.Advance(TimeSpan.FromHours(6));
+        Assert.Null(await classifier.ClassifyAsync("unsupported speech"));
+        Assert.Equal(calls * (cached ? 2 : 3), handler.Calls);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("not json")]
+    [InlineData(null)]
+    [InlineData("low_probability")]
+    [InlineData("partial_unknown")]
+    public async Task FailedOrIncompleteResultsAreNotCached(string? response)
+    {
+        var handler = new Handler((_, _) => Task.FromResult(response is null
+            ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            : Response(response == "low_probability" ? Answer("time", "0.84")
+                : response == "partial_unknown" ? Answer("unknown", "0.99") : response)));
+        var classifier = Client(handler);
+        Assert.Null(await classifier.ClassifyAsync("unsupported speech"));
+        var calls = handler.Calls;
+        Assert.Null(await classifier.ClassifyAsync("unsupported speech"));
+        Assert.Equal(calls * 2, handler.Calls);
+    }
+
+    [Fact]
     public async Task SendsTypedDecisionWithIndependentCredentials_UsesSelectedProbability()
     {
         var handler = new Handler(async (request, token) =>
@@ -364,9 +439,17 @@ public sealed class JevNluClassifierTests
         } });
     }
     private static HttpResponseMessage Response(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
-    private static JevNluClassifier Client(Handler handler, JevNluOptions? options = null, ITransportMetrics? metrics = null) =>
+    private static JevNluClassifier Client(Handler handler, JevNluOptions? options = null, ITransportMetrics? metrics = null,
+        TimeProvider? timeProvider = null) =>
         new(new HttpClient(handler), options ?? new JevNluOptions { Enabled = true, ApiKey = "test-key" },
-            NullLogger<JevNluClassifier>.Instance, metrics);
+            NullLogger<JevNluClassifier>.Instance, metrics, timeProvider);
+    private sealed class ManualClock : TimeProvider
+    {
+        private long _timestamp;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => _timestamp;
+        public void Advance(TimeSpan duration) => _timestamp += duration.Ticks;
+    }
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         private int _calls;

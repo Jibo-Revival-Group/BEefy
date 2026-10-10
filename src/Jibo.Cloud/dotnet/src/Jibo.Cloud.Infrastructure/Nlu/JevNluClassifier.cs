@@ -9,9 +9,40 @@ using Microsoft.Extensions.Logging;
 namespace Jibo.Cloud.Infrastructure.Nlu;
 
 public sealed class JevNluClassifier(HttpClient http, JevNluOptions options,
-    ILogger<JevNluClassifier> logger, ITransportMetrics? metrics = null) : INluClassifier
+    ILogger<JevNluClassifier> logger, ITransportMetrics? metrics = null,
+    TimeProvider? timeProvider = null) : INluClassifier
 {
     private readonly bool _isConfigured = CheckConfiguration(options, logger);
+    private static readonly TimeSpan CacheLifetime = TimeSpan.FromHours(6);
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private readonly object _cacheLock = new();
+    private readonly Dictionary<string, CachedClassification> _cache = new(StringComparer.Ordinal);
+    private sealed record CachedClassification(NluClassification? Classification, long CreatedAt);
+
+    private bool TryGetCached(string transcript, out NluClassification? classification)
+    {
+        lock (_cacheLock)
+        {
+            // Also discard expired phrases that are never heard again.
+            var now = _clock.GetTimestamp();
+            foreach (var key in _cache.Where(entry =>
+                _clock.GetElapsedTime(entry.Value.CreatedAt, now) >= CacheLifetime).Select(entry => entry.Key).ToArray())
+                _cache.Remove(key);
+            if (_cache.TryGetValue(transcript, out var cached))
+            {
+                classification = cached.Classification;
+                return true;
+            }
+        }
+        classification = null;
+        return false;
+    }
+
+    private void Cache(string transcript, NluClassification? classification)
+    {
+        lock (_cacheLock)
+            _cache[transcript] = new(classification, _clock.GetTimestamp());
+    }
 
     private static bool CheckConfiguration(JevNluOptions options, ILogger<JevNluClassifier> logger)
     {
@@ -28,6 +59,11 @@ public sealed class JevNluClassifier(HttpClient http, JevNluOptions options,
         var outcome = "failure";
         try
         {
+            if (TryGetCached(transcript, out var cached))
+            {
+                outcome = "cache_hit";
+                return cached;
+            }
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(options.TimeoutMs);
             var batches = BuildQuestionBatches(transcript);
@@ -38,14 +74,23 @@ public sealed class JevNluClassifier(HttpClient http, JevNluOptions options,
             var best = results.SelectMany(result => result.Candidates)
                 .OrderByDescending(candidate => candidate.Probability)
                 .ThenBy(candidate => candidate.Intent, StringComparer.Ordinal).FirstOrDefault();
-            if (best is null) { outcome = "unknown"; return null; }
+            if (best is null)
+            {
+                outcome = "unknown";
+                // Unknown is a no-match in the existing routing contract. Only reuse it
+                // when every leaf group explicitly rules out a match above 95%.
+                if (results.All(result => result.ConfidentUnknown)) Cache(transcript, null);
+                return null;
+            }
             if (best.Probability < options.MinProbability) { outcome = "low_probability"; return null; }
             var intent = best.Intent;
             var selected = best.Probability;
             var model = best.Model;
             outcome = "classified";
             logger.LogDebug("Jev classified intent={Intent}, model={Model}, probability={Probability}", intent, model, selected);
-            return new NluClassification(intent, selected, "jev", model);
+            var classification = new NluClassification(intent, selected, "jev", model);
+            Cache(transcript, classification);
+            return classification;
         }
         catch (OperationCanceledException)
         {
@@ -67,7 +112,8 @@ public sealed class JevNluClassifier(HttpClient http, JevNluOptions options,
         }
     }
 
-    private sealed record BatchResult(IReadOnlyList<NluClassification> Candidates, string? Error = null);
+    private sealed record BatchResult(IReadOnlyList<NluClassification> Candidates, string? Error = null,
+        bool ConfidentUnknown = false);
 
     private async Task<BatchResult> EvaluateBatchAsync(string transcript,
         IReadOnlyDictionary<string, JevIntentQuestions.ChoiceQuestion> questions, CancellationToken token)
@@ -89,15 +135,21 @@ public sealed class JevNluClassifier(HttpClient http, JevNluOptions options,
         var model = root.TryGetProperty("model", out var modelElement) && modelElement.ValueKind == JsonValueKind.String
             ? modelElement.GetString()! : options.Model;
         var candidates = new List<NluClassification>();
+        var confidentUnknown = true;
         foreach (var (name, question) in questions)
         {
             // The top-level selector is advisory. Its score never gates a leaf match.
             if (name == JevIntentQuestions.GroupQuestion) continue;
-            if (TryReadChoice(answers, name, question.Criteria, out var intent, out var probability) &&
-                intent != "unknown" && NluIntentCatalog.IsSupported(intent))
+            if (!TryReadChoice(answers, name, question.Criteria, out var intent, out var probability))
+            {
+                confidentUnknown = false;
+                continue;
+            }
+            confidentUnknown &= intent == "unknown" && probability > 0.95;
+            if (intent != "unknown" && NluIntentCatalog.IsSupported(intent))
                 candidates.Add(new(intent, probability, "jev", model));
         }
-        return new(candidates);
+        return new(candidates, ConfidentUnknown: confidentUnknown);
     }
 
     internal static IReadOnlyList<IReadOnlyDictionary<string, JevIntentQuestions.ChoiceQuestion>>? BuildQuestionBatches(string transcript)

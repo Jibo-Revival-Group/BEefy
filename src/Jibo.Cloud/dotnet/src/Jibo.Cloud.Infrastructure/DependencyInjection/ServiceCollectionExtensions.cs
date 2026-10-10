@@ -19,6 +19,7 @@ using Jibo.Cloud.Infrastructure.Wikipedia;
 using Jibo.Runtime.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 // ReSharper disable UnusedMethodReturnValue.Global
@@ -87,7 +88,12 @@ public static class ServiceCollectionExtensions
             llmInstructions);
 
         services.AddSingleton(JevNluOptions.Resolve(configuration));
-        services.AddHttpClient<INluClassifier, JevNluClassifier>(client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddHttpClient("jev-nlu", client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton<INluClassifier>(provider => new JevNluClassifier(
+            provider.GetRequiredService<IHttpClientFactory>().CreateClient("jev-nlu"),
+            provider.GetRequiredService<JevNluOptions>(),
+            provider.GetRequiredService<ILogger<JevNluClassifier>>(),
+            provider.GetRequiredService<ITransportMetrics>()));
         services.AddSingleton(asrCorrectionOptions);
         services.AddSingleton<LocalAsrCorrectionModel>();
         services.AddSingleton<IAsrCorrectionModel>(provider => provider.GetRequiredService<LocalAsrCorrectionModel>());
