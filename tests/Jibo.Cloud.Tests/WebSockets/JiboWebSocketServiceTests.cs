@@ -936,6 +936,46 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task BufferedHotphraseOggAudio_RejectedSingleWordTimesOutAfterFiveSeconds()
+    {
+        var store = new InMemoryCloudStateStore();
+        var service = CreateService(store, sttStrategies:
+        [
+            new QueuedBufferedAudioSttStrategy("volume", "volume", "volume")
+        ]);
+        WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = "hub-single-word-timeout", Text = text, Binary = binary
+        };
+        var setup = Envelope(
+            """{"type":"LISTEN","transID":"single-word-timeout","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"],"asr":{"encoding":"OGG_OPUS","maxSpeechTimeout":20000}}}""");
+        await service.HandleMessageAsync(setup);
+        foreach (var frame in new[]
+                 {
+                     BuildOggFrame(0x02, "OpusHead"), BuildOggFrame(0x00, "OpusTags"),
+                     BuildOggFrame(0x00), BuildOggFrame(0x00), BuildOggFrame(0x00)
+                 })
+            Assert.Empty(await service.HandleMessageAsync(Envelope(binary: frame)));
+
+        var session = store.FindSessionByToken(setup.Token!)!;
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-4);
+        session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+        Assert.Empty(await service.HandleIdleAsync(session, setup));
+        Assert.True(session.TurnState.AwaitingTurnCompletion);
+
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-5);
+        var replies = await service.HandleIdleAsync(session, setup);
+        Assert.Equal(new[] { "LISTEN", "EOS" }, replies.Select(ReadReplyType));
+        using var payload = JsonDocument.Parse(replies[0].Text!);
+        Assert.Equal("SOS_TIMEOUT",
+            payload.RootElement.GetProperty("data").GetProperty("asr").GetProperty("annotation").GetString());
+        Assert.False(session.TurnState.AwaitingTurnCompletion);
+        Assert.Equal("no-input", session.LastListenType);
+        Assert.Equal(0, session.TurnState.BufferedAudioBytes);
+    }
+
+    [Fact]
     public async Task BufferedHotphraseOggAudio_BlankSttBeforeHardTimeoutKeepsListening()
     {
         var stateStore = new InMemoryCloudStateStore();

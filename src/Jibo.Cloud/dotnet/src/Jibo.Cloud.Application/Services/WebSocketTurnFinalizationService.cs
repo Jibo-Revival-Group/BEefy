@@ -68,6 +68,7 @@ public sealed class WebSocketTurnFinalizationService(
     private static readonly TimeSpan AutoFinalizeHardBufferedAudioAge = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan AutoFinalizeNoAudioListenAge = TimeSpan.FromSeconds(9);
     private static readonly TimeSpan AutoFinalizeMissingTranscriptFallbackAge = TimeSpan.FromMilliseconds(4200);
+    private static readonly TimeSpan AutoFinalizeRejectedSingleWordNoInputAge = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan AutoFinalizeHotphraseOnlyNoInputAge = TimeSpan.FromSeconds(9);
     private static readonly TimeSpan StaleListenSetupRecoveryAge = TimeSpan.FromSeconds(9);
 
@@ -1340,7 +1341,45 @@ public sealed class WebSocketTurnFinalizationService(
                 return noInputReplies;
             }
 
-            if (!TryGetUsableTranscript(finalizedTurn, out var usableTranscript))
+            var hasUsableTranscript = TryGetUsableTranscript(finalizedTurn, out var usableTranscript);
+            if (!hasUsableTranscript &&
+                IsLowSignalSingleTokenTranscript(usableTranscript) &&
+                !string.IsNullOrWhiteSpace(usableTranscript) &&
+                string.Equals(messageType, "AUTO_FINALIZE", StringComparison.OrdinalIgnoreCase))
+            {
+                var turnAge = turnState.FirstAudioReceivedUtc.HasValue
+                    ? DateTimeOffset.UtcNow - turnState.FirstAudioReceivedUtc.Value
+                    : TimeSpan.Zero;
+                turnState.AwaitingTurnCompletion = true;
+                turnState.FinalizeAttemptCount += 1;
+                if (turnAge < AutoFinalizeRejectedSingleWordNoInputAge) return [];
+
+                turnState.AwaitingTurnCompletion = false;
+                session.LastTranscript = string.Empty;
+                session.LastIntent = null;
+                session.LastListenType = "no-input";
+                logger.LogInformation(
+                    "Closing no-speech turn session={SessionId} transId={TransId} reason=auto_finalize_single_word_no_input annotation=SOS_TIMEOUT",
+                    session.SessionId, turnState.TransId);
+                await sink.RecordTurnDiagnosticAsync("auto_finalize_single_word_no_input",
+                    BuildTurnDiagnosticSnapshot(session, envelope, new Dictionary<string, object?>
+                    {
+                        ["messageType"] = messageType,
+                        ["transcript"] = usableTranscript,
+                        ["turnAgeMs"] = (int)turnAge.TotalMilliseconds,
+                        ["finalizeAttemptCount"] = turnState.FinalizeAttemptCount
+                    }), cancellationToken);
+                var noInputReplies = ResponsePlanToSocketMessagesMapper.MapNoInput(
+                        turnState.TransId ?? session.LastTransId ?? string.Empty,
+                        turnState.ListenRules)
+                    .Select(map => new WebSocketReply { Text = map.Text, DelayMs = map.DelayMs })
+                    .ToArray();
+                ResetBufferedAudio(session);
+                ClearListenTracking(turnState);
+                return noInputReplies;
+            }
+
+            if (!hasUsableTranscript)
                 finalizedTurn = new TurnContext
                 {
                     TurnId = finalizedTurn.TurnId,
