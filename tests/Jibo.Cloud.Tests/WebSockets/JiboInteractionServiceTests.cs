@@ -37,43 +37,41 @@ public sealed class JiboInteractionServiceTests
     private const string GreetingLastReactiveUtcKey = "greetingsLastReactiveUtc";
 
     [Theory]
-    [InlineData("sing a song", "robot_can_sing", "Beep boop")]
-    [InlineData("sing me a song", "robot_can_sing", "Beep boop")]
-    [InlineData("can you sing", "robot_can_sing", "Beep boop")]
-    [InlineData("sing something", "robot_can_sing", "Beep boop")]
+    [InlineData("sing a song", "robot_can_sing", "Twinkle")]
+    [InlineData("sing me a song", "robot_can_sing", "Twinkle")]
+    [InlineData("can you sing", "robot_can_sing", "Twinkle")]
+    [InlineData("sing something", "robot_can_sing", "Twinkle")]
     [InlineData("sing a christmas song", "robot_sing_christmas_song", "Jingle bells")]
     [InlineData("sing a holiday song", "robot_sing_christmas_song", "Jingle bells")]
-    public async Task BuildDecisionAsync_Singing_IncludesMelodyAfterIntroduction(
+    public async Task BuildDecisionAsync_Singing_UsesOriginalMimPerformance(
         string transcript, string expectedIntent, string lyrics)
     {
         var decision = await CreateService().BuildDecisionAsync(new TurnContext
         {
-            RawTranscript = transcript,
-            NormalizedTranscript = transcript
+            RawTranscript = transcript, NormalizedTranscript = transcript
         });
-
         Assert.Equal(expectedIntent, decision.IntentName);
         Assert.Equal("chitchat-skill", decision.SkillName);
         Assert.Contains(lyrics, decision.ReplyText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("ScriptedResponse", decision.ContextUpdates![ChitchatRouteKey]);
-        var prompts = Assert.IsType<string[]>(decision.SkillPayload!["singing_esml_sequence"]);
-        Assert.True(prompts.Length > 1);
-        Assert.Equal(prompts[0], decision.SkillPayload["esml"]);
-        Assert.Empty(NativeTtsPromptAssertions.AssertCompatible(prompts[0]).Descendants("duration"));
-        var trees = prompts.Select(NativeTtsPromptAssertions.AssertCompatible).ToArray();
-        var durations = trees.SelectMany(tree => tree.Descendants("duration")).ToArray();
-        Assert.True(durations.Length >= 20);
-        Assert.All(durations, note =>
+        var prompts = Assert.IsType<SingingMimPrompt[]>(decision.SkillPayload!["singing_mim_sequence"]);
+        var catalog = await new InMemoryJiboExperienceContentRepository().GetCatalogAsync();
+        Assert.NotEmpty(prompts);
+        Assert.Equal(prompts[0].Esml, decision.SkillPayload["esml"]);
+        foreach (var prompt in prompts)
         {
-            Assert.False(string.IsNullOrWhiteSpace(note.Value));
-            var seconds = double.Parse(note.Attribute("set")!.Value, System.Globalization.CultureInfo.InvariantCulture);
-            Assert.InRange(seconds, .1, 1.5);
-            Assert.Equal("pitch", note.Parent!.Name.LocalName);
-        });
-        Assert.True(trees.SelectMany(tree => tree.Descendants("pitch")).Select(note => note.Attribute("mult")?.Value)
-            .Where(value => value is not null).Distinct().Count() >= 3);
-        Assert.InRange(durations.Sum(note => double.Parse(note.Attribute("set")!.Value,
-            System.Globalization.CultureInfo.InvariantCulture)), 6, 15);
+            var tree = NativeTtsPromptAssertions.AssertCompatible(prompt.Esml);
+            var original = Assert.Single(catalog.MimReplies[prompt.MimId], reply => reply.PromptId == prompt.PromptId);
+            var sourceTree = System.Xml.Linq.XElement.Parse($"<speak>{original.OriginalEsml}</speak>");
+            foreach (var element in tree.Elements())
+                Assert.Contains(sourceTree.Elements(), source => System.Xml.Linq.XNode.DeepEquals(source, element));
+        }
+        var performance = prompts.Where(prompt => prompt.MimId != "RA_JBO_Sing").ToArray();
+        Assert.NotEmpty(performance);
+        Assert.All(performance, prompt => Assert.Equal(expectedIntent == "robot_can_sing"
+            ? "RI_JBO_HasFavoriteSinger" : "RI_JBO_KnowsJingleBellsSong", prompt.MimId));
+        Assert.Contains(performance, prompt => prompt.Esml.Contains("<pitch"));
+        Assert.DoesNotContain("Beep boop", decision.ReplyText);
     }
 
     [Fact]

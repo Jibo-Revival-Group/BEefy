@@ -17,12 +17,24 @@ internal static class NativeTtsPromptAssertions
         Assert.False(string.IsNullOrWhiteSpace(tree.Value));
         foreach (var tag in tree.Descendants())
         {
-            Assert.Contains(tag.Name.LocalName, new[] { "pitch", "duration" });
+            Assert.Contains(tag.Name.LocalName, new[] { "pitch", "duration", "break", "style", "phoneme" });
             Assert.DoesNotContain(tag.Ancestors(), ancestor => ancestor.Name == tag.Name);
             var attribute = Assert.Single(tag.Attributes());
-            Assert.Equal(tag.Name.LocalName == "pitch" ? "mult" : "set", attribute.Name.LocalName);
-            var value = double.Parse(attribute.Value, CultureInfo.InvariantCulture);
-            Assert.True(double.IsFinite(value) && value > 0);
+            var supported = tag.Name.LocalName switch
+            {
+                "pitch" => new[] { "mult", "add" },
+                "duration" => new[] { "set", "stretch" },
+                "break" => new[] { "size" },
+                "style" => new[] { "set" },
+                "phoneme" => new[] { "ph" },
+                _ => []
+            };
+            Assert.Contains(attribute.Name.LocalName, supported);
+            if (tag.Name.LocalName is "pitch" or "duration" or "break")
+            {
+                var value = double.Parse(attribute.Value, CultureInfo.InvariantCulture);
+                Assert.True(double.IsFinite(value) && value > 0);
+            }
         }
         return tree;
     }

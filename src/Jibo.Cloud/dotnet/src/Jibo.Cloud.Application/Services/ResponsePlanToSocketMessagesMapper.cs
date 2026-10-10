@@ -1140,8 +1140,9 @@ public sealed class ResponsePlanToSocketMessagesMapper
 
         if (SingingDecisionBuilder.IsSingingIntent(plan.IntentName))
         {
-            var singingPrompts = ReadPayloadStringArray(skillPayload, "singing_esml_sequence");
-            if (singingPrompts.Count > 0)
+            if (skillPayload is not null &&
+                skillPayload.TryGetValue("singing_mim_sequence", out var singingSequence) &&
+                singingSequence is IReadOnlyList<SingingMimPrompt> singingPrompts && singingPrompts.Count > 0)
             {
                 // Nimbus's processSlimBehaviors plays each SLIM in a SEQUENCE
                 // as a separate MIM, and hence a separate native TTS request.
@@ -1154,8 +1155,14 @@ public sealed class ResponsePlanToSocketMessagesMapper
                     {
                         play = new
                         {
-                            esml = prompt,
-                            meta = playConfig["meta"],
+                            esml = prompt.Esml,
+                            meta = new
+                            {
+                                mim_id = prompt.MimId,
+                                prompt_id = prompt.PromptId,
+                                prompt_sub_category = "AN",
+                                mim_type = "announcement"
+                            },
                             autoRuleConfig = new
                             {
                                 punctuation = false,

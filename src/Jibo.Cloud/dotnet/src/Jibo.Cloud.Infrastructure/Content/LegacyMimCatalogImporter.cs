@@ -79,7 +79,8 @@ public static class LegacyMimCatalogImporter
                     normalizedPrompt.Text,
                     prompt.Weight,
                     prompt.PromptId,
-                    emotion);
+                    emotion,
+                    prompt.Prompt);
 
                 builder.Add(
                     bucket.Value,
@@ -681,6 +682,7 @@ public static class LegacyMimCatalogImporter
             {
                 Condition = normalizedCondition,
                 Reply = normalizedReply,
+                OriginalEsml = value.OriginalEsml,
                 Weight = value.Weight,
                 MimId = value.MimId,
                 PromptId = value.PromptId,
@@ -1011,7 +1013,8 @@ public static class LegacyMimCatalogImporter
             string text,
             double? weight = null,
             string? promptId = null,
-            string? emotion = null)
+            string? emotion = null,
+            string? originalEsml = null)
         {
             if (string.IsNullOrWhiteSpace(mimId)) return;
 
@@ -1021,7 +1024,7 @@ public static class LegacyMimCatalogImporter
                 _mimReplies[mimId] = replies;
             }
 
-            AddDistinct(replies, condition, text, weight, mimId, promptId, emotion);
+            AddDistinct(replies, condition, text, weight, mimId, promptId, emotion, originalEsml);
         }
 
         public void Add(
@@ -1487,7 +1490,8 @@ public static class LegacyMimCatalogImporter
             double? weight = null,
             string? mimId = null,
             string? promptId = null,
-            string? emotion = null)
+            string? emotion = null,
+            string? originalEsml = null)
         {
             var normalizedCondition = NormalizeCondition(condition);
             if (target.Any(value =>
@@ -1500,6 +1504,7 @@ public static class LegacyMimCatalogImporter
             {
                 Condition = normalizedCondition,
                 Reply = text,
+                OriginalEsml = originalEsml,
                 Weight = weight ?? 1.0,
                 MimId = mimId,
                 PromptId = promptId,

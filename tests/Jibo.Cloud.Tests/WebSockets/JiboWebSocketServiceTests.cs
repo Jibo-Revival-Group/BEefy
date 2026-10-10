@@ -6560,12 +6560,12 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Theory]
-    [InlineData("LISTEN", "sing me a song", "robot_can_sing", "runtime-sing-robot-song")]
-    [InlineData("CLIENT_ASR", "sing something", "robot_can_sing", "runtime-sing-robot-song")]
-    [InlineData("CLIENT_NLU", "sing a song", "robot_can_sing", "runtime-sing-robot-song")]
-    [InlineData("CLIENT_NLU", null, "robot_can_sing", "runtime-sing-robot-song")]
-    [InlineData("LISTEN", "sing a christmas song", "robot_sing_christmas_song", "runtime-sing-jingle-bells")]
-    [InlineData("CLIENT_NLU", null, "robot_sing_christmas_song", "runtime-sing-jingle-bells")]
+    [InlineData("LISTEN", "sing me a song", "robot_can_sing", "RI_JBO_HasFavoriteSinger")]
+    [InlineData("CLIENT_ASR", "sing something", "robot_can_sing", "RI_JBO_HasFavoriteSinger")]
+    [InlineData("CLIENT_NLU", "sing a song", "robot_can_sing", "RI_JBO_HasFavoriteSinger")]
+    [InlineData("CLIENT_NLU", null, "robot_can_sing", "RI_JBO_HasFavoriteSinger")]
+    [InlineData("LISTEN", "sing a christmas song", "robot_sing_christmas_song", "RI_JBO_KnowsJingleBellsSong")]
+    [InlineData("CLIENT_NLU", null, "robot_sing_christmas_song", "RI_JBO_KnowsJingleBellsSong")]
     public async Task Singing_DispatchesCompleteMelodyInNativeSkillAction(
         string messageType, string? transcript, string intent, string mimId)
     {
@@ -6589,33 +6589,32 @@ public sealed class JiboWebSocketServiceTests
             .GetProperty("config").GetProperty("jcp");
         Assert.Equal("SEQUENCE", jcp.GetProperty("type").GetString());
         var children = jcp.GetProperty("children").EnumerateArray().ToArray();
-        Assert.True(children.Length > 1);
+        Assert.NotEmpty(children);
         var songText = new StringBuilder();
         var noteCount = 0;
+        var sourceMimIds = new List<string>();
         for (var index = 0; index < children.Length; index++)
         {
             Assert.Equal("SLIM", children[index].GetProperty("type").GetString());
             var play = children[index].GetProperty("config").GetProperty("play");
             var esml = NativeTtsPromptAssertions.AssertCompatible(play.GetProperty("esml").GetString()!);
             var notes = esml.Descendants("duration").ToArray();
-            if (index == 0)
+            if (index == 0 && intent == "robot_can_sing")
             {
                 Assert.Empty(notes);
-                Assert.Contains("sing", esml.Value);
-            }
-            else
-            {
-                Assert.NotEmpty(notes);
+                Assert.Contains("sing", esml.Value, StringComparison.OrdinalIgnoreCase);
             }
             noteCount += notes.Length;
             songText.Append(esml.Value);
-            Assert.Equal(mimId, play.GetProperty("meta").GetProperty("mim_id").GetString());
+            sourceMimIds.Add(play.GetProperty("meta").GetProperty("mim_id").GetString()!);
+            Assert.StartsWith(sourceMimIds.Last(), play.GetProperty("meta").GetProperty("prompt_id").GetString());
             Assert.Equal("announcement", play.GetProperty("meta").GetProperty("mim_type").GetString());
             Assert.All(play.GetProperty("autoRuleConfig").EnumerateObject(), property =>
                 Assert.False(property.Value.GetBoolean()));
         }
-        Assert.True(noteCount >= 20);
-        Assert.Contains(intent == "robot_can_sing" ? "Beep" : "bells", songText.ToString());
+        Assert.True(noteCount > 0);
+        Assert.Contains(mimId, sourceMimIds);
+        Assert.Contains(intent == "robot_can_sing" ? "Twinkle" : "bells", songText.ToString());
     }
 
     [Theory]

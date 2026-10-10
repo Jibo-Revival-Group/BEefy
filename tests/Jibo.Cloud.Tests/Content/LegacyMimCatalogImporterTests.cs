@@ -191,6 +191,12 @@ public sealed class LegacyMimCatalogImporterTests
 
         var catalog = LegacyMimCatalogImporter.ImportCatalog(rootDirectory);
 
+        var originalSong = Assert.Single(catalog.MimReplies["RI_JBO_HasFavoriteSinger"],
+            reply => reply.PromptId == "RI_JBO_HasFavoriteSinger_AN_01");
+        Assert.Contains("<duration stretch='1.3'>", originalSong.OriginalEsml);
+        Assert.Contains("<pitch mult='0.8'>Twinkle", originalSong.OriginalEsml);
+        Assert.DoesNotContain("<pitch", originalSong.Reply);
+
         Assert.Contains("Singing is not my strong suit.", catalog.SingReplies);
         Assert.Contains(catalog.SingReplies, reply =>
             reply.Contains("not award winning", StringComparison.OrdinalIgnoreCase));

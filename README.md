@@ -43,14 +43,13 @@ Install the local packages once:
 npm install --prefix conversation
 ```
 
-Say “Hey Jibo, sing me a song” for a short robot song, or “Hey Jibo, sing a
-Christmas song” for a Jingle Bells refrain. The server sends the introduction
-and melody as a native sequence of short ESML prompts, with a pitch and duration
-for each syllable. Each prompt stays under 400 characters and avoids nested pitch
-or duration tags, as required by the robot's TTS service. Speech auto rules are
-disabled for the performance so they cannot change the note markup. This uses
-Jibo's own speech voice and needs no song download or API key.
-The sound still needs listening verification on a physical robot.
+Say “Hey Jibo, sing me a song” for the original Twinkle Twinkle performance
+from `RI_JBO_HasFavoriteSinger.mim`, preceded by the original `RA_JBO_Sing.mim`
+introduction. “Hey Jibo, sing a Christmas song” uses the original seasonal
+`RI_JBO_KnowsJingleBellsSong.mim` prompt. Imported MIM pitch, duration, style and
+prompt IDs are preserved. Short prompts play as a native SLIM sequence to stay
+within the robot TTS limit. No song download or API key is required; listening
+verification on a physical robot is still needed.
 
 ## Speech and NLU tuning
 

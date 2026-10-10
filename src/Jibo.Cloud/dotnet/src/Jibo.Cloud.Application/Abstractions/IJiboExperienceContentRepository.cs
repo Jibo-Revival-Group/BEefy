@@ -9,6 +9,7 @@ public sealed class JiboConditionedReply
 {
     public string Condition { get; init; } = string.Empty;
     public string Reply { get; init; } = string.Empty;
+    public string? OriginalEsml { get; init; }
     public double Weight { get; init; } = 1.0;
     public string? MimId { get; init; }
     public string? PromptId { get; init; }

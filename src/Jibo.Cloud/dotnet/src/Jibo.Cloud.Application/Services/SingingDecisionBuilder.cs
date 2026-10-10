@@ -1,8 +1,10 @@
-using System.Globalization;
-using System.Security;
 using System.Text;
+using System.Xml.Linq;
+using Jibo.Cloud.Application.Abstractions;
 
 namespace Jibo.Cloud.Application.Services;
+
+internal sealed record SingingMimPrompt(string Esml, string MimId, string? PromptId);
 
 internal static class SingingDecisionBuilder
 {
@@ -10,72 +12,70 @@ internal static class SingingDecisionBuilder
         string.Equals(intent, "robot_can_sing", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(intent, "robot_sing_christmas_song", StringComparison.OrdinalIgnoreCase);
 
-    // Semitones relative to Jibo's voice, with a duration in seconds per syllable.
-    // Keep the performance in native ESML so it needs no remote audio or new skill.
-    private readonly record struct Note(string Syllable, int Semitones, double Seconds);
-
-    private static readonly Note[] RobotSong =
-    [
-        new("Beep", 0, .35), new("boop", 4, .35), new("beep", 7, .35), new("boop", 4, .7),
-        new("I'm", 0, .35), new("a", 2, .35), new("ro", 4, .35), new("bot", 2, .35),
-        new("and", 0, .35), new("I", 4, .35), new("sing", 7, .7),
-        new("Beep", 7, .35), new("boop", 4, .35), new("beep", 2, .35), new("boop", 0, .7),
-        new("a", 2, .35), new("lit", 4, .35), new("tle", 2, .35),
-        new("song", 0, .35), new("for", 2, .35), new("you", 0, 1.0)
-    ];
-
-    // A short refrain of the public-domain song, with syllables aligned to notes.
-    private static readonly Note[] JingleBells =
-    [
-        new("Jin", 4, .35), new("gle", 4, .35), new("bells", 4, .7),
-        new("jin", 4, .35), new("gle", 4, .35), new("bells", 4, .7),
-        new("jin", 4, .35), new("gle", 7, .35), new("all", 0, .525),
-        new("the", 2, .175), new("way", 4, 1.4),
-        new("Oh", 5, .35), new("what", 5, .35), new("fun", 5, .525), new("it", 5, .175),
-        new("is", 5, .35), new("to", 4, .35), new("ride", 4, .35), new("in", 4, .175),
-        new("a", 4, .175), new("one", 4, .35), new("horse", 2, .35),
-        new("o", 2, .35), new("pen", 4, .35), new("sleigh", 2, .7)
-    ];
-
-    internal static JiboInteractionDecision Build(bool holiday)
+    internal static JiboInteractionDecision Build(
+        JiboExperienceCatalog catalog, IJiboRandomizer randomizer, bool holiday,
+        DateTimeOffset? referenceLocalTime = null)
     {
-        var intro = holiday
-            ? "I'll sing a little Jingle Bells for you."
-            : "Well I'm not much of a singer, but here's one I've been working on.";
-        var lyrics = holiday
-            ? "Jingle bells, jingle bells, jingle all the way. Oh what fun it is to ride in a one horse open sleigh."
-            : "Beep boop beep boop. I'm a robot and I sing. Beep boop beep boop, a little song for you.";
-        // Nimbus requests /tts_token_times for an entire SLIM before it speaks.
-        // Native TTS rejects long prompts and nested pitch/duration tags. Send
-        // the introduction and short note groups as sequential SLIMs instead.
-        var prompts = new List<string> { $"<speak>{SecurityElement.Escape(intro)}</speak>" };
-        foreach (var notes in (holiday ? JingleBells : RobotSong).Chunk(4))
+        var intent = holiday ? "robot_sing_christmas_song" : "robot_can_sing";
+        var context = LegacyMimScriptedReplyBuilder.BuildScriptedContext(referenceLocalTime);
+        var prompts = new List<SingingMimPrompt>();
+        var spokenText = new StringBuilder();
+
+        void AppendMim(string mimId, bool songOnly = false)
         {
-            var esml = new StringBuilder("<speak>");
-            foreach (var note in notes)
+            if (!LegacyMimScriptedReplyBuilder.TrySelectMimReply(catalog, randomizer,
+                    intent, context, null, mimId, [], out var selection)) return;
+            var selected = selection!;
+            var original = catalog.MimReplies[mimId].First(reply => reply.PromptId == selected.PromptId);
+            var root = XElement.Parse($"<speak>{original.OriginalEsml ?? selected.ReplyText}</speak>");
+            var nodes = root.Nodes().ToArray();
+            if (songOnly)
             {
-                var multiplier = Math.Pow(2, note.Semitones / 12.0).ToString("0.0000", CultureInfo.InvariantCulture);
-                // Pitch and duration may wrap each other, but neither may wrap
-                // another tag of its own type (BEnch's TTS service contract).
-                esml.Append("<pitch mult='").Append(multiplier).Append("'><duration set='")
-                    .Append(note.Seconds.ToString("0.###", CultureInfo.InvariantCulture))
-                    .Append("'>").Append(SecurityElement.Escape(note.Syllable))
-                    .Append("</duration></pitch> ");
+                // The original favorite-singer MIM starts with a conversational
+                // reply. Its Twinkle performance starts at the first duration tag.
+                nodes = nodes.SkipWhile(node => node is not XElement { Name.LocalName: "duration" }).ToArray();
             }
-            prompts.Add(esml.Append("</speak>").ToString());
+            var chunk = new StringBuilder();
+            void Flush()
+            {
+                if (chunk.Length == 0) return;
+                prompts.Add(new SingingMimPrompt($"<speak>{chunk}</speak>", mimId, selected.PromptId));
+                chunk.Clear();
+            }
+            foreach (var node in nodes)
+            {
+                var markup = node.ToString(SaveOptions.DisableFormatting);
+                if (chunk.Length + markup.Length > 380) Flush();
+                // Split only between complete top-level nodes: all original
+                // pitch, duration, phoneme and style markup stays intact.
+                chunk.Append(markup);
+                spokenText.Append(node is XElement element ? element.Value : ((XText)node).Value);
+            }
+            Flush();
+            spokenText.Append(' ');
         }
 
-        return new JiboInteractionDecision(
-            holiday ? "robot_sing_christmas_song" : "robot_can_sing",
-            $"{intro} {lyrics}",
-            "chitchat-skill",
+        if (holiday)
+            AppendMim("RI_JBO_KnowsJingleBellsSong");
+        else
+        {
+            AppendMim("RA_JBO_Sing");
+            AppendMim("RI_JBO_HasFavoriteSinger", songOnly: true);
+        }
+
+        // Missing imported content must not result in an empty playback action.
+        if (prompts.Count == 0)
+            return new JiboInteractionDecision(intent, "I don't have a song ready right now.",
+                ContextUpdates: ScriptedResponseDecisionBuilder.BuildScriptedResponseContextUpdates());
+
+        return new JiboInteractionDecision(intent, spokenText.ToString().Trim(), "chitchat-skill",
             new Dictionary<string, object?>
             {
-                ["esml"] = prompts[0],
-                ["singing_esml_sequence"] = prompts.ToArray(),
-                ["mim_id"] = holiday ? "runtime-sing-jingle-bells" : "runtime-sing-robot-song",
+                ["esml"] = prompts[0].Esml,
+                ["singing_mim_sequence"] = prompts.ToArray(),
+                ["mim_id"] = prompts[0].MimId,
+                ["prompt_id"] = prompts[0].PromptId,
                 ["mim_type"] = "announcement"
-            },
-            ScriptedResponseDecisionBuilder.BuildScriptedResponseContextUpdates());
+            }, ScriptedResponseDecisionBuilder.BuildScriptedResponseContextUpdates());
     }
 }
