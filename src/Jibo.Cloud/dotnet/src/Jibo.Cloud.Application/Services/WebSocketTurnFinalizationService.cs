@@ -2086,6 +2086,7 @@ public sealed class WebSocketTurnFinalizationService(
                 !SkillListenOwnership.ShouldSuppressCompetingSpeech(finalizedTurn, plan.IntentName) &&
                 (messageType != "CLIENT_NLU" ||
                  string.Equals(plan.IntentName, "twerk", StringComparison.OrdinalIgnoreCase) ||
+                 SingingDecisionBuilder.IsSingingIntent(plan.IntentName) ||
                  string.Equals(plan.IntentName, "word_of_the_day_guess", StringComparison.OrdinalIgnoreCase) ||
                  IsCloudOwnedPersonalReportIntent(plan.IntentName) ||
                  ShouldSpeakCloudOwnedClientNlu(finalizedTurn, plan.IntentName));

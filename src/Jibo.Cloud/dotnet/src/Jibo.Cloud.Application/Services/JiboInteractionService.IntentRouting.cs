@@ -75,6 +75,12 @@ public sealed partial class JiboInteractionService
 
         if (RepeatLastCommandParser.IsRepeatRequest(loweredTranscript)) return "repeat_last_command";
 
+        // CLIENT_NLU may supply only the semantic intent, without recognized text.
+        if (!isSkillOwnedListen && !isYesNoTurn && SingingDecisionBuilder.IsSingingIntent(clientIntent) &&
+            (string.IsNullOrWhiteSpace(loweredTranscript) ||
+             string.Equals(loweredTranscript, clientIntent, StringComparison.OrdinalIgnoreCase)))
+            return clientIntent!.ToLowerInvariant();
+
         if (IsPreferenceRecallQuestion(loweredTranscript) || IsPreferenceRecallAttempt(loweredTranscript))
             return "memory_get_preference";
 

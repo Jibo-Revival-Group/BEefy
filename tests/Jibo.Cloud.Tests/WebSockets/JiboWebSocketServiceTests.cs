@@ -6559,6 +6559,41 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Theory]
+    [InlineData("LISTEN", "sing me a song", "robot_can_sing", "runtime-sing-robot-song")]
+    [InlineData("CLIENT_ASR", "sing something", "robot_can_sing", "runtime-sing-robot-song")]
+    [InlineData("CLIENT_NLU", "sing a song", "robot_can_sing", "runtime-sing-robot-song")]
+    [InlineData("CLIENT_NLU", null, "robot_can_sing", "runtime-sing-robot-song")]
+    [InlineData("LISTEN", "sing a christmas song", "robot_sing_christmas_song", "runtime-sing-jingle-bells")]
+    [InlineData("CLIENT_NLU", null, "robot_sing_christmas_song", "runtime-sing-jingle-bells")]
+    public async Task Singing_DispatchesCompleteMelodyInNativeSkillAction(
+        string messageType, string? transcript, string intent, string mimId)
+    {
+        var replies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Token = "hub-singing-playback", Text = JsonSerializer.Serialize(new
+            {
+                type = messageType, transID = "singing-playback",
+                data = new { text = transcript, intent, rules = new[] { "launch", "globals/global_commands_launch" } }
+            })
+        });
+        Assert.Equal(new[] { "EOS", "LISTEN", "SKILL_ACTION" }, replies.Select(ReadReplyType));
+        using var listen = JsonDocument.Parse(replies[1].Text!);
+        var match = listen.RootElement.GetProperty("data").GetProperty("match");
+        Assert.Equal("chitchat-skill", match.GetProperty("skillID").GetString());
+        Assert.True(match.GetProperty("launch").GetBoolean());
+        using var action = JsonDocument.Parse(replies[2].Text!);
+        Assert.True(action.RootElement.GetProperty("final").GetBoolean());
+        var play = action.RootElement.GetProperty("data").GetProperty("action")
+            .GetProperty("config").GetProperty("jcp").GetProperty("config").GetProperty("play");
+        var esml = System.Xml.Linq.XElement.Parse(play.GetProperty("esml").GetString()!);
+        Assert.True(esml.Descendants("duration").Count() >= 20);
+        Assert.Contains(intent == "robot_can_sing" ? "Beep" : "bells", esml.Value);
+        Assert.Equal(mimId, play.GetProperty("meta").GetProperty("mim_id").GetString());
+        Assert.Equal("announcement", play.GetProperty("meta").GetProperty("mim_type").GetString());
+    }
+
+    [Theory]
     [InlineData("LISTEN", "twerk")]
     [InlineData("LISTEN", "can you twerk")]
     [InlineData("CLIENT_ASR", "twerk")]

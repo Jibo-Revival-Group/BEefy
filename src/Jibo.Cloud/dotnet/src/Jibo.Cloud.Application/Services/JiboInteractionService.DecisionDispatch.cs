@@ -1497,18 +1497,8 @@ public sealed partial class JiboInteractionService
                 catalog,
                 "robot_best_friends",
                 "best friends with anyone in my Loop"),
-            "robot_can_sing" => BuildScriptedSingDecision(
-                catalog,
-                "robot_can_sing",
-                "not much of a singer",
-                "singing is not my strong suit",
-                "not award winning"),
-            "robot_sing_christmas_song" => BuildScriptedHolidaySingDecision(
-                catalog,
-                "robot_sing_christmas_song",
-                "Jingle Bells",
-                "Frosty the Snowman",
-                "holiday songs"),
+            "robot_can_sing" => SingingDecisionBuilder.Build(holiday: false),
+            "robot_sing_christmas_song" => SingingDecisionBuilder.Build(holiday: true),
             "robot_what_are_you_made_of" => BuildScriptedPersonalityDecision(
                 catalog,
                 "robot_what_are_you_made_of",

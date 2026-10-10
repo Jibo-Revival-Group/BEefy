@@ -43,6 +43,12 @@ Install the local packages once:
 npm install --prefix conversation
 ```
 
+Say “Hey Jibo, sing me a song” for a short robot song, or “Hey Jibo, sing a
+Christmas song” for a Jingle Bells refrain. The server sends the introduction
+and melody together through native ESML, with a pitch and duration for each
+syllable. This uses Jibo's own speech voice and needs no song download or API key.
+The sound still needs listening verification on a physical robot.
+
 ## Speech and NLU tuning
 
 Jev can classify unknown intents after the existing NLU, using independent

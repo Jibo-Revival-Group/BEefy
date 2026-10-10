@@ -33,7 +33,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
         var isWordOfDayLaunch = string.Equals(plan.IntentName, "word_of_the_day", StringComparison.OrdinalIgnoreCase);
         var isWordOfDayGuess =
             string.Equals(plan.IntentName, "word_of_the_day_guess", StringComparison.OrdinalIgnoreCase);
-        var isTwerkIntent = string.Equals(plan.IntentName, "twerk", StringComparison.OrdinalIgnoreCase);
+        var isPerformanceIntent = string.Equals(plan.IntentName, "twerk", StringComparison.OrdinalIgnoreCase) ||
+                                  SingingDecisionBuilder.IsSingingIntent(plan.IntentName);
         var isRadioLaunch = string.Equals(plan.IntentName, "radio", StringComparison.OrdinalIgnoreCase) ||
                             string.Equals(plan.IntentName, "radio_genre", StringComparison.OrdinalIgnoreCase);
         var isBadAppleLaunch = string.Equals(plan.IntentName, "bad_apple", StringComparison.OrdinalIgnoreCase) &&
@@ -105,7 +106,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
             ? wordOfDayGuess
             : isWordOfDayLaunch
                 ? string.Empty
-                : isGlobalCommand || isTwerkIntent
+                : isGlobalCommand || isPerformanceIntent
                     ? transcript
                     : isRadioLaunch || isBadAppleLaunch
                         ? transcript
@@ -202,7 +203,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                                    !isSkillListenIntent &&
                                    !isPromptEchoIntent &&
                                    !(isYesNoIntent && isSkillOwnedYesNoTurn);
-        var isTwerkCloudLaunch = shouldEmitCloudSpeak && isTwerkIntent;
+        var isPerformanceCloudLaunch = shouldEmitCloudSpeak && isPerformanceIntent;
         // Pegasus cloud LISTEN identifies the cloud skill on the wire. The robot's
         // Skills Service Manager remaps it to @be/nimbus and sets match.cloudSkill.
         // Pegasus answer LISTEN: skillID="answer", onRobot=false, launch=true, no cloudSkill on wire.
@@ -237,11 +238,11 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 skipSurprises = true
             };
         }
-        else if (isAnswerCloudSkill || isTwerkCloudLaunch)
+        else if (isAnswerCloudSkill || isPerformanceCloudLaunch)
         {
             listenMatch = new
             {
-                skillID = isTwerkCloudLaunch ? "chitchat-skill" : SearchThinkingPreludeFactory.AnswerSkillId,
+                skillID = isPerformanceCloudLaunch ? "chitchat-skill" : SearchThinkingPreludeFactory.AnswerSkillId,
                 launch = true,
                 onRobot = false,
                 skipSurprises = true
@@ -311,7 +312,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 ["match"] = listenMatch
             }
         };
-        if (isAnswerCloudSkill || isTwerkCloudLaunch)
+        if (isAnswerCloudSkill || isPerformanceCloudLaunch)
             listenPayload["final"] = false;
 
         var skipListenAndEos = session.Metadata.TryGetValue(
@@ -325,7 +326,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         if (!skipListenAndEos)
         {
             // Pegasus cloud-skill order: EOS then non-final LISTEN, then SKILL_ACTION later.
-            if (isAnswerCloudSkill || isTwerkCloudLaunch)
+            if (isAnswerCloudSkill || isPerformanceCloudLaunch)
             {
                 messages.Add(new SocketReplyPlan(JsonSerializer.Serialize(new
                 {
