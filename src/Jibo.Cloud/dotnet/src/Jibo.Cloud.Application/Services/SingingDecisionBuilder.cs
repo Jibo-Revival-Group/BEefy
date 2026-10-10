@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Jibo.Cloud.Application.Abstractions;
 
@@ -8,13 +9,41 @@ internal sealed record SingingMimPrompt(string Esml, string MimId, string? Promp
 
 internal static class SingingDecisionBuilder
 {
+    internal static readonly string[] HolidayMimIds =
+    [
+        "RI_JBO_KnowsJingleBellsSong", "RI_JBO_KnowsFrostySnowmanSong",
+        "RI_JBO_KnowsRudolphSong", "RI_JBO_KnowsWinterWonderlandSong",
+        "RI_JBO_KnowsSantaClausIsComingToTownSong", "RI_JBO_KnowsFelizNavidadSong",
+        "RI_JBO_KnowsDreidelSong"
+    ];
+
+    private static string Normalize(string text) => Regex.Replace(text.ToLowerInvariant(), "[^a-z0-9]+", " ").Trim();
+
+    internal static string? ResolveNamedHolidayMim(string transcript)
+    {
+        var text = $" {Normalize(transcript)} ";
+        var index = text.Contains(" jingle bells ") ? 0 :
+            text.Contains(" frosty ") ? 1 : text.Contains(" rudolph ") ? 2 :
+            text.Contains(" winter wonderland ") ? 3 :
+            text.Contains(" santa claus ") || text.Contains(" santa clause ") ? 4 :
+            text.Contains(" feliz navidad ") ? 5 : text.Contains(" dreidel ") ? 6 : -1;
+        return index < 0 ? null : HolidayMimIds[index];
+    }
+
+    internal static bool IsHolidaySongRequest(string transcript)
+    {
+        var text = $" {Normalize(transcript)} ";
+        return text.Contains(" sing ") && (ResolveNamedHolidayMim(transcript) is not null ||
+            text.Contains(" christmas ") || text.Contains(" holiday "));
+    }
+
     internal static bool IsSingingIntent(string? intent) =>
         string.Equals(intent, "robot_can_sing", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(intent, "robot_sing_christmas_song", StringComparison.OrdinalIgnoreCase);
 
     internal static JiboInteractionDecision Build(
         JiboExperienceCatalog catalog, IJiboRandomizer randomizer, bool holiday,
-        DateTimeOffset? referenceLocalTime = null)
+        DateTimeOffset? referenceLocalTime = null, string transcript = "")
     {
         var intent = holiday ? "robot_sing_christmas_song" : "robot_can_sing";
         var context = LegacyMimScriptedReplyBuilder.BuildScriptedContext(referenceLocalTime);
@@ -56,7 +85,22 @@ internal static class SingingDecisionBuilder
         }
 
         if (holiday)
-            AppendMim("RI_JBO_KnowsJingleBellsSong");
+        {
+            var namedMim = ResolveNamedHolidayMim(transcript);
+            if (namedMim is not null)
+                AppendMim(namedMim);
+            else
+            {
+                var available = HolidayMimIds.Where(mimId => catalog.MimReplies.TryGetValue(mimId, out var replies) &&
+                    LegacyMimReplySelector.FilterMatchingReplies(replies, context).Length > 0).ToArray();
+                if (available.Length > 0)
+                {
+                    var allSongs = $" {Normalize(transcript)} ".Contains(" all ");
+                    foreach (var mimId in allSongs ? available : [randomizer.Choose(available)])
+                        AppendMim(mimId);
+                }
+            }
+        }
         else
         {
             AppendMim("RA_JBO_Sing");

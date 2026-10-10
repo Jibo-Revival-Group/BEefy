@@ -43,13 +43,15 @@ Install the local packages once:
 npm install --prefix conversation
 ```
 
-Say “Hey Jibo, sing me a song” for the original Twinkle Twinkle performance
-from `RI_JBO_HasFavoriteSinger.mim`, preceded by the original `RA_JBO_Sing.mim`
-introduction. “Hey Jibo, sing a Christmas song” uses the original seasonal
-`RI_JBO_KnowsJingleBellsSong.mim` prompt. Imported MIM pitch, duration, style and
-prompt IDs are preserved. Short prompts play as a native SLIM sequence to stay
-within the robot TTS limit. No song download or API key is required; listening
-verification on a physical robot is still needed.
+Say “Hey Jibo, sing me a song” for the original Twinkle Twinkle performance.
+“Sing a Christmas song” chooses from all seven original holiday song MIMs:
+Jingle Bells, Frosty the Snowman, Rudolph, Winter Wonderland, Santa Claus Is
+Coming to Town, Feliz Navidad, and Dreidel. You can request one by name, such as
+“Hey Jibo, sing Rudolph”, or say “sing all the Christmas songs” for the repertoire.
+All are available throughout the year; original seasonal comments are preserved.
+These are short performances, not full songs. Imported MIM markup and prompt IDs
+are preserved and play as short native SLIMs within the robot TTS limit. No song
+download or API key is required; robot audio verification is still needed.
 
 ## Speech and NLU tuning
 

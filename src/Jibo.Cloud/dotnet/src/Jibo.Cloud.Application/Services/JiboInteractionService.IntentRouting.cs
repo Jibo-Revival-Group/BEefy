@@ -580,6 +580,9 @@ public sealed partial class JiboInteractionService
 
         if (IsDanceAbilityQuestion(loweredTranscript)) return "robot_can_dance";
 
+        if (SingingDecisionBuilder.IsHolidaySongRequest(loweredTranscript))
+            return "robot_sing_christmas_song";
+
         if (MatchesAny(
                 loweredTranscript,
                 "can you sing a christmas song",

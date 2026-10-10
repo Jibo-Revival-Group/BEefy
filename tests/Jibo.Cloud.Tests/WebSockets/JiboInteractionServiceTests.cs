@@ -74,6 +74,64 @@ public sealed class JiboInteractionServiceTests
         Assert.DoesNotContain("Beep boop", decision.ReplyText);
     }
 
+    public static IEnumerable<object[]> NamedHolidaySongs()
+    {
+        var songs = new[]
+        {
+            ("sing Jingle Bells", "RI_JBO_KnowsJingleBellsSong"),
+            ("can you sing Frosty the Snowman", "RI_JBO_KnowsFrostySnowmanSong"),
+            ("sing Rudolph the Red-Nosed Reindeer", "RI_JBO_KnowsRudolphSong"),
+            ("please sing Winter Wonderland", "RI_JBO_KnowsWinterWonderlandSong"),
+            ("sing Santa Claus Is Coming to Town", "RI_JBO_KnowsSantaClausIsComingToTownSong"),
+            ("sing Feliz Navidad", "RI_JBO_KnowsFelizNavidadSong"),
+            ("sing Dreidel", "RI_JBO_KnowsDreidelSong")
+        };
+        foreach (var (phrase, mimId) in songs)
+        foreach (var month in new[] { 7, 11, 12 })
+            yield return new object[] { phrase, mimId, month };
+    }
+
+    [Theory]
+    [MemberData(nameof(NamedHolidaySongs))]
+    public async Task Singing_NamedHolidaySongs_UseOriginalMimsThroughoutYear(string phrase, string mimId, int month)
+    {
+        var catalog = await new InMemoryJiboExperienceContentRepository().GetCatalogAsync();
+        var time = new DateTimeOffset(2026, month, 20, 12, 0, 0, TimeSpan.Zero);
+        var decision = SingingDecisionBuilder.Build(catalog, new FirstItemRandomizer(), true, time, phrase);
+        var prompts = Assert.IsType<SingingMimPrompt[]>(decision.SkillPayload!["singing_mim_sequence"]);
+        Assert.NotEmpty(prompts);
+        Assert.All(prompts, prompt =>
+        {
+            Assert.Equal(mimId, prompt.MimId);
+            NativeTtsPromptAssertions.AssertCompatible(prompt.Esml);
+            var original = Assert.Single(catalog.MimReplies[mimId], reply => reply.PromptId == prompt.PromptId);
+            Assert.True(LegacyMimConditionEvaluator.Matches(original.Condition,
+                LegacyMimScriptedReplyBuilder.BuildScriptedContext(time)));
+        });
+        var routed = await CreateService().BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = phrase, NormalizedTranscript = phrase
+        });
+        Assert.Equal("robot_sing_christmas_song", routed.IntentName);
+        Assert.Equal(mimId, routed.SkillPayload!["mim_id"]);
+    }
+
+    [Fact]
+    public async Task Singing_GenericHolidayRequest_CanSelectEntireRepertoire()
+    {
+        var catalog = await new InMemoryJiboExperienceContentRepository().GetCatalogAsync();
+        var time = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+        var first = SingingDecisionBuilder.Build(catalog, new FirstItemRandomizer(), true, time);
+        var last = SingingDecisionBuilder.Build(catalog, new LastItemRandomizer(), true, time);
+        Assert.Equal("RI_JBO_KnowsJingleBellsSong", first.SkillPayload!["mim_id"]);
+        Assert.Equal("RI_JBO_KnowsDreidelSong", last.SkillPayload!["mim_id"]);
+        var all = SingingDecisionBuilder.Build(catalog, new FirstItemRandomizer(), true, time,
+            "sing all the christmas songs");
+        var prompts = Assert.IsType<SingingMimPrompt[]>(all.SkillPayload!["singing_mim_sequence"]);
+        Assert.Equal(SingingDecisionBuilder.HolidayMimIds, prompts.Select(prompt => prompt.MimId).Distinct());
+        Assert.All(prompts, prompt => NativeTtsPromptAssertions.AssertCompatible(prompt.Esml));
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_Joke_UsesCatalogBackedRandomContent()
     {

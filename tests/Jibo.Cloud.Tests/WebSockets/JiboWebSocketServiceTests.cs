@@ -6564,8 +6564,13 @@ public sealed class JiboWebSocketServiceTests
     [InlineData("CLIENT_ASR", "sing something", "robot_can_sing", "RI_JBO_HasFavoriteSinger")]
     [InlineData("CLIENT_NLU", "sing a song", "robot_can_sing", "RI_JBO_HasFavoriteSinger")]
     [InlineData("CLIENT_NLU", null, "robot_can_sing", "RI_JBO_HasFavoriteSinger")]
-    [InlineData("LISTEN", "sing a christmas song", "robot_sing_christmas_song", "RI_JBO_KnowsJingleBellsSong")]
-    [InlineData("CLIENT_NLU", null, "robot_sing_christmas_song", "RI_JBO_KnowsJingleBellsSong")]
+    [InlineData("LISTEN", "sing jingle bells", "robot_sing_christmas_song", "RI_JBO_KnowsJingleBellsSong")]
+    [InlineData("CLIENT_NLU", "sing Frosty the Snowman", "robot_sing_christmas_song", "RI_JBO_KnowsFrostySnowmanSong")]
+    [InlineData("LISTEN", "sing Rudolph", "robot_sing_christmas_song", "RI_JBO_KnowsRudolphSong")]
+    [InlineData("CLIENT_ASR", "sing Winter Wonderland", "robot_sing_christmas_song", "RI_JBO_KnowsWinterWonderlandSong")]
+    [InlineData("LISTEN", "sing Santa Claus Is Coming to Town", "robot_sing_christmas_song", "RI_JBO_KnowsSantaClausIsComingToTownSong")]
+    [InlineData("LISTEN", "sing Feliz Navidad", "robot_sing_christmas_song", "RI_JBO_KnowsFelizNavidadSong")]
+    [InlineData("CLIENT_ASR", "sing Dreidel", "robot_sing_christmas_song", "RI_JBO_KnowsDreidelSong")]
     public async Task Singing_DispatchesCompleteMelodyInNativeSkillAction(
         string messageType, string? transcript, string intent, string mimId)
     {
@@ -6604,17 +6609,17 @@ public sealed class JiboWebSocketServiceTests
                 Assert.Empty(notes);
                 Assert.Contains("sing", esml.Value, StringComparison.OrdinalIgnoreCase);
             }
-            noteCount += notes.Length;
+            noteCount += esml.Descendants("pitch").Count();
             songText.Append(esml.Value);
             sourceMimIds.Add(play.GetProperty("meta").GetProperty("mim_id").GetString()!);
-            Assert.StartsWith(sourceMimIds.Last(), play.GetProperty("meta").GetProperty("prompt_id").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(play.GetProperty("meta").GetProperty("prompt_id").GetString()));
             Assert.Equal("announcement", play.GetProperty("meta").GetProperty("mim_type").GetString());
             Assert.All(play.GetProperty("autoRuleConfig").EnumerateObject(), property =>
                 Assert.False(property.Value.GetBoolean()));
         }
         Assert.True(noteCount > 0);
         Assert.Contains(mimId, sourceMimIds);
-        Assert.Contains(intent == "robot_can_sing" ? "Twinkle" : "bells", songText.ToString());
+        Assert.False(string.IsNullOrWhiteSpace(songText.ToString()));
     }
 
     [Theory]

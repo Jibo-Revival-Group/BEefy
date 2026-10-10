@@ -14,11 +14,17 @@ internal static class NativeTtsPromptAssertions
         Assert.InRange(prompt.Length, 1, 400);
         var tree = XElement.Parse(prompt);
         Assert.Equal("speak", tree.Name.LocalName);
-        Assert.False(string.IsNullOrWhiteSpace(tree.Value));
+        Assert.True(!string.IsNullOrWhiteSpace(tree.Value) || tree.Descendants("anim").Any());
         foreach (var tag in tree.Descendants())
         {
-            Assert.Contains(tag.Name.LocalName, new[] { "pitch", "duration", "break", "style", "phoneme" });
+            Assert.Contains(tag.Name.LocalName, new[] { "pitch", "duration", "break", "style", "phoneme", "anim" });
             Assert.DoesNotContain(tag.Ancestors(), ancestor => ancestor.Name == tag.Name);
+            if (tag.Name.LocalName == "anim")
+            {
+                Assert.All(tag.Attributes(), attribute => Assert.Contains(attribute.Name.LocalName,
+                    new[] { "cat", "filter", "layers", "nonBlocking", "endNeutral", "name", "meta" }));
+                continue;
+            }
             var attribute = Assert.Single(tag.Attributes());
             var supported = tag.Name.LocalName switch
             {
