@@ -45,29 +45,34 @@ internal static class SingingDecisionBuilder
         var lyrics = holiday
             ? "Jingle bells, jingle bells, jingle all the way. Oh what fun it is to ride in a one horse open sleigh."
             : "Beep boop beep boop. I'm a robot and I sing. Beep boop beep boop, a little song for you.";
-        var esml = new StringBuilder("<speak>")
-            .Append(SecurityElement.Escape(intro))
-            .Append("<break size='0.4'/><pitch band='0.0'>");
-
-        foreach (var note in holiday ? JingleBells : RobotSong)
+        // Nimbus requests /tts_token_times for an entire SLIM before it speaks.
+        // Native TTS rejects long prompts and nested pitch/duration tags. Send
+        // the introduction and short note groups as sequential SLIMs instead.
+        var prompts = new List<string> { $"<speak>{SecurityElement.Escape(intro)}</speak>" };
+        foreach (var notes in (holiday ? JingleBells : RobotSong).Chunk(4))
         {
-            // Fixed contour plus a per-note pitch multiplier makes this melodic,
-            // instead of reading the lyrics with ordinary sentence intonation.
-            var multiplier = Math.Pow(2, note.Semitones / 12.0).ToString("0.0000", CultureInfo.InvariantCulture);
-            esml.Append("<pitch mult='").Append(multiplier).Append("'><duration set='")
-                .Append(note.Seconds.ToString("0.###", CultureInfo.InvariantCulture))
-                .Append("'>").Append(SecurityElement.Escape(note.Syllable))
-                .Append("</duration></pitch> ");
+            var esml = new StringBuilder("<speak>");
+            foreach (var note in notes)
+            {
+                var multiplier = Math.Pow(2, note.Semitones / 12.0).ToString("0.0000", CultureInfo.InvariantCulture);
+                // Pitch and duration may wrap each other, but neither may wrap
+                // another tag of its own type (BEnch's TTS service contract).
+                esml.Append("<pitch mult='").Append(multiplier).Append("'><duration set='")
+                    .Append(note.Seconds.ToString("0.###", CultureInfo.InvariantCulture))
+                    .Append("'>").Append(SecurityElement.Escape(note.Syllable))
+                    .Append("</duration></pitch> ");
+            }
+            prompts.Add(esml.Append("</speak>").ToString());
         }
 
-        esml.Append("</pitch></speak>");
         return new JiboInteractionDecision(
             holiday ? "robot_sing_christmas_song" : "robot_can_sing",
             $"{intro} {lyrics}",
             "chitchat-skill",
             new Dictionary<string, object?>
             {
-                ["esml"] = esml.ToString(),
+                ["esml"] = prompts[0],
+                ["singing_esml_sequence"] = prompts.ToArray(),
                 ["mim_id"] = holiday ? "runtime-sing-jingle-bells" : "runtime-sing-robot-song",
                 ["mim_type"] = "announcement"
             },

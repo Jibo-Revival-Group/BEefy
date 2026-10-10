@@ -1138,6 +1138,40 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 mimType);
         }
 
+        if (SingingDecisionBuilder.IsSingingIntent(plan.IntentName))
+        {
+            var singingPrompts = ReadPayloadStringArray(skillPayload, "singing_esml_sequence");
+            if (singingPrompts.Count > 0)
+            {
+                // Nimbus's processSlimBehaviors plays each SLIM in a SEQUENCE
+                // as a separate MIM, and hence a separate native TTS request.
+                // Keep note timing/pitch intact by disabling speech auto rules.
+                useSequence = true;
+                jcpConfig["children"] = singingPrompts.Select(prompt => new
+                {
+                    type = "SLIM",
+                    config = new
+                    {
+                        play = new
+                        {
+                            esml = prompt,
+                            meta = playConfig["meta"],
+                            autoRuleConfig = new
+                            {
+                                punctuation = false,
+                                structure = false,
+                                beat = false,
+                                hotWords = false,
+                                interSentenceTiming = false,
+                                intraSentenceTiming = false,
+                                voice = false
+                            }
+                        }
+                    }
+                }).ToArray();
+            }
+        }
+
         // Hub completion belongs on the envelope (native LhubClient::run);
         // The nested data.final marker alone does not close the native Hub turn.
         var jcp = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)

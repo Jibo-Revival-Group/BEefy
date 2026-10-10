@@ -56,9 +56,12 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("chitchat-skill", decision.SkillName);
         Assert.Contains(lyrics, decision.ReplyText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("ScriptedResponse", decision.ContextUpdates![ChitchatRouteKey]);
-        var esml = System.Xml.Linq.XElement.Parse(Assert.IsType<string>(decision.SkillPayload!["esml"]));
-        Assert.Equal("speak", esml.Name.LocalName);
-        var durations = esml.Descendants("duration").ToArray();
+        var prompts = Assert.IsType<string[]>(decision.SkillPayload!["singing_esml_sequence"]);
+        Assert.True(prompts.Length > 1);
+        Assert.Equal(prompts[0], decision.SkillPayload["esml"]);
+        Assert.Empty(NativeTtsPromptAssertions.AssertCompatible(prompts[0]).Descendants("duration"));
+        var trees = prompts.Select(NativeTtsPromptAssertions.AssertCompatible).ToArray();
+        var durations = trees.SelectMany(tree => tree.Descendants("duration")).ToArray();
         Assert.True(durations.Length >= 20);
         Assert.All(durations, note =>
         {
@@ -67,7 +70,7 @@ public sealed class JiboInteractionServiceTests
             Assert.InRange(seconds, .1, 1.5);
             Assert.Equal("pitch", note.Parent!.Name.LocalName);
         });
-        Assert.True(esml.Descendants("pitch").Select(note => note.Attribute("mult")?.Value)
+        Assert.True(trees.SelectMany(tree => tree.Descendants("pitch")).Select(note => note.Attribute("mult")?.Value)
             .Where(value => value is not null).Distinct().Count() >= 3);
         Assert.InRange(durations.Sum(note => double.Parse(note.Attribute("set")!.Value,
             System.Globalization.CultureInfo.InvariantCulture)), 6, 15);

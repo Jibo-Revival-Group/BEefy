@@ -6,6 +6,7 @@ using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Audio;
 using Jibo.Cloud.Tests.Infrastructure;
+using Jibo.Cloud.Tests.Application;
 using Microsoft.Extensions.Logging.Abstractions;
 using Jibo.Cloud.Infrastructure.Content;
 using Jibo.Cloud.Infrastructure.Persistence;
@@ -6584,13 +6585,37 @@ public sealed class JiboWebSocketServiceTests
         Assert.True(match.GetProperty("launch").GetBoolean());
         using var action = JsonDocument.Parse(replies[2].Text!);
         Assert.True(action.RootElement.GetProperty("final").GetBoolean());
-        var play = action.RootElement.GetProperty("data").GetProperty("action")
-            .GetProperty("config").GetProperty("jcp").GetProperty("config").GetProperty("play");
-        var esml = System.Xml.Linq.XElement.Parse(play.GetProperty("esml").GetString()!);
-        Assert.True(esml.Descendants("duration").Count() >= 20);
-        Assert.Contains(intent == "robot_can_sing" ? "Beep" : "bells", esml.Value);
-        Assert.Equal(mimId, play.GetProperty("meta").GetProperty("mim_id").GetString());
-        Assert.Equal("announcement", play.GetProperty("meta").GetProperty("mim_type").GetString());
+        var jcp = action.RootElement.GetProperty("data").GetProperty("action")
+            .GetProperty("config").GetProperty("jcp");
+        Assert.Equal("SEQUENCE", jcp.GetProperty("type").GetString());
+        var children = jcp.GetProperty("children").EnumerateArray().ToArray();
+        Assert.True(children.Length > 1);
+        var songText = new StringBuilder();
+        var noteCount = 0;
+        for (var index = 0; index < children.Length; index++)
+        {
+            Assert.Equal("SLIM", children[index].GetProperty("type").GetString());
+            var play = children[index].GetProperty("config").GetProperty("play");
+            var esml = NativeTtsPromptAssertions.AssertCompatible(play.GetProperty("esml").GetString()!);
+            var notes = esml.Descendants("duration").ToArray();
+            if (index == 0)
+            {
+                Assert.Empty(notes);
+                Assert.Contains("sing", esml.Value);
+            }
+            else
+            {
+                Assert.NotEmpty(notes);
+            }
+            noteCount += notes.Length;
+            songText.Append(esml.Value);
+            Assert.Equal(mimId, play.GetProperty("meta").GetProperty("mim_id").GetString());
+            Assert.Equal("announcement", play.GetProperty("meta").GetProperty("mim_type").GetString());
+            Assert.All(play.GetProperty("autoRuleConfig").EnumerateObject(), property =>
+                Assert.False(property.Value.GetBoolean()));
+        }
+        Assert.True(noteCount >= 20);
+        Assert.Contains(intent == "robot_can_sing" ? "Beep" : "bells", songText.ToString());
     }
 
     [Theory]
