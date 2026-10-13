@@ -898,6 +898,9 @@ public sealed class WebSocketTurnFinalizationService(
             return turn;
         }
 
+        if (session.TurnState.IncrementalSttSession is IRemoteIncrementalSttSession remoteSession)
+            turn.Attributes["remoteIncrementalSttSession"] = remoteSession;
+
         ISttStrategy? strategy;
         try
         {
@@ -937,7 +940,9 @@ public sealed class WebSocketTurnFinalizationService(
 
         try
         {
-            var sttResult = await strategy.TranscribeAsync(turn, cancellationToken);
+            SttResult sttResult;
+            try { sttResult = await strategy.TranscribeAsync(turn, cancellationToken); }
+            finally { turn.Attributes.Remove("remoteIncrementalSttSession"); }
             session.TurnState.LastSttError = null;
             session.TurnState.LastSttErrorUtc = null;
             logger.LogInformation(
@@ -2239,7 +2244,7 @@ public sealed class WebSocketTurnFinalizationService(
 
     private bool IsModelEndpointingActive(CloudSession session) =>
         IsModelEndpointingConfigured() &&
-        session.TurnState.IncrementalSttSession is not null;
+        session.TurnState.IncrementalSttSession is { IsAvailable: true };
 
     private void FeedIncrementalStt(CloudSession session)
     {
@@ -2252,8 +2257,10 @@ public sealed class WebSocketTurnFinalizationService(
 
         try
         {
-            turnState.IncrementalSttSession ??=
-                _incrementalSttSessionFactory!.TryCreate(turnState.ListenMaxSpeechTimeout);
+            turnState.IncrementalSttSession ??= _incrementalSttSessionFactory is IContextualIncrementalSttSessionFactory contextual
+                ? contextual.TryCreate(session.SessionId, turnState.TransId ?? Guid.NewGuid().ToString("N"),
+                    turnState.ListenMaxSpeechTimeout)
+                : _incrementalSttSessionFactory!.TryCreate(turnState.ListenMaxSpeechTimeout);
             turnState.IncrementalSttSession?.AcceptFrames(turnState.BufferedAudioFrames);
         }
         catch (Exception ex)
@@ -2263,7 +2270,7 @@ public sealed class WebSocketTurnFinalizationService(
     }
 
     /// <summary>
-    /// Evaluates Sherpa IsEndpoint (or a wall-clock gap fallback) plus utterance completeness.
+    /// Evaluates the streaming provider's endpoint (or a wall-clock gap fallback) plus utterance completeness.
     /// Returns false when model endpointing is inactive. When incomplete, resets the endpoint latch.
     /// </summary>
     private bool TryEvaluateModelEndpoint(
@@ -2277,7 +2284,7 @@ public sealed class WebSocketTurnFinalizationService(
 
         var turnState = session.TurnState;
         var incremental = turnState.IncrementalSttSession;
-        if (incremental is null)
+        if (incremental is null || !incremental.IsAvailable)
             return false;
 
         var trailingSilence = TimeSpan.FromSeconds(
@@ -2359,10 +2366,9 @@ public sealed class WebSocketTurnFinalizationService(
             return false;
 
         var closeTrigger = receivedEndOfStream || reachedHardTimeout || transcriptHintEarlyFinalize;
-        if (modelConfigured)
+        if (modelConfigured && IsModelEndpointingActive(session))
         {
-            // Wait for the idle watchdog to create/feed the incremental session.
-            // Do not fall back to the 350ms silence timer while that is starting.
+            // An active streaming provider owns endpointing; unavailable providers use legacy silence below.
             if (modelEndpointing)
                 closeTrigger = closeTrigger || modelSaysFinalize;
             closeTrigger = closeTrigger || reachedDeferredAudioGap || reachedContentSilence;

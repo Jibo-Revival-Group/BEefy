@@ -86,6 +86,7 @@ builder.Services.AddSingleton<HomeAssistantWebSocketHandler>();
 builder.Services.AddSingleton<SingleRobotHttpHubAccessGuard>();
 builder.Services.AddSingleton<WebSocketTransportPolicy>();
 builder.Services.AddSingleton<WebSocketRequestCoordinator>();
+builder.Services.AddSingleton<BeefyErWebSocketHandler>();
 builder.Services.AddHttpClient(JoapUpdateProxy.ClientName, client =>
 {
     client.BaseAddress = new Uri(JoapUpdateProxy.BaseUrl);
@@ -184,6 +185,11 @@ app.Use(async (context, next) =>
 
 app.Use(async (context, next) =>
 {
+    if (context.Request.Path.Equals(BeefyErWebSocketHandler.Path, StringComparison.OrdinalIgnoreCase))
+    {
+        await context.RequestServices.GetRequiredService<BeefyErWebSocketHandler>().HandleAsync(context);
+        return;
+    }
     if (!context.WebSockets.IsWebSocketRequest)
     {
         await next();
@@ -202,6 +208,11 @@ app.MapGet("/health", () => Results.Json(new
 }));
 
 app.MapLoopMemberPhotoEndpoints();
+app.MapGet("/beefyer/status", (HttpContext context, Jibo.Cloud.Infrastructure.Audio.BeefyErOptions options,
+    Jibo.Cloud.Infrastructure.Audio.BeefyErBroker broker) =>
+    !context.Request.IsHttps ? Results.StatusCode(426) :
+    !options.Authenticate(context.Request.Headers.Authorization.ToString()) ? Results.Unauthorized() :
+    Results.Json(broker.Status));
 app.MapAdminPanelStaticFiles();
 app.MapPortalEndpoints();
 app.MapHomeAssistantRobotEndpoints();

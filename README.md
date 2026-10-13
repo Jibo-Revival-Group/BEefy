@@ -2,6 +2,10 @@
 
 BEefy is the conversation server a Jibo connects to. There is no account, no portal, and no Docker setup. A robot opens the hub socket, BEefy transcribes with Sherpa, and the Hey Jibo path answers.
 
+Optional [BEefyER](BEefyER/README.md) offloads realtime speech recognition to a
+home Linux server running Nemotron Streaming, with authenticated outbound
+connections and automatic local ASR fallback.
+
 The other BE repos are the rest of that system:
 
 - BEach points a running robot at this server and at BEaker

@@ -8,6 +8,25 @@ namespace Jibo.Cloud.Tests.WebSockets;
 
 public sealed class ModelEndpointingFinalizationTests
 {
+    [Fact]
+    public async Task UnavailableStreamingSessionUsesLegacySilenceAndExecutesOnce()
+    {
+        var incremental = new FakeIncrementalSttSession
+        {
+            IsAvailable = false, PartialText = "what time is it", IsEndpoint = false
+        };
+        var service = CreateService(incremental, out var broker);
+        var session = CreateArmedSession(incremental);
+        var envelope = new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Text = """{"type":"IDLE"}"""
+        };
+        await service.HandleIdleAsync(session, envelope);
+        await service.HandleIdleAsync(session, envelope);
+        broker.Verify(b => b.HandleTurnAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Theory]
     [InlineData("what's your paper color", "what's your paper color", false)]
     [InlineData("what's your paper color printer", "what's your paper color printer", false)]
@@ -242,6 +261,7 @@ public sealed class ModelEndpointingFinalizationTests
 
     private sealed class FakeIncrementalSttSession : IIncrementalSttSession
     {
+        public bool IsAvailable { get; set; } = true;
         public string PartialText { get; set; } = string.Empty;
         public bool IsEndpoint { get; set; }
         public bool ResetEndpointCalled { get; private set; }

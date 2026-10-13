@@ -34,6 +34,7 @@ public static class ServiceCollectionExtensions
         var sttOptions = new BufferedAudioSttOptions();
         var listenEndpointingOptions = new ListenEndpointingOptions();
         var asrCorrectionOptions = new AsrCorrectionOptions();
+        var beefyErOptions = new BeefyErOptions();
         if (configuration is not null)
         {
             services.Configure<WebSocketTelemetryOptions>(configuration.GetSection("OpenJibo:Telemetry"));
@@ -42,7 +43,17 @@ public static class ServiceCollectionExtensions
             configuration.GetSection("OpenJibo:Stt").Bind(sttOptions);
             configuration.GetSection("OpenJibo:Listen").Bind(listenEndpointingOptions);
             configuration.GetSection("OpenJibo:Stt:Correction").Bind(asrCorrectionOptions);
+            configuration.GetSection("OpenJibo:Stt:BeefyEr").Bind(beefyErOptions);
         }
+
+        beefyErOptions.Validate();
+        if (beefyErOptions.Enabled)
+        {
+            listenEndpointingOptions.EnableModelEndpointing = true;
+            sttOptions.EnableStreamingSherpa = true; // Keep a warm local backup for remote outages.
+        }
+        services.AddSingleton(beefyErOptions);
+        services.AddSingleton<BeefyErBroker>();
 
         BufferedAudioSttPathResolver.ValidateResolvedDependencies(sttOptions);
 
@@ -306,15 +317,28 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISttStrategy, SyntheticBufferedAudioSttStrategy>();
         services.AddSingleton<SherpaModelLocator>();
         services.AddSingleton<SherpaOnlineRecognizerProvider>();
-        services.AddSingleton<IIncrementalSttSessionFactory, SherpaIncrementalSttSessionFactory>();
-        services.AddSingleton<ISttStrategy, StreamingSherpaBufferedAudioSttStrategy>();
+        services.AddSingleton<SherpaIncrementalSttSessionFactory>();
+        services.AddSingleton<BeefyErSessionFactory>();
+        services.AddSingleton<IIncrementalSttSessionFactory>(provider => provider.GetRequiredService<BeefyErSessionFactory>());
+        services.AddSingleton<StreamingSherpaBufferedAudioSttStrategy>();
+        services.AddSingleton<LocalWhisperCppBufferedAudioSttStrategy>();
+        services.AddSingleton<ISttStrategy>(provider => new BeefyErSttStrategy(
+            provider.GetRequiredService<BeefyErOptions>(), provider.GetRequiredService<BeefyErSessionFactory>(),
+            new ISttStrategy[]
+            {
+                provider.GetRequiredService<StreamingSherpaBufferedAudioSttStrategy>(),
+                provider.GetRequiredService<AzureSpeechBufferedAudioSttStrategy>(),
+                provider.GetRequiredService<WhisperServerBufferedAudioSttStrategy>(),
+                provider.GetRequiredService<LocalWhisperCppBufferedAudioSttStrategy>()
+            }));
+        services.AddSingleton<ISttStrategy>(provider => provider.GetRequiredService<StreamingSherpaBufferedAudioSttStrategy>());
         services.AddHttpClient<AzureSpeechBufferedAudioSttStrategy>();
         services.AddSingleton<ISttStrategy>(provider =>
             provider.GetRequiredService<AzureSpeechBufferedAudioSttStrategy>());
         services.AddHttpClient<WhisperServerBufferedAudioSttStrategy>();
         services.AddSingleton<ISttStrategy>(provider =>
             provider.GetRequiredService<WhisperServerBufferedAudioSttStrategy>());
-        services.AddSingleton<ISttStrategy, LocalWhisperCppBufferedAudioSttStrategy>();
+        services.AddSingleton<ISttStrategy>(provider => provider.GetRequiredService<LocalWhisperCppBufferedAudioSttStrategy>());
         services.AddSingleton<ISttStrategySelector, DefaultSttStrategySelector>();
         services.AddSingleton<IWebSocketTelemetrySink, FileWebSocketTelemetrySink>();
         services.AddSingleton<ITransportMetrics, TransportMetrics>();

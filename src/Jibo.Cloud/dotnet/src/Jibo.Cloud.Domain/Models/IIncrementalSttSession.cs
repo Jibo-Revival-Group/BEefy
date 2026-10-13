@@ -5,6 +5,7 @@ namespace Jibo.Cloud.Domain.Models;
 /// </summary>
 public interface IIncrementalSttSession : IDisposable
 {
+    bool IsAvailable => true;
     string PartialText { get; }
     bool IsEndpoint { get; }
     void AcceptFrames(IReadOnlyList<byte[]> frames);

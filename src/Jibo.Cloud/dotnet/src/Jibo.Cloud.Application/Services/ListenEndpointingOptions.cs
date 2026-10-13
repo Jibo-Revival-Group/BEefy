@@ -7,8 +7,8 @@ namespace Jibo.Cloud.Application.Services;
 public sealed class ListenEndpointingOptions
 {
     /// <summary>
-    /// Prefer Sherpa streaming endpoint detection over the fixed 350ms silence timer.
-    /// Requires <c>OpenJibo:Stt:EnableStreamingSherpa</c> and a resolvable Zipformer model.
+    /// Prefer streaming endpoint detection over the fixed 350ms silence timer.
+    /// Requires local Sherpa or BEefyER; enabling BEefyER also enables this option.
     /// Default false so existing tests and deployments keep current timing until opted in.
     /// </summary>
     public bool EnableModelEndpointing { get; set; }

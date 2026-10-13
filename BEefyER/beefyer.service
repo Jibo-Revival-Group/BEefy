@@ -1,0 +1,25 @@
+[Unit]
+Description=BEefyER realtime remote speech recognition
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=beefyer
+Group=beefyer
+WorkingDirectory=/opt/BEefyER
+EnvironmentFile=/etc/beefyer.env
+Environment=PYTHONUNBUFFERED=1
+Environment=XDG_CACHE_HOME=/var/lib/beefyer/.cache
+StateDirectory=beefyer
+ExecStart=/opt/BEefyER/.venv/bin/python /opt/BEefyER/worker.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
