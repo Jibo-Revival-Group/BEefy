@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from websockets.asyncio.client import connect
+from websockets.exceptions import InvalidStatus
 
 LOG = logging.getLogger("BEefyER")
 VERSION = 1
@@ -285,15 +286,17 @@ async def serve(config: Config):
             config.runtime_bin, "serve", "--host", "127.0.0.1", "--port", str(port), "--no-ui",
             "--asr.model.path", config.model, "--asr.backend.gpu", "-1",
             "--asr.backend.threads", str(config.threads), "--asr.streaming.rnnt_right_context", "1",
-            "--asr.batching.enabled", "false", "--asr.endpointing.enable", "true",
+            "--asr.batching.enabled=false", "--asr.endpointing.enable=true",
             "--asr.endpointing.stop_history_eou_ms", "600")
     retry = 1.0
     try:
         while True:
             if runtime is not None and runtime.returncode is not None:
                 raise RuntimeError("Native inference runtime exited; service restart required")
+            stage = "local_runtime"
             try:
                 model = await probe_runtime(config)
+                stage = "beefy_connection"
                 # Default SSL context verifies both certificate chain and BEefy's hostname.
                 async with connect(config.beefy_url, ssl=ssl.create_default_context(),
                                    additional_headers={"Authorization": f"Bearer {config.secret}"},
@@ -309,7 +312,7 @@ async def serve(config: Config):
             except asyncio.CancelledError:
                 raise
             except Exception as error:
-                LOG.warning("Connection unavailable (%s); retrying", type(error).__name__)
+                log_connection_error(stage, error)
             await asyncio.sleep(retry + random.uniform(0, retry * 0.2))
             retry = min(30, retry * 2)
     finally:
@@ -320,6 +323,14 @@ async def serve(config: Config):
             except asyncio.TimeoutError:
                 runtime.kill()
                 await runtime.wait()
+
+
+def log_connection_error(stage: str, error: Exception):
+    # Include the phase/status, never response headers, bodies, URLs, or bearer credentials.
+    if isinstance(error, InvalidStatus):
+        LOG.warning("Connection unavailable stage=%s HTTP=%s; retrying", stage, error.response.status_code)
+    else:
+        LOG.warning("Connection unavailable stage=%s (%s); retrying", stage, type(error).__name__)
 
 
 def config_from_env(args) -> Config:

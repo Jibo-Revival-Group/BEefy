@@ -53,10 +53,25 @@ location = /beefyer/connect {
 ```
 
 BEefy accepts the forwarded HTTPS scheme from its existing trusted loopback
-proxies. For a proxy on a different host, configure that specific trusted proxy
-in BEefy hosting rather than accepting arbitrary forwarded headers. Worker
+proxies. For a Docker proxy or a proxy on a different host, configure its exact
+upstream source IP in BEefy's environment, then restart BEefy:
+
+```dotenv
+OpenJibo__Hosting__TrustedProxies__0=172.18.0.2
+```
+
+Use the actual proxy IP from your deployment; additional proxies use indices
+`__1`, `__2`, etc. Give a container proxy a stable IP if it can change on restart.
+The proxy must send `X-Forwarded-Proto: https` for incoming HTTPS connections.
+Worker
 connections over HTTP receive 426; missing or incorrect worker credentials
 receive 401. Robot credentials do not grant worker access.
+
+If BEefyER logs `stage=beefy_connection HTTP=426`, check this proxy trust setting
+and the forwarded scheme. `HTTP=401` means check the shared secret;
+`HTTP=404` means check feature enablement and the proxy route. Initial
+`stage=local_runtime (ConnectionRefusedError)` messages are expected while the
+native model downloads or loads.
 
 ## Install on the home Linux server
 

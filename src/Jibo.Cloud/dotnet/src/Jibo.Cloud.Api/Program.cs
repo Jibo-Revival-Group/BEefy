@@ -12,7 +12,6 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Sinks.SystemConsole.Themes;
 using System.Diagnostics;
-using System.Net;
 using System.Text;
 
 OpenJiboEnvLoader.Load();
@@ -24,14 +23,7 @@ if (File.Exists(adminConfigOverlayPath))
     builder.Configuration.AddJsonFile(adminConfigOverlayPath, optional: true, reloadOnChange: false);
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Trust only local reverse proxies (nginx on the same host). Do not clear
-    // KnownProxies/Networks — that would accept forged headers from the internet.
-    options.KnownProxies.Clear();
-    options.KnownProxies.Add(IPAddress.Loopback);
-    options.KnownProxies.Add(IPAddress.IPv6Loopback);
-});
+    TrustedProxyConfiguration.Configure(options, builder.Configuration));
 
 ConfigureOperationalMetrics(builder);
 

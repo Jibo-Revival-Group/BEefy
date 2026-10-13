@@ -8,6 +8,7 @@ import sys
 import tempfile
 import types
 import unittest
+from unittest.mock import AsyncMock, patch
 import uuid
 import wave
 
@@ -15,6 +16,22 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "BEefyER"))
 from websockets.asyncio.server import serve
 from worker import COMPLETED, DELTA, Config, WorkerConnection, probe_runtime
 from benchmark import replay, word_error_rate
+import worker
+
+
+class LaunchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_native_boolean_options_use_inline_values(self):
+        config = Config("wss://example.invalid/beefyer/connect", "s" * 43)
+        # An already-exited process ends supervision without opening network connections.
+        process = types.SimpleNamespace(returncode=2)
+        with patch("worker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=process) as launch:
+            with self.assertRaises(RuntimeError):
+                await worker.serve(config)
+        argv = launch.call_args.args
+        self.assertIn("--asr.batching.enabled=false", argv)
+        self.assertIn("--asr.endpointing.enable=true", argv)
+        self.assertNotIn("false", argv)
+        self.assertNotIn("true", argv)
 
 
 class FakeBeefy:
@@ -244,6 +261,20 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ConfigTests(unittest.TestCase):
+    def test_connection_errors_report_phase_and_status_without_sensitive_response_data(self):
+        from websockets.datastructures import Headers
+        from websockets.exceptions import InvalidStatus
+        from websockets.http11 import Response
+        error = InvalidStatus(Response(426, "Upgrade Required", Headers({"Authorization": "private-secret"}), b"private body"))
+        with self.assertLogs("BEefyER", "WARNING") as logs:
+            worker.log_connection_error("beefy_connection", error)
+        self.assertIn("stage=beefy_connection HTTP=426", logs.output[0])
+        self.assertNotIn("private", logs.output[0])
+        with self.assertLogs("BEefyER", "WARNING") as logs:
+            worker.log_connection_error("local_runtime", ConnectionRefusedError("private detail"))
+        self.assertIn("stage=local_runtime (ConnectionRefusedError)", logs.output[0])
+        self.assertNotIn("private", logs.output[0])
+
     def test_transport_and_secret_are_required(self):
         for url in ["ws://beefy/beefyer/connect", "wss://user:pass@beefy/beefyer/connect",
                     "wss://beefy/beefyer/connect?secret=bad", "wss://beefy/wrong"]:
