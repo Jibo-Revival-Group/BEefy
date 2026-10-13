@@ -50,7 +50,13 @@ public static class ServiceCollectionExtensions
         if (beefyErOptions.Enabled)
         {
             listenEndpointingOptions.EnableModelEndpointing = true;
-            sttOptions.EnableStreamingSherpa = true; // Keep a warm local backup for remote outages.
+            sttOptions.EnableStreamingSherpa = true; // Available as a local outage backup.
+            if (beefyErOptions.LowMemoryMode)
+            {
+                sttOptions.DisableWhisperForRemoteMode = true;
+                if (configuration?["OpenJibo:Stt:Correction:Enabled"] is null)
+                    asrCorrectionOptions.Enabled = false; // Explicit correction settings still take precedence.
+            }
         }
         services.AddSingleton(beefyErOptions);
         services.AddSingleton<BeefyErBroker>();
@@ -113,6 +119,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(listenEndpointingOptions);
         services.AddHostedService<WhisperServerHostedService>();
         services.AddHostedService<SherpaRecognizerWarmupHostedService>();
+        services.AddHostedService<SherpaIdleReleaseHostedService>();
         services.AddSingleton(openWeatherOptions);
         services.AddSingleton(newsApiOptions);
         services.AddSingleton(holidayOptions);

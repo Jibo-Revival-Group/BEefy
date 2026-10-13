@@ -1,5 +1,10 @@
 .venv/
 native/
 runtime/
+models/
+converter-venv/
+converter-tools/
+converter-python/
+converter-cache/
 __pycache__/
 *.env

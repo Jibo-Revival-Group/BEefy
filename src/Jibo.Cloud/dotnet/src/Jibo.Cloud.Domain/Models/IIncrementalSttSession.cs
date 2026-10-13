@@ -6,6 +6,7 @@ namespace Jibo.Cloud.Domain.Models;
 public interface IIncrementalSttSession : IDisposable
 {
     bool IsAvailable => true;
+    bool AllowAudioGapEndpointing => true;
     string PartialText { get; }
     bool IsEndpoint { get; }
     void AcceptFrames(IReadOnlyList<byte[]> frames);

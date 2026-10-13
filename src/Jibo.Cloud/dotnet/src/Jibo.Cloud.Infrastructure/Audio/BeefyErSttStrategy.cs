@@ -13,9 +13,13 @@ public sealed class BeefyErSessionFactory(
         => TryCreate("buffered", Guid.NewGuid().ToString("N"), maxSpeechTimeout);
 
     public IIncrementalSttSession? TryCreate(string sessionId, string turnId, TimeSpan? maxSpeechTimeout)
+        => TryCreate(sessionId, turnId, maxSpeechTimeout, []);
+
+    public IIncrementalSttSession? TryCreate(string sessionId, string turnId, TimeSpan? maxSpeechTimeout,
+        IReadOnlyList<string> hints)
     {
         if (!options.Enabled) return local.TryCreate(maxSpeechTimeout);
-        var remote = broker.TryCreate(sessionId, turnId, maxSpeechTimeout);
+        var remote = broker.TryCreate(sessionId, turnId, maxSpeechTimeout, hints);
         if (remote is null)
         {
             broker.RecordFallback("unavailable_or_busy");
@@ -32,6 +36,7 @@ public sealed class BeefyErSessionFactory(
         private bool _failedOver = remote is null;
         private bool _disposed;
         public bool IsAvailable { get { EnsureFallback(); return !_failedOver || _local is not null; } }
+        public bool AllowAudioGapEndpointing { get { EnsureFallback(); return _failedOver ? _local?.AllowAudioGapEndpointing ?? true : remote!.AllowAudioGapEndpointing; } }
         public string PartialText { get { EnsureFallback(); return _failedOver ? _local?.PartialText ?? "" : remote!.PartialText; } }
         public bool IsEndpoint { get { EnsureFallback(); return _failedOver ? _local?.IsEndpoint ?? false : remote!.IsEndpoint; } }
 
@@ -94,7 +99,9 @@ public sealed class BeefyErSttStrategy(
         turn.Attributes.TryGetValue(SessionAttribute, out var sessionObject);
         var session = sessionObject as IIncrementalSttSession;
         var ownsSession = session is null;
-        session ??= factory.TryCreate(turn.SessionId, turn.TurnId, null);
+        var hints = turn.Attributes.TryGetValue("listenAsrHints", out var value) && value is IReadOnlyList<string> phrases
+            ? phrases : Array.Empty<string>();
+        session ??= factory.TryCreate(turn.SessionId, turn.TurnId, null, hints);
         try
         {
             if (session is IRemoteIncrementalSttSession remote)

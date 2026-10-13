@@ -2,6 +2,7 @@ namespace Jibo.Cloud.Infrastructure.Audio;
 
 public sealed class BufferedAudioSttOptions
 {
+    public bool DisableWhisperForRemoteMode { get; set; }
     public bool EnableLocalWhisperCpp { get; set; }
     public bool EnableAzureSpeech { get; set; }
     public bool EnableWhisperServer { get; set; }

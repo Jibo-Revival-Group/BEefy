@@ -6,6 +6,8 @@ namespace Jibo.Cloud.Infrastructure.Audio;
 public sealed class BeefyErOptions
 {
     public bool Enabled { get; set; }
+    public bool LowMemoryMode { get; set; } = true;
+    public TimeSpan LocalModelIdleTimeout { get; set; } = TimeSpan.FromSeconds(30);
     public string? SharedSecret { get; set; }
     public int SendQueueCapacity { get; set; } = 128;
     public int MaxConcurrentTurns { get; set; } = 1;
@@ -17,7 +19,7 @@ public sealed class BeefyErOptions
         if (Enabled && (string.IsNullOrWhiteSpace(SharedSecret) || SharedSecret.Length < 32))
             throw new ArgumentException("BEefyER requires a separate shared secret of at least 32 characters.");
         if (SendQueueCapacity < 4 || MaxConcurrentTurns < 1 || FinalTimeout <= TimeSpan.Zero ||
-            HeartbeatTimeout < TimeSpan.FromSeconds(2))
+            HeartbeatTimeout < TimeSpan.FromSeconds(2) || LocalModelIdleTimeout <= TimeSpan.Zero)
             throw new ArgumentException("Invalid BEefyER capacity or timeout settings.");
     }
 

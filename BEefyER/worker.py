@@ -7,14 +7,17 @@ import asyncio
 import contextlib
 import json
 import logging
+import math
 import os
 import random
 import secrets
 import signal
 import ssl
 import struct
+import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import urlparse
 
 from websockets.asyncio.client import connect
@@ -27,18 +30,62 @@ DELTA = "conversation.item.input_audio_transcription.delta"
 COMPLETED = "conversation.item.input_audio_transcription.completed"
 
 
+def available_cpu_count() -> int:
+    """Honor the worker's CPU affinity and a container's CPU quota when present."""
+    count = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    try:
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            count = min(count, max(1, math.ceil(int(quota) / int(period))))
+    except (OSError, ValueError, ZeroDivisionError):
+        pass
+    return max(1, count)
+
+
+def recognition_contexts(config, hints=()):
+    phrases = []
+    seen = set()
+    for phrase in [*config.hotwords, *hints]:
+        if not isinstance(phrase, str):
+            continue
+        phrase = phrase.strip()
+        if phrase and len(phrase) <= 80 and phrase.casefold() not in seen:
+            phrases.append(phrase)
+            seen.add(phrase.casefold())
+        if len(phrases) == 64:
+            break
+    return [{"phrases": phrases, "boost": config.hotword_boost}] if phrases and config.hotword_boost > 0 else []
+
+
 @dataclass
 class Config:
     beefy_url: str
     secret: str
     runtime_url: str = "ws://127.0.0.1:8089/v1/audio/transcriptions/realtime"
-    model: str = "nemotron-en"
+    model: str = "auto"
     runtime_bin: str = "nemo-speech"
-    threads: int = 4
+    threads: int = 0
     capacity: int = 1
     queue_capacity: int = 32
     final_timeout: float = 3.0
     start_runtime: bool = True
+    right_context: int = 6
+    hotwords: list[str] = field(default_factory=lambda: ["Jibo", "Hey Jibo"])
+    hotword_boost: float = 2.5
+    vad_enabled: bool = True
+    vad_model: str = str(Path(__file__).resolve().parent / "models" / "silero-v6.2.1.onnx")
+    vad_silence_ms: int = 320
+
+    @property
+    def resolved_model(self):
+        if self.model != "auto":
+            return self.model
+        precise = Path(__file__).resolve().parent / "models" / "nemotron-en-f16.gguf"
+        return str(precise) if precise.is_file() else "nemotron-en"
+
+    @property
+    def inference_threads(self):
+        return self.threads if self.threads > 0 else min(8, available_cpu_count())
 
     def validate(self):
         remote = urlparse(self.beefy_url)
@@ -52,8 +99,15 @@ class Config:
                 or local.username or local.password or local.query or local.fragment
                 or local.path != "/v1/audio/transcriptions/realtime"):
             raise ValueError("Inference must use a loopback ws:// runtime URL")
-        if min(self.threads, self.capacity, self.queue_capacity) < 1 or self.final_timeout <= 0:
-            raise ValueError("Threads, capacity, queue capacity and timeout must be positive")
+        if self.threads < 0 or min(self.capacity, self.queue_capacity) < 1 or self.final_timeout <= 0:
+            raise ValueError("Threads must be nonnegative; capacity, queue capacity and timeout must be positive")
+        if self.right_context not in (0, 1, 6, 13, -1):
+            raise ValueError("BEEFYER_RIGHT_CONTEXT must be 0, 1, 6, 13 or -1 (model maximum context)")
+        if (not isinstance(self.hotwords, list) or any(not isinstance(phrase, str) for phrase in self.hotwords)
+                or not math.isfinite(self.hotword_boost) or not 0 <= self.hotword_boost <= 5):
+            raise ValueError("Hotwords must be a JSON string array; boost must be between 0 and 5")
+        if not 160 <= self.vad_silence_ms <= 1000:
+            raise ValueError("BEEFYER_VAD_SILENCE_MS must be between 160 and 1000")
 
 
 class Turn:
@@ -69,6 +123,14 @@ class Turn:
         self.partial = ""
         self.audio_seconds = 0.0
         self.audio_processed = 0.0
+        self.started_at = time.monotonic()
+        self.first_partial_ms = None
+        self.finish_started = None
+        self.max_backlog = 0.0
+        self.vad = owner.vad_factory.stream(owner.config.vad_silence_ms) if owner.vad_factory else None
+        self.vad_endpoint = False
+        self.commit_kind = None
+        self.commit_ack = asyncio.Event()
         self.task = asyncio.create_task(self.run())
         self.task.add_done_callback(self.cleanup)
 
@@ -98,6 +160,7 @@ class Turn:
             raise ValueError("Invalid finish sequence")
         self.queue.put_nowait(None)
         self.finishing = True
+        self.finish_started = time.monotonic()
 
     async def run(self):
         try:
@@ -108,7 +171,8 @@ class Turn:
                     raise ValueError("Runtime did not create a session")
                 await runtime.send(json.dumps({"type": "session.update", "session": {
                     "sample_rate": 16000, "language": "en", "automatic_punctuation": False,
-                    "verbatim": True, "endpointing_ms": self.start.get("endpointMs", 600)}}))
+                    "verbatim": True, "endpointing_ms": self.start.get("endpointMs", 600),
+                    "speech_contexts": recognition_contexts(self.owner.config, self.start.get("hints", []))}}))
                 updated = json.loads(await asyncio.wait_for(runtime.recv(), 3))
                 if updated.get("type") != "session.updated":
                     raise ValueError("Runtime did not accept streaming settings")
@@ -128,13 +192,30 @@ class Turn:
         while True:
             item = await asyncio.wait_for(self.queue.get(), self.start.get("maxSpeechSeconds", 20) + 5)
             if item is None:
+                self.commit_kind = "turn"
                 await runtime.send(json.dumps({"type": "input_audio_buffer.commit"}))
                 await asyncio.wait_for(asyncio.shield(reader), self.owner.config.final_timeout)
                 return
             sequence, pcm = item
             self.sent_sequence = sequence
             self.audio_seconds += len(pcm) / 32000
+            events = await asyncio.to_thread(self.vad.feed, pcm) if self.vad else []
+            for event in events:
+                if event.kind == "speech_started":
+                    self.vad_endpoint = False
+                    self.emit("speech_started", text=self.text, endpointSource="silero")
+                elif event.kind == "endpoint":
+                    self.vad_endpoint = True
             await runtime.send(pcm)
+            if events and self.vad_endpoint:
+                self.emit("endpoint", text=self.text, endpointSource="silero")
+                LOG.info("Acoustic EOS detected source=silero silenceMs=%s", self.owner.config.vad_silence_ms)
+                # Flush residual ASR immediately, without waiting for its next large chunk.
+                # This commits one acoustic segment; incomplete robot commands may continue.
+                self.commit_kind = "segment"
+                self.commit_ack.clear()
+                await runtime.send(json.dumps({"type": "input_audio_buffer.commit"}))
+                await asyncio.wait_for(self.commit_ack.wait(), self.owner.config.final_timeout)
 
     async def read_runtime(self, runtime):
         async for raw in runtime:
@@ -143,11 +224,14 @@ class Turn:
             self.audio_processed = max(self.audio_processed, float(event.get("audio_processed", 0)))
             telemetry = {"audioSeconds": self.audio_seconds, "processedSeconds": self.audio_processed,
                          "backlogSeconds": max(0, self.audio_seconds - self.audio_processed)}
+            self.max_backlog = max(self.max_backlog, telemetry["backlogSeconds"])
             if kind == DELTA:
                 delta = event.get("delta", "")
                 if delta:
+                    if self.first_partial_ms is None:
+                        self.first_partial_ms = (time.monotonic() - self.started_at) * 1000
                     self.partial += delta
-                    self.emit("partial", text=self.text, **telemetry)
+                    self.emit("endpoint" if self.vad_endpoint else "partial", text=self.text, **telemetry)
                 else:
                     self.emit("progress", **telemetry)
             elif kind == COMPLETED:
@@ -156,12 +240,21 @@ class Turn:
                 if transcript:
                     self.committed.append(transcript)
                 self.partial = ""
-                if not self.finishing:
+                if not self.finishing and not self.vad:
                     self.emit("endpoint", text=self.text, **telemetry)
             elif kind == "input_audio_buffer.committed":
-                if not self.finishing:
+                if self.commit_kind == "segment":
+                    self.commit_kind = None
+                    self.emit("endpoint" if self.vad_endpoint else "partial", text=self.text,
+                              endpointSource="silero", **telemetry)
+                    self.commit_ack.set()
+                    continue
+                if self.commit_kind != "turn" or not self.finishing:
                     raise ValueError("Unexpected runtime commit")
                 self.emit("final", text=self.text, **telemetry)
+                LOG.info("Completed remote ASR audioSeconds=%.2f firstPartialMs=%s finalDrainMs=%.1f maxBacklogSeconds=%.3f",
+                         self.audio_seconds, round(self.first_partial_ms) if self.first_partial_ms is not None else "none",
+                         (time.monotonic() - self.finish_started) * 1000, self.max_backlog)
                 return
             elif kind == "error":
                 raise ValueError("Runtime error")
@@ -169,13 +262,14 @@ class Turn:
 
 
 class WorkerConnection:
-    def __init__(self, config: Config, socket, generation: str):
+    def __init__(self, config: Config, socket, generation: str, vad_factory=None):
         self.config = config
         self.socket = socket
         self.generation = generation
         self.turns: dict[str, Turn] = {}
         self.outgoing = asyncio.Queue(128)
         self.failed = asyncio.Event()
+        self.vad_factory = vad_factory
 
     def send(self, kind: str, **fields):
         try:
@@ -254,7 +348,10 @@ class WorkerConnection:
         turn.task.cancel()
 
     async def run(self, model: str):
-        self.send("ready", capacity=self.config.capacity, model=model)
+        self.send("ready", capacity=self.config.capacity, model=model,
+                  threads=self.config.inference_threads if self.config.start_runtime else None,
+                  rightContext=self.config.right_context if self.config.start_runtime else None,
+                  independentEndpointing=self.vad_factory is not None)
         try:
             async with asyncio.TaskGroup() as group:
                 group.create_task(self.writer())
@@ -279,14 +376,24 @@ async def probe_runtime(config: Config) -> str:
 
 async def serve(config: Config):
     config.validate()
+    vad_factory = None
+    if config.vad_enabled:
+        if not Path(config.vad_model).is_file():
+            raise ValueError("Silero VAD model is missing; run BEefyER setup.sh or set BEEFYER_VAD_MODEL")
+        from vad import SileroVad
+        vad_factory = SileroVad(config.vad_model)
+        LOG.info("Independent Silero EOS ready silenceMs=%s", config.vad_silence_ms)
     runtime = None
     if config.start_runtime:
         port = urlparse(config.runtime_url).port or 80
+        LOG.info("Starting resident ASR model=%s threads=%s availableCPUs=%s rightContext=%s capacity=%s",
+                 config.resolved_model, config.inference_threads, available_cpu_count(), config.right_context, config.capacity)
         runtime = await asyncio.create_subprocess_exec(
             config.runtime_bin, "serve", "--host", "127.0.0.1", "--port", str(port), "--no-ui",
-            "--asr.model.path", config.model, "--asr.backend.gpu", "-1",
-            "--asr.backend.threads", str(config.threads), "--asr.streaming.rnnt_right_context", "1",
-            "--asr.batching.enabled=false", "--asr.endpointing.enable=true",
+            "--asr.model.path", config.resolved_model, "--asr.backend.gpu", "-1",
+            "--asr.backend.threads", str(config.inference_threads), "--asr.streaming.rnnt_right_context", str(config.right_context),
+            "--asr.decoder.boosting_tree_alpha", "1",
+            "--asr.batching.enabled=false", "--asr.endpointing.enable=false" if vad_factory else "--asr.endpointing.enable=true",
             "--asr.endpointing.stop_history_eou_ms", "600")
     retry = 1.0
     try:
@@ -308,7 +415,7 @@ async def serve(config: Config):
                         raise ValueError("Invalid BEefy greeting")
                     LOG.info("Connected to BEefy; streaming model ready: %s", model)
                     retry = 1.0
-                    await WorkerConnection(config, socket, hello["generation"]).run(model)
+                    await WorkerConnection(config, socket, hello["generation"], vad_factory).run(model)
             except asyncio.CancelledError:
                 raise
             except Exception as error:
@@ -340,11 +447,17 @@ def config_from_env(args) -> Config:
         runtime_url=os.environ.get("BEEFYER_RUNTIME_URL", Config.runtime_url),
         model=os.environ.get("BEEFYER_MODEL", Config.model),
         runtime_bin=os.environ.get("BEEFYER_RUNTIME_BIN", Config.runtime_bin),
-        threads=int(os.environ.get("BEEFYER_THREADS", "4")),
+        threads=int(os.environ.get("BEEFYER_THREADS", "0")),
         capacity=int(os.environ.get("BEEFYER_CAPACITY", "1")),
         queue_capacity=int(os.environ.get("BEEFYER_QUEUE_CAPACITY", "32")),
         final_timeout=float(os.environ.get("BEEFYER_FINAL_TIMEOUT", "3")),
-        start_runtime=not args.no_start_runtime)
+        start_runtime=not args.no_start_runtime,
+        right_context=int(os.environ.get("BEEFYER_RIGHT_CONTEXT", "6")),
+        hotwords=json.loads(os.environ.get("BEEFYER_HOTWORDS", '["Jibo", "Hey Jibo"]')),
+        hotword_boost=float(os.environ.get("BEEFYER_HOTWORD_BOOST", "2.5")),
+        vad_enabled=os.environ.get("BEEFYER_VAD_ENABLED", "true").lower() not in {"false", "0", "no"},
+        vad_model=os.environ.get("BEEFYER_VAD_MODEL", Config.vad_model),
+        vad_silence_ms=int(os.environ.get("BEEFYER_VAD_SILENCE_MS", "320")))
 
 
 async def main_async(config):

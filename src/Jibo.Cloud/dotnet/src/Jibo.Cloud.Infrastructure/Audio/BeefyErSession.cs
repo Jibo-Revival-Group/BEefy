@@ -28,12 +28,15 @@ internal sealed class BeefyErSession(
     public string Failure { get { lock (_gate) return _failure ?? "unavailable"; } }
     public string PartialText { get { lock (_gate) return _text; } }
     public bool IsEndpoint { get { lock (_gate) return _endpoint; } }
+    public bool AllowAudioGapEndpointing => !connection.IndependentEndpointing;
 
-    internal bool Send(string type, int endpointMs = 600, double maxSpeechSeconds = 20)
+    internal bool Send(string type, int endpointMs = 600, double maxSpeechSeconds = 20,
+        IReadOnlyList<string>? hints = null)
         => connection.Enqueue(JsonSerializer.SerializeToUtf8Bytes(new BeefyErMessage
         {
             Type = type, Generation = connection.Generation, StreamId = Id, SessionId = sessionId,
-            TurnId = turnId, Sequence = _sequence, EndpointMs = endpointMs, MaxSpeechSeconds = maxSpeechSeconds
+            TurnId = turnId, Sequence = _sequence, EndpointMs = endpointMs, MaxSpeechSeconds = maxSpeechSeconds,
+            Hints = hints ?? []
         }, BeefyErBroker.JsonOptions), WebSocketMessageType.Text);
 
     public void AcceptFrames(IReadOnlyList<byte[]> frames)
@@ -96,6 +99,7 @@ internal sealed class BeefyErSession(
                     _endpoint = true;
                     break;
                 case "progress": break;
+                case "speech_started": _endpoint = false; break;
                 case "final":
                     if (!_finishing || message.Sequence != _sequence) { Fail("unexpected_final"); break; }
                     _text = message.Text ?? "";

@@ -6,11 +6,24 @@ audio over an authenticated WSS connection; BEefyER returns partial transcripts,
 speech endpoints, and the completed turn transcript. BEefy continues to handle
 transcript correction, command selection, and robot replies.
 
-The default is **Nemotron Speech Streaming English 0.6B Q8_0**, using NVIDIA's
-native CPU runtime. On a Ryzen 7 5700U, start with four CPU inference threads and
-one active remote turn. The cache-aware RNNT right-context setting of `1` selects
-the native 160 ms streaming preset. Measure actual latency on your machine using
+The ASR engine is **Nemotron Speech Streaming English 0.6B**, using NVIDIA's
+native CPU runtime. CPU inference threads default to hardware-aware auto:
+up to eight threads, respecting CPU affinity and container CPU quotas. Explicit
+thread settings remain available. The cache-aware RNNT right-context setting of `6` selects
+the accuracy-focused 560 ms streaming preset; `1` selects 160 ms. Measure actual latency on your machine using
 the benchmark below; no performance result for that CPU is assumed.
+
+`BEEFYER_MODEL=auto` selects a prepared **F16** English model when available,
+otherwise the indexed **Q8_0** model. F16 retains more weight precision and uses
+more memory/compute; it is the same 600M-parameter architecture, not a larger
+network, and is not guaranteed to improve every transcript. With your 6 GB
+server, keep one ASR model resident and benchmark F16 before committing to it.
+
+EOS uses a separate **Silero v6.2.1 ONNX** model. It examines 32 ms audio frames
+and defaults to 320 ms of confirmed silence. When speech ends, the worker flushes
+remaining recognition audio immediately instead of waiting for another large
+ASR chunk. Short pauses and uncertain audio are handled with hysteresis; BEefy
+retains its command-completeness checks.
 
 ## Configure BEefy
 
@@ -31,9 +44,17 @@ Generate the secret after installing the worker's Python dependencies:
 ```
 
 Restart BEefy after updating configuration. Enabling BEefyER also enables model
-endpointing and the existing local Sherpa provider as an outage backup. Existing
-Sherpa model paths and tuning still apply. Synthetic transcript fixtures keep
-their original priority.
+endpointing and the existing local Sherpa provider as an outage backup. By
+default, `LowMemoryMode=true`: Sherpa stays unloaded until fallback is needed
+and is released after 30 idle seconds; local Whisper processes and the neural
+BERT correction worker are disabled by default. An explicit
+`OpenJibo__Stt__Correction__Enabled=true` keeps the neural corrector enabled
+while retaining the other memory savings. Rule-based transcript correction and
+normal command handling remain active. The first local fallback may take
+longer while its model loads. Set `OpenJibo__Stt__BeefyEr__LowMemoryMode=false`
+to restore warm local inference. `OpenJibo__Stt__BeefyEr__LocalModelIdleTimeout`
+changes the idle release period. Existing Sherpa tuning still applies, and
+synthetic transcript fixtures keep their original priority.
 
 BEefy's HTTPS reverse proxy must forward `/beefyer/connect` to the same .NET
 process as robot requests, including the Authorization header and WebSocket
@@ -109,8 +130,13 @@ hostname and the generated secret, matching BEefy's configuration exactly:
 BEEFYER_BEEFY_URL=wss://api.example.com/beefyer/connect
 BEEFYER_SHARED_SECRET=REPLACE_WITH_GENERATED_SECRET
 BEEFYER_RUNTIME_BIN=/opt/BEefyER/runtime/bin/nemo-speech
-BEEFYER_MODEL=nemotron-en
-BEEFYER_THREADS=4
+BEEFYER_MODEL=auto
+BEEFYER_THREADS=0
+BEEFYER_RIGHT_CONTEXT=6
+BEEFYER_HOTWORDS='["Jibo", "Hey Jibo"]'
+BEEFYER_HOTWORD_BOOST=2.5
+BEEFYER_VAD_ENABLED=true
+BEEFYER_VAD_SILENCE_MS=320
 BEEFYER_CAPACITY=1
 ```
 
@@ -131,6 +157,42 @@ recognition session with a loaded model. A runtime process exit causes systemd
 to restart the worker. To manage that native process separately, start the
 worker with `--no-start-runtime` and use the same loopback realtime endpoint.
 
+`setup.sh` installs pinned NumPy/ONNX Runtime dependencies and downloads the
+2.3 MB Silero model from a pinned revision, verifying its SHA-256. Run it again
+when updating an existing installation. The Python 3.11+ worker, including
+Python 3.14, does not need PyTorch for EOS detection.
+
+## Prepare higher-precision ASR
+
+F16 is an optional single-model accuracy profile for the 6 GB Ryzen server.
+Preparation needs the existing `native/` checkout and a separate Python 3.11 or
+3.12 environment because the pinned converter requires older NumPy. If neither
+interpreter is installed, the helper uses pinned uv to obtain managed Python
+3.12 in the BEefyER directory. Your Python 3.14 worker environment remains
+separate. Stop the worker during conversion to
+give the converter the server's memory budget:
+
+```sh
+sudo systemctl stop beefyer
+sudo -u beefyer env XDG_CACHE_HOME=/var/lib/beefyer/.cache \
+    /opt/BEefyER/.venv/bin/python /opt/BEefyER/prepare-models.py \
+    --asr-f16
+sudo systemctl start beefyer
+```
+
+An optional `--converter-python /path/to/python3.12` selects an existing
+interpreter. The helper checks
+the native source revision, creates a separate conversion environment, installs
+CPU PyTorch, downloads the pinned original checkpoint, and atomically publishes
+`models/nemotron-en-f16.gguf`. `BEEFYER_MODEL=auto` picks it on restart. This
+preparation needs additional disk space for the checkpoint and conversion
+environment. If conversion exceeds available memory, prepare the F16 artifact
+on a larger machine and copy it into `models/`.
+
+Compare actual word error rate and paced final latency before selecting F16.
+Set `BEEFYER_MODEL=nemotron-en` to select the original Q8 model explicitly.
+Higher CPU usage alone is not evidence of better recognition.
+
 BEefyER verifies BEefy's TLS certificate and hostname. There is no insecure TLS
 switch. For a private certificate authority, install its CA certificate in the
 home server's system trust store. The shared secret is sent in an authorization
@@ -144,6 +206,11 @@ header, never in a URL or command argument.
 - Partial transcripts are provisional. Native speech endpoints preserve prior
   segments; BEefy's existing completeness rules decide whether to keep listening.
   A command executes only after turn finalization.
+- With independent VAD, native token-silence endpoints and arrival-gap heuristics
+  do not decide EOS. Confirmed speech plus a complete transcript can finalize
+  short utterances without the legacy 8500-byte threshold. Firmware EOS and hard
+  listen limits still apply. A segment flush commits recognized words without
+  closing an incomplete command; speech can resume.
 - Audio is incrementally decoded to 16 kHz mono PCM16. WebSocket queues are
   bounded. If the worker is busy, disconnected, overloaded, or fails to return a
   final result within three seconds, BEefy uses retained audio for local ASR.
@@ -152,7 +219,29 @@ header, never in a URL or command argument.
   makes the worker available for subsequent turns; it does not take over an
   existing local turn.
 - `BEEFYER_MODEL` accepts the indexed model name or a local compatible streaming
-  GGUF path. `BEEFYER_THREADS` controls inference threads, not HTTP workers.
+  GGUF path. `BEEFYER_THREADS=0` automatically selects up to eight available CPU
+  threads; a positive value controls inference threads explicitly. More threads
+  are not always faster; compare four, six, and eight on your own machine.
+  Existing installations with `BEEFYER_THREADS=4` keep that limit until changed.
+- `BEEFYER_RIGHT_CONTEXT=6` is the accuracy-focused 560 ms streaming default.
+  The English model's published WER is lower at 560 ms than at 160 ms; this is
+  a model benchmark, not a measurement of your robot. `1` restores the faster
+  160 ms setting. `0` selects 80 ms, `13` selects 1120 ms, and `-1` uses the
+  model's maximum context. Longer chunks give the recognizer more acoustic
+  context, at the cost of less frequent partial updates. This does not change
+  the model's size. Compare latency and accuracy on representative recordings.
+- `BEEFYER_VAD_SILENCE_MS=320` controls confirmed silence independently of ASR
+  context. Raise it toward 400 ms for frequent pauses, or lower it carefully
+  toward 200 ms after testing quiet speech and noise. `BEEFYER_VAD_ENABLED=false`
+  restores native token-silence endpointing.
+- Recognition uses native RNNT phrase boosting for Jibo's name and per-turn
+  robot ASR hints. Add household names or device names through the JSON array
+  `BEEFYER_HOTWORDS`. `BEEFYER_HOTWORD_BOOST=2.5` is the default; `0` disables
+  boosting. Hints bias recognition without replacing the recognized transcript.
+  BEefy still performs transcript correction and command handling.
+- Startup logs show the model, resolved thread budget, available CPUs, and
+  streaming context. Each completed remote recognition logs audio duration,
+  first partial latency, final drain latency, and maximum processing backlog.
   `BEEFYER_CAPACITY` and BEefy's `MaxConcurrentTurns` both limit active remote
   turns; the smaller limit wins. Increase capacity only after measuring CPU load.
 - Disable offloading by setting `OpenJibo__Stt__BeefyEr__Enabled=false` and
@@ -160,9 +249,14 @@ header, never in a URL or command argument.
 
 `GET /beefyer/status` on BEefy's HTTPS host accepts the same bearer header and
 reports connection readiness, model identity, capacity, active turns, completed
-turns, fallback count, first partial latency, final drain latency, and the latest
+turns, fallback count, first partial latency, final drain latency, worker thread
+budget and context (when the worker manages inference), and the latest
 reported processing backlog. It does not include transcripts or credentials.
 BEefy's normal STT telemetry records the selected provider and model.
+
+Status also reports `independentEndpointing` and `lowMemoryMode`; both should be
+true for the default deployment. Worker logs report `Acoustic EOS detected`
+separately from final transcript draining.
 
 ## Benchmark on your Ryzen server
 
@@ -184,6 +278,38 @@ a final drain below one second. Test quiet audio, Jibo's name, short commands,
 longer speech, and pauses within commands. Tune threads and concurrency using
 these measurements rather than treating published benchmarks as your results.
 
+Measure EOS against an annotated recording independently of ASR:
+
+```sh
+/opt/BEefyER/.venv/bin/python /opt/BEefyER/benchmark-eos.py command.wav \
+    --speech-end 2.4
+```
+
+Here `2.4` is the actual speech-end time in that recording. The report lists
+speech boundaries and the detector's delay after that timestamp. Network,
+command completeness, and final model draining can add response latency.
+
+To measure how much processing headroom the server actually has, remove the
+capture-speed waits:
+
+```sh
+/opt/BEefyER/.venv/bin/python /opt/BEefyER/benchmark.py command.wav \
+    --unpaced --reference "set a timer for five minutes"
+```
+
+`realtimeMultiplier` reports how many seconds of audio were processed per second
+of wall time, including streaming session work. For example, `5` means five
+times realtime. `realTimeFactor` is its inverse; below `1` is faster than capture.
+Capture-paced mode deliberately waits for audio and therefore does not report
+those throughput values. Use paced mode for conversational latency and unpaced
+mode for CPU headroom. Building C++ code during setup can saturate the CPU;
+one live microphone supplies much less work once inference keeps up.
+
+Check that BEefy's STT logs show `provider=beefyer-nemotron-streaming` on real
+turns. A loaded model alone does not establish that audio is being offloaded;
+connection failures or an increasing fallback count mean BEefy is using local
+ASR instead. Low CPU usage while idle is expected.
+
 Run automated tests without downloading model weights:
 
 ```sh
@@ -195,3 +321,7 @@ dotnet test tests/Jibo.Cloud.Tests/Jibo.Cloud.Tests.csproj --filter 'FullyQualif
 The native streaming API and build instructions are documented upstream in
 [NVIDIA's API reference](https://github.com/NVIDIA/NeMo-Speech.cpp/blob/e59dfb0b5c22655620f41391cc9a000d6f56b802/docs/api.md)
 and [build guide](https://github.com/NVIDIA/NeMo-Speech.cpp/blob/e59dfb0b5c22655620f41391cc9a000d6f56b802/docs/build.md).
+
+The default English model's [accuracy results by streaming chunk size](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b#performance)
+explain the 560 ms accuracy preset. Model benchmark results do not guarantee the
+same improvement on household audio or on the Q8 CPU runtime.

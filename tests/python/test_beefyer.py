@@ -21,7 +21,7 @@ import worker
 
 class LaunchTests(unittest.IsolatedAsyncioTestCase):
     async def test_native_boolean_options_use_inline_values(self):
-        config = Config("wss://example.invalid/beefyer/connect", "s" * 43)
+        config = Config("wss://example.invalid/beefyer/connect", "s" * 43, vad_enabled=False)
         # An already-exited process ends supervision without opening network connections.
         process = types.SimpleNamespace(returncode=2)
         with patch("worker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=process) as launch:
@@ -32,6 +32,17 @@ class LaunchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("--asr.endpointing.enable=true", argv)
         self.assertNotIn("false", argv)
         self.assertNotIn("true", argv)
+        self.assertEqual(argv[argv.index("--asr.streaming.rnnt_right_context") + 1], "6")
+
+    async def test_explicit_cpu_budget_and_model_context_reach_native_runtime(self):
+        config = Config("wss://example.invalid/beefyer/connect", "s" * 43, threads=8, right_context=-1, vad_enabled=False)
+        with patch("worker.asyncio.create_subprocess_exec", new_callable=AsyncMock,
+                   return_value=types.SimpleNamespace(returncode=2)) as launch:
+            with self.assertRaises(RuntimeError):
+                await worker.serve(config)
+        argv = launch.call_args.args
+        self.assertEqual(argv[argv.index("--asr.backend.threads") + 1], "8")
+        self.assertEqual(argv[argv.index("--asr.streaming.rnnt_right_context") + 1], "-1")
 
 
 class FakeBeefy:
@@ -121,10 +132,10 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.server.close()
         await self.server.wait_closed()
 
-    def start(self, session="robot", turn="turn"):
+    def start(self, session="robot", turn="turn", hints=None):
         stream = uuid.uuid4().hex
         self.socket.event("start", streamId=stream, sessionId=session, turnId=turn, sequence=0,
-                          sampleRate=16000, endpointMs=600, maxSpeechSeconds=20)
+                          sampleRate=16000, endpointMs=600, maxSpeechSeconds=20, hints=hints or [])
         return stream
 
     def audio(self, stream, sequence):
@@ -151,6 +162,59 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(final["generation"], "generation")
         self.assertEqual(self.pcm_packets[0], first_pcm)
         self.assertEqual(self.settings[0]["session"]["sample_rate"], 16000)
+
+    async def test_recognition_uses_robot_hints_and_configured_names(self):
+        self.config.hotwords = ["Jibo", "Samantha"]
+        stream = self.start(hints=["Samantha", "kitchen light"])
+        self.audio(stream, 1)
+        await self.socket.result("partial")
+        contexts = self.settings[0]["session"]["speech_contexts"]
+        self.assertEqual(contexts, [{"phrases": ["Jibo", "Samantha", "kitchen light"], "boost": 2.5}])
+
+    async def test_independent_vad_flushes_large_asr_chunks_without_finishing_incomplete_turn(self):
+        class FakeVad:
+            calls = 0
+            def feed(self, pcm):
+                self.calls += 1
+                kind = "endpoint" if self.calls == 2 else "speech_started"
+                return [types.SimpleNamespace(kind=kind)]
+        class Factory:
+            def stream(self, silence_ms):
+                return FakeVad()
+        self.owner.vad_factory = Factory()
+        stream = self.start()
+        self.audio(stream, 1)
+        await self.socket.result("partial")
+        self.audio(stream, 2)
+        await self.socket.result("endpoint")
+        # The native segment commit must drain without turning into a whole-turn final.
+        async with asyncio.timeout(3):
+            while not self.owner.turns[stream].commit_ack.is_set():
+                await asyncio.sleep(0.005)
+        self.assertFalse(self.owner.turns[stream].finishing)
+        self.assertEqual(self.owner.turns[stream].text, "turn on the")
+        self.audio(stream, 3)
+        started = await self.socket.result("speech_started")
+        self.assertEqual(started["streamId"], stream)
+        await self.socket.result("partial")
+        self.socket.event("finish", streamId=stream, sessionId="robot", turnId="turn", sequence=3)
+        final = await self.socket.result("final")
+        self.assertEqual(final["text"], "turn on the light")
+
+    async def test_vad_mode_ignores_native_token_silence_endpoints(self):
+        class Detector:
+            def feed(self, pcm):
+                return []
+        self.owner.vad_factory = types.SimpleNamespace(stream=lambda silence_ms: Detector())
+        stream = self.start()
+        self.audio(stream, 1)
+        await self.socket.result("partial")
+        self.audio(stream, 2)  # Fake native emits an acoustic completed segment here.
+        self.socket.event("ping")
+        await self.socket.result("pong")
+        await asyncio.sleep(0.025)
+        self.assertFalse(self.owner.turns[stream].vad_endpoint)
+        self.assertTrue(self.socket.output.empty())
 
     async def test_busy_turn_returns_error_without_disrupting_active_robot(self):
         first = self.start()
@@ -258,9 +322,49 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(metrics["processingCaughtUp"])
             self.assertTrue(metrics["finalWithinOneSecond"])
             self.assertIsNotNone(metrics["firstPartialMs"])
+            self.assertIsNone(metrics["realtimeMultiplier"])
+            args.unpaced = True
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                await replay(args)
+            metrics = json.loads(output.getvalue())
+            self.assertEqual(metrics["mode"], "throughput")
+            self.assertGreater(metrics["realtimeMultiplier"], 0)
+            self.assertAlmostEqual(metrics["realTimeFactor"] * metrics["realtimeMultiplier"], 1)
 
 
 class ConfigTests(unittest.TestCase):
+    def test_auto_threads_respect_affinity_quota_and_eight_thread_limit(self):
+        config = Config("wss://beefy/beefyer/connect", "s" * 43)
+        with patch("worker.os.sched_getaffinity", return_value=set(range(16))), \
+                patch("worker.Path.read_text", return_value="max 100000"):
+            self.assertEqual(config.inference_threads, 8)
+        with patch("worker.os.sched_getaffinity", return_value=set(range(4))), \
+                patch("worker.Path.read_text", return_value="200000 100000"):
+            self.assertEqual(config.inference_threads, 2)
+        config.threads = 6
+        self.assertEqual(config.inference_threads, 6)
+
+    def test_hint_boosting_is_bounded_deduplicated_and_can_be_disabled(self):
+        config = Config("wss://beefy/beefyer/connect", "s" * 43)
+        contexts = worker.recognition_contexts(config, [" jibo ", None, "x" * 81, "Samantha"])
+        self.assertEqual(contexts[0]["phrases"], ["Jibo", "Hey Jibo", "Samantha"])
+        self.assertEqual(len(worker.recognition_contexts(config, [f"name{i}" for i in range(100)])[0]["phrases"]), 64)
+        config.hotword_boost = 0
+        self.assertEqual(worker.recognition_contexts(config), [])
+        config.hotword_boost = float("nan")
+        with self.assertRaises(ValueError):
+            config.validate()
+
+    def test_auto_model_prefers_prepared_f16_and_honors_explicit_model(self):
+        config = Config("wss://beefy/beefyer/connect", "s" * 43)
+        with patch("worker.Path.is_file", return_value=False):
+            self.assertEqual(config.resolved_model, "nemotron-en")
+        with patch("worker.Path.is_file", return_value=True):
+            self.assertTrue(config.resolved_model.endswith("nemotron-en-f16.gguf"))
+        config.model = "nemotron-en"
+        self.assertEqual(config.resolved_model, "nemotron-en")
+
     def test_connection_errors_report_phase_and_status_without_sensitive_response_data(self):
         from websockets.datastructures import Headers
         from websockets.exceptions import InvalidStatus

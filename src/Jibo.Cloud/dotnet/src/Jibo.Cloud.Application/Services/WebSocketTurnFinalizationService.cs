@@ -2259,7 +2259,7 @@ public sealed class WebSocketTurnFinalizationService(
         {
             turnState.IncrementalSttSession ??= _incrementalSttSessionFactory is IContextualIncrementalSttSessionFactory contextual
                 ? contextual.TryCreate(session.SessionId, turnState.TransId ?? Guid.NewGuid().ToString("N"),
-                    turnState.ListenMaxSpeechTimeout)
+                    turnState.ListenMaxSpeechTimeout, turnState.ListenAsrHints)
                 : _incrementalSttSessionFactory!.TryCreate(turnState.ListenMaxSpeechTimeout);
             turnState.IncrementalSttSession?.AcceptFrames(turnState.BufferedAudioFrames);
         }
@@ -2293,7 +2293,7 @@ public sealed class WebSocketTurnFinalizationService(
             ? DateTimeOffset.UtcNow - turnState.LastAudioReceivedUtc.Value
             : TimeSpan.Zero;
         var acousticEndpoint = incremental.IsEndpoint ||
-                               (turnState.LastAudioReceivedUtc.HasValue && gapSinceLastAudio >= trailingSilence);
+                               (incremental.AllowAudioGapEndpointing && turnState.LastAudioReceivedUtc.HasValue && gapSinceLastAudio >= trailingSilence);
 
         if (!acousticEndpoint && !reachedHardTimeout)
             return true;
@@ -2371,7 +2371,8 @@ public sealed class WebSocketTurnFinalizationService(
             // An active streaming provider owns endpointing; unavailable providers use legacy silence below.
             if (modelEndpointing)
                 closeTrigger = closeTrigger || modelSaysFinalize;
-            closeTrigger = closeTrigger || reachedDeferredAudioGap || reachedContentSilence;
+            if (turnState.IncrementalSttSession!.AllowAudioGapEndpointing)
+                closeTrigger = closeTrigger || reachedDeferredAudioGap || reachedContentSilence;
         }
         else
         {
@@ -2379,13 +2380,16 @@ public sealed class WebSocketTurnFinalizationService(
                            reachedDeferredAudioGap;
         }
 
+        var confirmedAcousticSpeech = modelEndpointing && modelSaysFinalize &&
+                                      turnState.IncrementalSttSession is { AllowAudioGapEndpointing: false } acoustic &&
+                                      !string.IsNullOrWhiteSpace(acoustic.PartialText);
         return turnState is
                {
                    AwaitingTurnCompletion: true, SawListen: true,
-                   BufferedAudioChunkCount: >= 1,
-                   BufferedAudioBytes: >= AutoFinalizeMinBufferedAudioBytes
+                   BufferedAudioChunkCount: >= 1
                } &&
-               pageCounts.AudioBearingPageCount >= AutoFinalizeMinBufferedAudioPages &&
+               turnState.BufferedAudioBytes >= (confirmedAcousticSpeech ? 1 : AutoFinalizeMinBufferedAudioBytes) &&
+               pageCounts.AudioBearingPageCount >= (confirmedAcousticSpeech ? 1 : AutoFinalizeMinBufferedAudioPages) &&
                turnState.LastAudioReceivedUtc.HasValue &&
                closeTrigger &&
                turnAge >= AutoFinalizeMinTurnAge;

@@ -9,6 +9,48 @@ namespace Jibo.Cloud.Tests.WebSockets;
 public sealed class ModelEndpointingFinalizationTests
 {
     [Fact]
+    public async Task ConfirmedIndependentSpeechEndpointDoesNotWaitForLegacyAudioByteThreshold()
+    {
+        var incremental = new FakeIncrementalSttSession
+        {
+            AllowAudioGapEndpointing = false, PartialText = "what time is it", IsEndpoint = true
+        };
+        var service = CreateService(incremental, out var broker);
+        var session = CreateArmedSession(incremental);
+        var shortFrames = session.TurnState.BufferedAudioFrames.Take(4).ToArray();
+        session.TurnState.BufferedAudioFrames.Clear();
+        session.TurnState.BufferedAudioFrames.AddRange(shortFrames);
+        session.TurnState.BufferedAudioChunkCount = shortFrames.Length;
+        session.TurnState.BufferedAudioBytes = shortFrames.Sum(frame => frame.Length);
+        Assert.True(session.TurnState.BufferedAudioBytes < 8500);
+        await service.HandleIdleAsync(session, new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Text = """{"type":"IDLE"}"""
+        });
+        broker.Verify(b => b.HandleTurnAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+    [Fact]
+    public async Task IndependentVadWaitsForAcousticEndpointRatherThanTransportGap()
+    {
+        var incremental = new FakeIncrementalSttSession
+        {
+            AllowAudioGapEndpointing = false, PartialText = "what time is it", IsEndpoint = false
+        };
+        var service = CreateService(incremental, out var broker);
+        var session = CreateArmedSession(incremental);
+        var envelope = new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Text = """{"type":"IDLE"}"""
+        };
+        await service.HandleIdleAsync(session, envelope);
+        broker.Verify(b => b.HandleTurnAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        incremental.IsEndpoint = true;
+        await service.HandleIdleAsync(session, envelope);
+        broker.Verify(b => b.HandleTurnAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+    [Fact]
     public async Task UnavailableStreamingSessionUsesLegacySilenceAndExecutesOnce()
     {
         var incremental = new FakeIncrementalSttSession
@@ -262,6 +304,7 @@ public sealed class ModelEndpointingFinalizationTests
     private sealed class FakeIncrementalSttSession : IIncrementalSttSession
     {
         public bool IsAvailable { get; set; } = true;
+        public bool AllowAudioGapEndpointing { get; set; } = true;
         public string PartialText { get; set; } = string.Empty;
         public bool IsEndpoint { get; set; }
         public bool ResetEndpointCalled { get; private set; }

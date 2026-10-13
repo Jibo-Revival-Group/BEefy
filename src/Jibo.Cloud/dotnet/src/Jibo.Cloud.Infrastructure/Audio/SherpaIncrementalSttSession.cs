@@ -22,17 +22,19 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
     private readonly StreamingTranscriptAccumulator _transcript = new();
     private bool _isEndpoint;
     private bool _disposed;
+    private readonly bool _ownsLease;
 
     public SherpaIncrementalSttSession(
         SherpaOnlineRecognizerProvider provider,
         OnlineRecognizer recognizer,
         OnlineStream stream,
-        ILogger? logger = null)
+        ILogger? logger = null, bool ownsLease = false)
     {
         _provider = provider;
         _recognizer = recognizer;
         _stream = stream;
         _logger = logger ?? NullLogger.Instance;
+        _ownsLease = ownsLease;
     }
 
     public string PartialText
@@ -93,10 +95,10 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
         lock (_sessionLock)
         {
+            if (_disposed) return;
+            _disposed = true;
             try
             {
                 _stream.Dispose();
@@ -107,6 +109,7 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
             }
 
             _pcmDecoder.Dispose();
+            if (_ownsLease) _provider.ReleaseStream();
         }
     }
 }
@@ -143,9 +146,14 @@ public sealed class SherpaIncrementalSttSessionFactory(
             float? rule3 = maxSpeechTimeout is { } max && max > TimeSpan.Zero
                 ? (float)max.TotalSeconds
                 : null;
-            var recognizer = recognizerProvider.GetOrCreate(model, rule3);
-            var stream = recognizerProvider.WithRecognizerLock(() => recognizer.CreateStream());
-            return new SherpaIncrementalSttSession(recognizerProvider, recognizer, stream, _logger);
+            var (recognizer, stream) = recognizerProvider.CreateLeasedStream(model, rule3);
+            try { return new SherpaIncrementalSttSession(recognizerProvider, recognizer, stream, _logger, ownsLease: true); }
+            catch
+            {
+                try { stream.Dispose(); }
+                finally { recognizerProvider.ReleaseStream(); }
+                throw;
+            }
         }
         catch (Exception ex)
         {

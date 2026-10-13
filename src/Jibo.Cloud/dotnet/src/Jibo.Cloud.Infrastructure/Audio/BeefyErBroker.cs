@@ -32,7 +32,10 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
                 activeTurns = _connection?.Sessions.Count ?? 0, capacity = _connection?.Capacity ?? 0,
                 fallbackCount = Interlocked.Read(ref _fallbacks), completedTurns = Interlocked.Read(ref _completed),
                 lastFinalLatencyMs = _lastFinalLatencyMs, lastFirstPartialLatencyMs = _lastPartialLatencyMs,
-                lastBacklogSeconds = _lastBacklogSeconds
+                lastBacklogSeconds = _lastBacklogSeconds,
+                workerThreads = _connection?.Threads, workerRightContext = _connection?.RightContext,
+                independentEndpointing = _connection?.IndependentEndpointing ?? false,
+                lowMemoryMode = options.LowMemoryMode
             };
         }
     }
@@ -58,7 +61,8 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
         }
     }
 
-    internal BeefyErSession? TryCreate(string sessionId, string turnId, TimeSpan? maxSpeechTimeout)
+    internal BeefyErSession? TryCreate(string sessionId, string turnId, TimeSpan? maxSpeechTimeout,
+        IReadOnlyList<string>? hints = null)
     {
         BeefyErSession session;
         Connection connection;
@@ -70,7 +74,9 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
             connection.Sessions[session.Id] = session;
         }
         if (session.Send("start", endpointMs: connection.EndpointMs,
-                maxSpeechSeconds: maxSpeechTimeout?.TotalSeconds ?? 20)) return session;
+                maxSpeechSeconds: maxSpeechTimeout?.TotalSeconds ?? 20,
+                hints: (hints ?? []).Where(hint => !string.IsNullOrWhiteSpace(hint)).Select(hint => hint.Trim())
+                    .Where(hint => hint.Length <= 80).Distinct(StringComparer.OrdinalIgnoreCase).Take(32).ToArray())) return session;
         session.Dispose();
         return null;
     }
@@ -190,6 +196,9 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
                     throw new InvalidDataException("Invalid worker readiness.");
                 connection.Model = message.Model;
                 connection.Capacity = Math.Min(options.MaxConcurrentTurns, message.Capacity);
+                connection.Threads = message.Threads;
+                connection.RightContext = message.RightContext;
+                connection.IndependentEndpointing = message.IndependentEndpointing;
                 connection.Ready = true;
             }
             logger.LogInformation("BEefyER ready model={Model} capacity={Capacity}", connection.Model, connection.Capacity);
@@ -211,6 +220,9 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
         public volatile bool Ready;
         public string? Model;
         public int Capacity;
+        public int? Threads;
+        public int? RightContext;
+        public bool IndependentEndpointing;
         public int EndpointMs = 600;
 
         public Connection(WebSocket socket, BeefyErOptions options)
@@ -261,4 +273,8 @@ internal sealed class BeefyErMessage
     public int EndpointMs { get; set; } = 600;
     public double MaxSpeechSeconds { get; set; } = 20;
     public double BacklogSeconds { get; set; }
+    public IReadOnlyList<string> Hints { get; set; } = [];
+    public int? Threads { get; set; }
+    public int? RightContext { get; set; }
+    public bool IndependentEndpointing { get; set; }
 }

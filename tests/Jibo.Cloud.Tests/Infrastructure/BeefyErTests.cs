@@ -9,12 +9,75 @@ using Jibo.Cloud.Infrastructure.Audio;
 using Jibo.Runtime.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
+using Jibo.Cloud.Application.Services;
+using Jibo.Cloud.Infrastructure.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Jibo.Cloud.Tests.Infrastructure;
 
 public sealed class BeefyErTests
 {
     private static BeefyErOptions Options() => new() { Enabled = true, SharedSecret = new string('s', 43) };
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void RemoteLowMemoryModeDisablesDuplicateModelsButRetainsLocalSherpa(bool lowMemory, bool correctionEnabled)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OpenJibo:Stt:BeefyEr:Enabled"] = "true",
+            ["OpenJibo:Stt:BeefyEr:SharedSecret"] = new string('s', 43),
+            ["OpenJibo:Stt:BeefyEr:LowMemoryMode"] = lowMemory.ToString()
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddOpenJiboCloud(configuration);
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<BufferedAudioSttOptions>();
+        Assert.True(options.EnableStreamingSherpa);
+        Assert.Equal(lowMemory, options.DisableWhisperForRemoteMode);
+        Assert.Equal(correctionEnabled, provider.GetRequiredService<AsrCorrectionOptions>().Enabled);
+    }
+
+    [Fact]
+    public async Task RemoteLowMemoryStartupNeverLoadsLocalRecognizer()
+    {
+        var remote = Options();
+        await new SherpaRecognizerWarmupHostedService(new BufferedAudioSttOptions { EnableStreamingSherpa = true },
+            null!, NullLogger<SherpaRecognizerWarmupHostedService>.Instance, remote).StartAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public void ExplicitNeuralCorrectionOptInStillWorksWithLowMemoryRemoteMode()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OpenJibo:Stt:BeefyEr:Enabled"] = "true",
+            ["OpenJibo:Stt:BeefyEr:SharedSecret"] = new string('s', 43),
+            ["OpenJibo:Stt:Correction:Enabled"] = "true"
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddOpenJiboCloud(configuration);
+        using var provider = services.BuildServiceProvider();
+        Assert.True(provider.GetRequiredService<AsrCorrectionOptions>().Enabled);
+        Assert.True(provider.GetRequiredService<BufferedAudioSttOptions>().DisableWhisperForRemoteMode);
+    }
+
+    [Fact]
+    public void LowMemoryModeCannotBeOverriddenByLegacyWhisperEnvironmentAlias()
+    {
+        var source = new BufferedAudioSttOptions
+        {
+            DisableWhisperForRemoteMode = true, EnableWhisperServer = true,
+            EnableLocalWhisperCpp = true, AutoStartWhisperServer = true
+        };
+        var resolved = BufferedAudioSttPathResolver.Resolve(source, key => "true", _ => true, null,
+            Jibo.Cloud.Infrastructure.Platform.OperatingSystemPlatformResolver.Resolve());
+        Assert.False(resolved.EnableWhisperServer);
+        Assert.False(resolved.EnableLocalWhisperCpp);
+        Assert.False(resolved.AutoStartWhisperServer);
+    }
 
     [Fact]
     public void AuthenticationRequiresEnabledWorkerAndCorrectSeparateSecret()
@@ -74,6 +137,43 @@ public sealed class BeefyErTests
         Assert.Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(packet.AsSpan(24)));
         Assert.Equal(16384, BinaryPrimitives.ReadInt16LittleEndian(packet.AsSpan(28)));
         Assert.Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(packet.AsSpan(30)));
+    }
+
+    [Fact]
+    public async Task RobotHintsReachWorkerAndWorkerTuningIsVisibleInStatus()
+    {
+        await using var worker = await Harness.Connect();
+        worker.Socket.Push(new BeefyErMessage
+        {
+            Type = "ready", Generation = worker.Generation, Model = "nemotron-test", Capacity = 1,
+            Threads = 8, RightContext = 1
+        });
+        await Until(() => JsonSerializer.SerializeToElement(worker.Broker.Status).GetProperty("ready").GetBoolean());
+        using var session = worker.Broker.TryCreate("robot", "turn", null,
+            [" Samantha ", "samantha", "kitchen light", new string('x', 81)])!;
+        var start = await worker.Socket.ReadJson("start");
+        Assert.Equal(new[] { "Samantha", "kitchen light" }, start.Hints);
+        var status = JsonSerializer.SerializeToElement(worker.Broker.Status);
+        Assert.Equal(8, status.GetProperty("workerThreads").GetInt32());
+        Assert.Equal(1, status.GetProperty("workerRightContext").GetInt32());
+    }
+
+    [Fact]
+    public async Task IndependentVadEndpointClearsWhenSpeechResumes()
+    {
+        await using var worker = await Harness.Connect();
+        worker.Socket.Push(new BeefyErMessage
+        {
+            Type = "ready", Generation = worker.Generation, Model = "vad-model", Capacity = 1,
+            IndependentEndpointing = true
+        });
+        using var session = await worker.Create();
+        Assert.False(session.AllowAudioGapEndpointing);
+        worker.Result(session, "endpoint", "turn on the", sequence: 0);
+        await Until(() => session.IsEndpoint);
+        worker.Result(session, "speech_started", "turn on the", sequence: 0);
+        await Until(() => !session.IsEndpoint);
+        Assert.Equal("turn on the", session.PartialText);
     }
 
     [Fact]

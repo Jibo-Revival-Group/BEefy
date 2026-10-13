@@ -12,4 +12,6 @@ public interface IRemoteIncrementalSttSession : IIncrementalSttSession
 public interface IContextualIncrementalSttSessionFactory : IIncrementalSttSessionFactory
 {
     IIncrementalSttSession? TryCreate(string sessionId, string turnId, TimeSpan? maxSpeechTimeout);
+    IIncrementalSttSession? TryCreate(string sessionId, string turnId, TimeSpan? maxSpeechTimeout,
+        IReadOnlyList<string> hints) => TryCreate(sessionId, turnId, maxSpeechTimeout);
 }

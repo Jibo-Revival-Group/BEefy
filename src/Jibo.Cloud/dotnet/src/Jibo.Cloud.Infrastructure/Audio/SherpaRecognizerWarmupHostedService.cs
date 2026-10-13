@@ -10,11 +10,16 @@ namespace Jibo.Cloud.Infrastructure.Audio;
 public sealed class SherpaRecognizerWarmupHostedService(
     BufferedAudioSttOptions sttOptions,
     SherpaOnlineRecognizerProvider recognizerProvider,
-    ILogger<SherpaRecognizerWarmupHostedService> logger) : IHostedService
+    ILogger<SherpaRecognizerWarmupHostedService> logger, BeefyErOptions? remoteOptions = null) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
         var resolved = BufferedAudioSttPathResolver.Resolve(sttOptions);
+        if (remoteOptions is { Enabled: true, LowMemoryMode: true })
+        {
+            logger.LogInformation("Sherpa stays unloaded until needed for BEefyER fallback.");
+            return Task.CompletedTask;
+        }
         if (!resolved.EnableStreamingSherpa)
             return Task.CompletedTask;
 

@@ -45,11 +45,12 @@ public static class BufferedAudioSttPathResolver
 
         return new BufferedAudioSttOptions
         {
-            EnableLocalWhisperCpp = source.EnableLocalWhisperCpp,
+            DisableWhisperForRemoteMode = source.DisableWhisperForRemoteMode,
+            EnableLocalWhisperCpp = source.EnableLocalWhisperCpp && !source.DisableWhisperForRemoteMode,
             EnableAzureSpeech = source.EnableAzureSpeech,
-            EnableWhisperServer = enableWhisperServer,
+            EnableWhisperServer = enableWhisperServer && !source.DisableWhisperForRemoteMode,
             EnableStreamingSherpa = source.EnableStreamingSherpa,
-            AutoStartWhisperServer = source.AutoStartWhisperServer &&
+            AutoStartWhisperServer = source.AutoStartWhisperServer && !source.DisableWhisperForRemoteMode &&
                                      !IsFalsy(getEnvironmentVariable("OPENJIBO_STT_AUTOSTART_WHISPER_SERVER")),
             FfmpegPath = ResolveExecutable(
                 source.FfmpegPath,

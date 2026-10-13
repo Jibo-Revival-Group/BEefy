@@ -18,6 +18,8 @@ public sealed class SherpaOnlineRecognizerProvider : IDisposable
     private OnlineRecognizer? _recognizer;
     private string? _recognizerDirectory;
     private bool _disposed;
+    private int _activeStreams;
+    private DateTimeOffset _lastUsedUtc = DateTimeOffset.UtcNow;
 
     public SherpaOnlineRecognizerProvider(
         BufferedAudioSttOptions sttOptions,
@@ -60,6 +62,7 @@ public sealed class SherpaOnlineRecognizerProvider : IDisposable
         var rule3 = rule3MinUtteranceLengthSeconds ?? _listenOptions.DefaultMaxUtteranceSeconds;
         lock (_sync)
         {
+            _lastUsedUtc = DateTimeOffset.UtcNow;
             if (_recognizer is not null &&
                 string.Equals(_recognizerDirectory, model.Directory, StringComparison.OrdinalIgnoreCase))
                 return _recognizer;
@@ -76,13 +79,54 @@ public sealed class SherpaOnlineRecognizerProvider : IDisposable
     public T WithRecognizerLock<T>(Func<T> action)
     {
         lock (_sync)
+        {
+            _lastUsedUtc = DateTimeOffset.UtcNow;
             return action();
+        }
     }
 
     public void WithRecognizerLock(Action action)
     {
         lock (_sync)
+        {
+            _lastUsedUtc = DateTimeOffset.UtcNow;
             action();
+        }
+    }
+
+    internal (OnlineRecognizer Recognizer, OnlineStream Stream) CreateLeasedStream(
+        SherpaModelLocator.ModelPaths model, float? maxSpeechSeconds = null)
+    {
+        lock (_sync)
+        {
+            var recognizer = GetOrCreate(model, maxSpeechSeconds);
+            var stream = recognizer.CreateStream();
+            _activeStreams++;
+            return (recognizer, stream);
+        }
+    }
+
+    internal void ReleaseStream()
+    {
+        lock (_sync)
+        {
+            _activeStreams--;
+            _lastUsedUtc = DateTimeOffset.UtcNow;
+        }
+    }
+
+    public bool TryReleaseIdle(TimeSpan idleTimeout)
+    {
+        lock (_sync)
+        {
+            if (_activeStreams > 0 || _recognizer is null || DateTimeOffset.UtcNow - _lastUsedUtc < idleTimeout)
+                return false;
+            _recognizer.Dispose();
+            _recognizer = null;
+            _recognizerDirectory = null;
+            _logger.LogInformation("Released idle local Sherpa model from memory.");
+            return true;
+        }
     }
 
     private OnlineRecognizer CreateRecognizer(

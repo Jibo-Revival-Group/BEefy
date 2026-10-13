@@ -82,9 +82,9 @@ public sealed class StreamingSherpaBufferedAudioSttStrategy : ISttStrategy
     private string Recognize(float[] pcm, SherpaModelLocator.ModelPaths model)
     {
         // Batch finalize shares the endpoint-enabled recognizer; InputFinished drains the stream.
-        var recognizer = _recognizerProvider.GetOrCreate(model);
         return _recognizerProvider.WithRecognizerLock(() =>
         {
+            var recognizer = _recognizerProvider.GetOrCreate(model);
             using var stream = recognizer.CreateStream();
             stream.AcceptWaveform(16000, pcm);
             stream.InputFinished();

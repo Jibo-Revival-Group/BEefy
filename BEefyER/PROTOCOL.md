@@ -8,12 +8,13 @@ per BEefy process. Each JSON message includes `version: 1`, `type`, and
 | Direction | Type | Additional fields / meaning |
 | --- | --- | --- |
 | BEefy → worker | `hello` | Announces the connection generation. |
-| Worker → BEefy | `ready` | `model`, `capacity`; sent once, after loaded-model readiness. |
+| Worker → BEefy | `ready` | `model`, `capacity`, optional `threads`, `rightContext`, `independentEndpointing`; sent once, after loaded-model readiness. |
 | BEefy → worker | `ping` | Application heartbeat every second. |
 | Worker → BEefy | `pong` | Answers heartbeat while inference runs independently. |
-| BEefy → worker | `start` | `streamId`, `sessionId`, `turnId`, `sequence: 0`, `sampleRate: 16000`, `endpointMs`, `maxSpeechSeconds`. |
+| BEefy → worker | `start` | `streamId`, `sessionId`, `turnId`, `sequence: 0`, `sampleRate: 16000`, `endpointMs`, `maxSpeechSeconds`, optional `hints` string array. |
 | Worker → BEefy | `partial` | Turn identity, `sequence`, `text`: full provisional turn text, including committed speech segments. |
 | Worker → BEefy | `endpoint` | Same fields; an acoustic segment completed. BEefy decides whether the robot turn is complete. |
+| Worker → BEefy | `speech_started` | Turn identity, `sequence`; clear an acoustic endpoint latch when speech resumes. |
 | Worker → BEefy | `progress` | Turn identity, `sequence`, processing counters; silence updates preserve the endpoint latch. |
 | BEefy → worker | `finish` | Turn identity and the last audio sequence; drain inference after all earlier audio. |
 | Worker → BEefy | `final` | Turn identity, matching finish `sequence`, completed full-turn `text`. |
@@ -23,8 +24,8 @@ per BEefy process. Each JSON message includes `version: 1`, `type`, and
 Turn identity fields are repeated on all per-turn JSON messages. `streamId` is a
 unique 32-character lowercase hexadecimal UUID. Native model connections are
 independent for each stream. The audio sequence starts at 1 and increases by
-exactly 1 per packet. Result sequences identify the most recent audio forwarded
-to inference, not a promise that every sample has already been processed.
+exactly 1 per packet. Result sequences identify the most recent audio accepted
+by the streaming pipeline, not a promise that every sample has been processed.
 Inference events also carry `audioSeconds`, `processedSeconds`, and
 `backlogSeconds` for measurement. `progress` events use the same
 identity/sequence checks as transcription events.
@@ -54,3 +55,11 @@ the native `input_audio_buffer.committed` acknowledgement. Resetting BEefy's
 endpoint latch never discards recognized words. If BEefy defers a turn after
 draining it and receives more audio, that turn switches to retained-audio local
 ASR instead of attempting to reuse a finished native stream.
+
+With `independentEndpointing=true`, Silero owns acoustic endpoints. A speech end
+flushes one native segment immediately; its commit acknowledgement updates the
+full transcript and endpoint latch without sending a turn `final`. An incomplete
+command can resume on the same worker connection. `speech_started` clears that
+latch. BEefy does not substitute transport gaps or byte-density silence for a
+working independent detector. Firmware EOS, completeness checks and hard listen
+limits remain in force.
