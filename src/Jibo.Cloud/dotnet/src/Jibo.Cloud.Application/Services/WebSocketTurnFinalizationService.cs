@@ -492,6 +492,12 @@ public sealed class WebSocketTurnFinalizationService(
                 session.Metadata["audioTranscriptHint"] = transcriptHint;
             }
 
+            if (turnState.PendingClientTurn is { } pending)
+            {
+                turnState.PendingClientTurn = null;
+                return await HandleTurnAsync(session, pending.Envelope, pending.MessageType, cancellationToken);
+            }
+
             if (ShouldIgnorePassiveLocalSkillContext(session, envelope.Text))
             {
                 logger.LogDebug("Turn context ignored for passive local skill session={SessionId} transId={TransId}",
@@ -619,6 +625,21 @@ public sealed class WebSocketTurnFinalizationService(
             messageType,
             session.TurnState.TransId);
         PersistTurnHints(session, envelope.Text);
+        var turnState = session.TurnState;
+        // The native robot sends LISTEN -> CLIENT_ASR/CLIENT_NLU -> CONTEXT
+        // for menu and other synthetic global turns. Finalizing here would lose
+        // runtime location and identity. Local skill NLU pass-through, legacy
+        // clients without an input mode, and standalone text remain immediate.
+        if (messageType is "CLIENT_ASR" or "CLIENT_NLU" &&
+            turnState.SawListen && turnState.ListenHotphrase && !turnState.SawContext &&
+            turnState.ListenMode is "CLIENT_ASR" or "CLIENT_NLU")
+        {
+            turnState.PendingClientTurn = (envelope, messageType);
+            turnState.AwaitingTurnCompletion = true;
+            logger.LogDebug("Waiting for runtime context before {MessageType} session={SessionId} transId={TransId}",
+                messageType, session.SessionId, turnState.TransId);
+            return [];
+        }
         var replies = await FinalizeTurnAsync(session, envelope, messageType, false, cancellationToken);
         logger.LogDebug(
             "Turn direct message exit session={SessionId} messageType={MessageType} replyCount={ReplyCount}",
@@ -788,6 +809,8 @@ public sealed class WebSocketTurnFinalizationService(
         if (await TryCloseStalledListenAsNoInputAsync(session, envelope, "socket_idle", cancellationToken) is
             { } stalledListenReplies)
             return stalledListenReplies;
+
+        if (turnState.PendingClientTurn is not null) return [];
 
         if (!ShouldAutoFinalize(session) && !ShouldEarlyFinalizeBufferedAudio(session)) return [];
 
@@ -1069,6 +1092,9 @@ public sealed class WebSocketTurnFinalizationService(
 
             if (isListenMessage)
             {
+                turnState.ListenMode = data.TryGetProperty("mode", out var mode) && mode.ValueKind == JsonValueKind.String
+                    ? mode.GetString()
+                    : null;
                 session.Metadata["haLocalListen"] = haLocalRule ||
                     ProtocolToTurnContextMapper.HasHomeAssistantLocalMarker(data);
                 UpdateHomeAssistantLocalMarker(session);
@@ -1165,6 +1191,8 @@ public sealed class WebSocketTurnFinalizationService(
     {
         turnState.TransId = transId;
         turnState.ContextPayload = null;
+        turnState.ListenMode = null;
+        turnState.PendingClientTurn = null;
         turnState.AudioTranscriptHint = null;
         turnState.JevCheckedSingleTWord = null;
         turnState.JevSingleTWordIsTwerk = false;
@@ -4213,6 +4241,8 @@ public sealed class WebSocketTurnFinalizationService(
 
     private static void ClearListenTracking(WebSocketTurnState turnState)
     {
+        turnState.ListenMode = null;
+        turnState.PendingClientTurn = null;
         turnState.SawListen = false;
         turnState.SawContext = false;
         turnState.ListenOpenedUtc = null;

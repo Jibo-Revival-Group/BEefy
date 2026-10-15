@@ -13,6 +13,10 @@ public sealed class WebSocketTurnState
 
     public string? TransId { get; set; }
     public string? ContextPayload { get; set; }
+    public string? ListenMode { get; set; }
+    // Native JetStream sends synthetic ASR/NLU before CONTEXT. Keep that input
+    // with its transaction until runtime location, speaker and skill are available.
+    public (WebSocketMessageEnvelope Envelope, string MessageType)? PendingClientTurn { get; set; }
     public DateTimeOffset? ListenOpenedUtc { get; set; }
     public bool ListenHotphrase { get; set; }
     public int HotphraseEmptyTurnCount { get; set; }
