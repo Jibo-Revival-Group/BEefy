@@ -41,6 +41,40 @@ public sealed class MemberCalendarProtocolTests
     }
 
     [Fact]
+    public async Task Set_TogglesSavedFeedWithoutRequiringItsPrivateUrl()
+    {
+        using var harness = CreateHarness();
+        await harness.Service.DispatchAsync(Signed(harness, "SetCalendarFeed", new
+        {
+            memberId = "looper-zane", icalUrl = FeedUrl
+        }));
+        foreach (var enabled in new[] { false, true })
+        {
+            var result = await harness.Service.DispatchAsync(Signed(harness, "SetCalendarFeed", new
+            {
+                memberId = "looper-zane", isEnabled = enabled
+            }));
+            Assert.Equal(200, result.StatusCode);
+            Assert.DoesNotContain("secret-feed-token", result.BodyText);
+            var stored = harness.Store.FindMemberCalendarFeed("openjibo-default-loop", "looper-zane");
+            Assert.Equal(FeedUrl, stored?.IcalUrl);
+            Assert.Equal(enabled, stored?.IsEnabled);
+        }
+    }
+
+    [Fact]
+    public async Task Set_RequiresUrlForANewFeed()
+    {
+        using var harness = CreateHarness();
+        var result = await harness.Service.DispatchAsync(Signed(harness, "SetCalendarFeed", new
+        {
+            memberId = "looper-zane", isEnabled = true
+        }));
+        Assert.Equal(400, result.StatusCode);
+        Assert.Null(harness.Store.FindMemberCalendarFeed("openjibo-default-loop", "looper-zane"));
+    }
+
+    [Fact]
     public async Task Set_RejectsANonHttpsUrl()
     {
         using var harness = CreateHarness();

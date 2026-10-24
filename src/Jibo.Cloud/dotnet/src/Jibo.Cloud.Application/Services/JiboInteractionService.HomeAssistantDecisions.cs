@@ -62,6 +62,18 @@ public sealed partial class JiboInteractionService
                 intentName,
                 "I couldn't reach Home Assistant just now.");
 
+        if (result.NeedsClarification && result.Candidates is { Count: > 0 } && homeAssistantPendingClimateStore is not null)
+        {
+            var entityCommand = new HomeAssistantEntityCommandParser.EntityCommand("light",
+                expectedAction == HomeAssistantLightCommandParser.LightAction.On ? "turn_on" : "turn_off",
+                "named", lightCommand.TargetName);
+            homeAssistantPendingClimateStore.Set(friendlyId ?? deviceId ?? string.Empty,
+                new HomeAssistantPendingClimateStore.PendingClimateAction(entityCommand.Action, result.Candidates,
+                    EntityCommand: entityCommand));
+            return new JiboInteractionDecision(intentName,
+                $"Which one: {HomeAssistantEntityNameMatcher.FormatCandidateList(result.Candidates)}?");
+        }
+
         if (result.IsNotFound && !isNamed)
             return new JiboInteractionDecision(intentName,
                 result.Message == "missing_area"
@@ -239,6 +251,8 @@ public sealed partial class JiboInteractionService
                 "I don't know which thermostat you mean.");
 
         var transcript = turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty;
+        if (pending.EntityCommand is not null)
+            return await BuildHaEntityClarificationAsync(turn, pending, transcript, deviceId, friendlyId, cancellationToken);
         var match = HomeAssistantEntityNameMatcher.FindClosest(transcript, pending.Candidates);
         if (match is null)
         {
@@ -295,7 +309,8 @@ public sealed partial class JiboInteractionService
         if (homeAssistantPendingClimateStore is null || cloudStateStore is null)
             return false;
 
-        if (string.Equals(semanticIntent, "ha_lights_on", StringComparison.OrdinalIgnoreCase) ||
+        if (string.Equals(semanticIntent, "ha_entity_control", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(semanticIntent, "ha_lights_on", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(semanticIntent, "ha_lights_off", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(semanticIntent, "ha_climate_set_temp", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(semanticIntent, "ha_climate_cool_down", StringComparison.OrdinalIgnoreCase) ||
@@ -306,6 +321,11 @@ public sealed partial class JiboInteractionService
         var (deviceId, friendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
         var pending = homeAssistantPendingClimateStore.TryGet(deviceId, friendlyId);
         if (pending is null) return false;
+        if (pending.EntityCommand is not null && semanticIntent != "chat")
+        {
+            homeAssistantPendingClimateStore.Clear(deviceId, friendlyId);
+            return false;
+        }
 
         if (string.IsNullOrWhiteSpace(loweredTranscript)) return false;
         if (TranscriptHeuristics.IsLikelyPromptEchoTranscript(loweredTranscript)) return false;

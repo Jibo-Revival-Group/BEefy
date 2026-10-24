@@ -297,6 +297,98 @@ public sealed class HomeAssistantEntityAwareTests
         Assert.Equal(1, sends);
     }
 
+    [Theory]
+    [InlineData("turn on the fan", "fan", "turn_on")]
+    [InlineData("set the bedroom lights blue", "light", "color")]
+    [InlineData("set the thermostat to heat", "climate", "hvac_mode")]
+    [InlineData("set the office fan to 50 percent", "fan", "percentage")]
+    [InlineData("open the blinds", "cover", "open")]
+    [InlineData("activate scene movie", "scene", "activate")]
+    public async Task EverydayControls_DispatchAndConfirm(string transcript, string domain, string action)
+    {
+        var sends = 0;
+        var (service, _) = CreateServiceWithRespondingHa("ok", onCommand: command =>
+        {
+            sends++;
+            Assert.Equal("entity_control", command.GetProperty("command").GetString());
+            Assert.Equal(domain, command.GetProperty("domain").GetString());
+            Assert.Equal(action, command.GetProperty("action").GetString());
+        });
+        var result = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = transcript, NormalizedTranscript = transcript, DeviceId = "Ghost-Instance-Onion-Silk",
+            Attributes = new Dictionary<string, object?> { ["haLocal"] = true }
+        });
+        Assert.Equal("ha_entity_control", result.IntentName);
+        Assert.Equal("Okay, Home Assistant completed the command.", result.ReplyText);
+        Assert.Equal(1, sends);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EverydayControls_ClarificationOrCancellation(bool cancel)
+    {
+        var commands = new List<JsonElement>();
+        var (service, store) = CreateServiceWithRespondingHa("needs_clarification",
+            candidates: [new("fan.desk", "Desk fan"), new("fan.ceiling", "Ceiling fan")],
+            autoRespondAction: "entity_control", onCommand: command => commands.Add(command.Clone()));
+        var first = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "turn on the fan", DeviceId = "Ghost-Instance-Onion-Silk"
+        });
+        Assert.Contains("Which one", first.ReplyText);
+        var second = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = cancel ? "cancel" : "Desk fan", DeviceId = "Ghost-Instance-Onion-Silk"
+        });
+        Assert.Equal(cancel ? 1 : 2, commands.Count);
+        if (cancel) Assert.Contains("cancelled", second.ReplyText);
+        else
+        {
+            Assert.Equal("fan.desk", commands[1].GetProperty("entityId").GetString());
+            Assert.Equal("entity", commands[1].GetProperty("scope").GetString());
+        }
+        Assert.Null(store.TryGet("Ghost-Instance-Onion-Silk", null));
+    }
+
+    [Theory]
+    [InlineData("pairing_required", "pairing is missing")]
+    [InlineData("auth_failed", "rejected my command")]
+    [InlineData("disconnected", "couldn't reach")]
+    [InlineData("timeout", "may still have run")]
+    [InlineData("unsupported", "doesn't support")]
+    [InlineData("invalid_value", "outside the supported values")]
+    [InlineData("unavailable", "unavailable")]
+    public async Task EverydayControls_ReportsFailures(string message, string expected)
+    {
+        var (service, _) = CreateServiceWithRespondingHa("error", message: message);
+        var result = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "turn on the fan", DeviceId = "Ghost-Instance-Onion-Silk"
+        });
+        Assert.Contains(expected, result.ReplyText);
+    }
+
+    [Fact]
+    public async Task EverydayControls_AmbiguousAnswerDoesNotDispatch()
+    {
+        var commands = new List<JsonElement>();
+        var (service, _) = CreateServiceWithRespondingHa("needs_clarification",
+            candidates: [new("fan.desk", "Desk fan"), new("fan.ceiling", "Ceiling fan")],
+            onCommand: command => commands.Add(command.Clone()));
+        await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "turn on the fan", DeviceId = "Ghost-Instance-Onion-Silk"
+        });
+        var result = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "fan", DeviceId = "Ghost-Instance-Onion-Silk"
+        });
+        Assert.Contains("Which one", result.ReplyText);
+        Assert.Single(commands);
+    }
+
     private static (RespondingHaService Service, HomeAssistantPendingClimateStore PendingStore)
         CreateServiceWithRespondingHa(
             string status,

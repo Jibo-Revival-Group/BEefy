@@ -298,10 +298,39 @@ internal static partial class PersonalReportOrchestrator
                 "Okay. Here's your personal report."),
             userName);
 
+        // Nimbus waits eight seconds for the entire cloud action. Fetch independent
+        // sections together and leave time for formatting and socket delivery.
+        using var reportDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        reportDeadline.CancelAfter(TimeSpan.FromSeconds(5));
+        var memberScopedTurn = EnrichTurnWithReportIdentity(turn, userName);
+        var weatherTask = ReadSectionAsync(toggles.WeatherEnabled, "weather",
+            token => buildWeatherDecisionAsync(turn, "weather", token));
+        var calendarTask = ReadSectionAsync(toggles.CalendarEnabled, "calendar",
+            token => buildCalendarDecisionAsync(memberScopedTurn, token));
+        var commuteTask = ReadSectionAsync(toggles.CommuteEnabled, "commute",
+            token => buildCommuteDecisionAsync(memberScopedTurn, token));
+        var newsTask = ReadSectionAsync(toggles.NewsEnabled, "news",
+            token => buildNewsDecisionAsync(turn, token));
+        await Task.WhenAll(weatherTask, calendarTask, commuteTask, newsTask);
+
+        async Task<JiboInteractionDecision> ReadSectionAsync(bool enabled, string section,
+            Func<CancellationToken, Task<JiboInteractionDecision>> build)
+        {
+            if (!enabled) return new JiboInteractionDecision(section, string.Empty);
+            try
+            {
+                return await build(reportDeadline.Token).WaitAsync(reportDeadline.Token);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                return new JiboInteractionDecision(section, $"I couldn't fetch your {section} right now.");
+            }
+        }
+
         var weatherBlockParts = new List<string> { kickOff };
         if (toggles.WeatherEnabled)
         {
-            var weatherDecision = await buildWeatherDecisionAsync(turn, "weather", cancellationToken);
+            var weatherDecision = await weatherTask;
             weatherSkillPayload = weatherDecision.SkillPayload;
             if (!string.IsNullOrWhiteSpace(weatherDecision.ReplyText))
                 weatherBlockParts.Add(weatherDecision.ReplyText);
@@ -320,12 +349,9 @@ internal static partial class PersonalReportOrchestrator
                     : "cloudy"
                 : null));
 
-        // Carry verified speaker name so per-member calendar feeds can resolve Zane vs Jon.
-        var memberScopedTurn = EnrichTurnWithReportIdentity(turn, userName);
-
         if (toggles.CalendarEnabled)
         {
-            var calendarDecision = await buildCalendarDecisionAsync(memberScopedTurn, cancellationToken);
+            var calendarDecision = await calendarTask;
             var calendarReply = calendarDecision.ReplyText;
             if (!string.IsNullOrWhiteSpace(calendarReply))
             {
@@ -338,7 +364,7 @@ internal static partial class PersonalReportOrchestrator
 
         if (toggles.CommuteEnabled)
         {
-            var commuteDecision = await buildCommuteDecisionAsync(memberScopedTurn, cancellationToken);
+            var commuteDecision = await commuteTask;
             var commuteReply = commuteDecision.ReplyText;
             if (!string.IsNullOrWhiteSpace(commuteReply))
             {
@@ -361,7 +387,7 @@ internal static partial class PersonalReportOrchestrator
 
         if (toggles.NewsEnabled)
         {
-            var newsDecision = await buildNewsDecisionAsync(turn, cancellationToken);
+            var newsDecision = await newsTask;
             newsSkillPayload = newsDecision.SkillPayload;
             // Full-report news never plays NewsOutro (Pegasus single-skill only).
             // Match Pegasus mim order: NewsIntro (news-intro) then one NewsHeadline (news-stinger) per story.

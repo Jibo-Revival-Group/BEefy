@@ -54,5 +54,6 @@ public sealed class HomeAssistantPendingClimateStore
         IReadOnlyList<HomeAssistantCommandCandidate> Candidates,
         string? Temperature = null,
         string? Delta = null,
-        DateTimeOffset ExpiresAtUtc = default);
+        DateTimeOffset ExpiresAtUtc = default,
+        HomeAssistantEntityCommandParser.EntityCommand? EntityCommand = null);
 }

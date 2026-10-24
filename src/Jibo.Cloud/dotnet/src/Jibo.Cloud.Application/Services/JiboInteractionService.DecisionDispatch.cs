@@ -51,6 +51,18 @@ public sealed partial class JiboInteractionService
                 : BuildTriggerIgnoredDecision();
         }
 
+        if (!isYesNoTurn && !isSkillOwnedListen && cloudStateStore is not null &&
+            homeAssistantPendingClimateStore is not null &&
+            (lowered is "cancel" or "never mind" or "nevermind" or "stop" or "no"))
+        {
+            var (haDeviceId, haFriendlyId) = JiboIdentityResolver.Resolve(turn, cloudStateStore);
+            if (homeAssistantPendingClimateStore.TryGet(haDeviceId, haFriendlyId)?.EntityCommand is not null)
+            {
+                homeAssistantPendingClimateStore.Clear(haDeviceId, haFriendlyId);
+                return new JiboInteractionDecision("ha_entity_control", "Okay, cancelled.");
+            }
+        }
+
         var isTimerValueTurn = IsClockTimerValueTurn(clientRules, listenRules);
         var isAlarmValueTurn = IsClockAlarmValueTurn(clientRules, listenRules);
 
@@ -67,6 +79,12 @@ public sealed partial class JiboInteractionService
             isTimerValueTurn,
             isAlarmValueTurn,
             isSkillOwnedListen);
+
+        // Unpaired robots retain their existing native Hue color/brightness phrases.
+        // Locally paired robots use HA for the new everyday controls.
+        if (semanticIntent == "ha_entity_control" && !HomeAssistantRobotRelay.IsLocal(turn) &&
+            NativeGrammar.Instance.Parse(transcript)?.Skill == "@be/hue-control")
+            semanticIntent = "chat";
 
         var localNluRecognized = semanticIntent != "chat";
         if (SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))
@@ -1539,6 +1557,7 @@ public sealed partial class JiboInteractionService
             "memory_set_name" => BuildRememberNameDecision(turn, transcript),
             "memory_get_name" => BuildRecallNameDecision(turn, greetingPresence),
             "verify_me" => BuildVerifyMeDecision(turn),
+            "ha_entity_control" => await BuildHaEntityDecisionAsync(turn, cancellationToken),
             "ha_lights_off" => await BuildHaLightsOffDecisionAsync(turn, cancellationToken),
             "ha_lights_on" => await BuildHaLightsOnDecisionAsync(turn, cancellationToken),
             "ha_climate_set_temp" => await BuildHaClimateSetTempDecisionAsync(turn, cancellationToken),

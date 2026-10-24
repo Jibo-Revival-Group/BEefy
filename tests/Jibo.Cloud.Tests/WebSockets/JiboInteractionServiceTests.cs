@@ -2612,6 +2612,57 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
+    public async Task BuildDecisionAsync_PersonalReport_SlowCalendarDoesNotBlockOtherSectionsOrRobotDeadline()
+    {
+        var weatherStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calendarStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stalledCalendar = new TaskCompletionSource<CalendarReportSnapshot?>();
+        var weather = new Mock<IWeatherReportProvider>();
+        weather.Setup(provider => provider.GetReportAsync(It.IsAny<WeatherReportRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                weatherStarted.TrySetResult();
+                await calendarStarted.Task;
+                return new WeatherReportSnapshot("Boston", "light rain", 61, 65, 54, "rain", false);
+            });
+        var calendar = new Mock<ICalendarReportProvider>();
+        CancellationToken calendarToken = default;
+        calendar.Setup(provider => provider.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
+            .Returns((TurnContext _, CancellationToken token) =>
+            {
+                calendarToken = token;
+                calendarStarted.TrySetResult();
+                return stalledCalendar.Task;
+            });
+        var service = CreateService(weatherReportProvider: weather.Object, calendarReportProvider: calendar.Object);
+        var report = service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "yes", NormalizedTranscript = "yes",
+            Attributes = new Dictionary<string, object?>
+            {
+                [PersonalReportStateKey] = "awaiting_identity_confirmation",
+                [PersonalReportUserNameKey] = "alex",
+                [PersonalReportCommuteEnabledKey] = false,
+                [PersonalReportNewsEnabledKey] = false
+            }
+        });
+        try
+        {
+            await Task.WhenAll(weatherStarted.Task, calendarStarted.Task).WaitAsync(TimeSpan.FromSeconds(2));
+            var decision = await report.WaitAsync(TimeSpan.FromSeconds(6));
+            Assert.Equal("personal_report_delivered", decision.IntentName);
+            Assert.Contains("Boston", decision.ReplyText);
+            Assert.Contains("couldn't fetch your calendar", decision.ReplyText);
+            Assert.Equal("idle", decision.ContextUpdates![PersonalReportStateKey]);
+            Assert.True(calendarToken.IsCancellationRequested);
+        }
+        finally
+        {
+            stalledCalendar.TrySetResult(null);
+        }
+    }
+
+    [Fact]
     public async Task BuildDecisionAsync_PersonalReport_StartsOptInStateMachine()
     {
         var service = CreateService();

@@ -2,6 +2,19 @@ namespace Jibo.Cloud.Application.Services;
 
 internal static class HomeAssistantEntityNameMatcher
 {
+    public static HomeAssistantCommandCandidate? FindUnique(string heard,
+        IReadOnlyList<HomeAssistantCommandCandidate> candidates)
+    {
+        var text = TranscriptTextNormalizer.NormalizeLooseText(heard);
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var exact = candidates.Where(c => TranscriptTextNormalizer.NormalizeLooseText(c.Name) == text ||
+            TranscriptTextNormalizer.NormalizeLooseText(c.EntityId) == text).ToArray();
+        if (exact.Length > 0) return exact.Length == 1 ? exact[0] : null;
+        var partial = candidates.Where(c => TranscriptTextNormalizer.NormalizeLooseText(c.Name)
+            .Contains(text, StringComparison.Ordinal)).ToArray();
+        return partial.Length == 1 ? partial[0] : null;
+    }
+
     public static HomeAssistantCommandCandidate? FindClosest(
         string heard,
         IReadOnlyList<HomeAssistantCommandCandidate> candidates)

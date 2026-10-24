@@ -87,6 +87,9 @@ public sealed partial class JiboInteractionService
 
         if (IsVerifyMeRequest(loweredTranscript)) return "verify_me";
 
+        if (HomeAssistantEntityCommandParser.TryParse(loweredTranscript, out _))
+            return "ha_entity_control";
+
         if (HomeAssistantLightCommandParser.TryParse(loweredTranscript, out var lightCommand))
             return lightCommand.Action == HomeAssistantLightCommandParser.LightAction.On
                 ? "ha_lights_on"

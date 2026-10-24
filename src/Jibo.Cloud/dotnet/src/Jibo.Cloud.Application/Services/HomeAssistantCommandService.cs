@@ -10,6 +10,14 @@ public sealed class HomeAssistantCommandService(
     HomeAssistantRobotRelay robotRelay,
     ILogger<HomeAssistantCommandService>? logger = null)
 {
+    public Task<HomeAssistantCommandResult?> DispatchEntityCommandAsync(
+        TurnContext turn, HomeAssistantEntityCommandParser.EntityCommand command,
+        CancellationToken cancellationToken, string? entityId = null)
+    {
+        LogDispatch(turn, "ha_entity_control");
+        return robotRelay.SendAsync("entity_control", command.Parameters(entityId), true, cancellationToken);
+    }
+
     public async Task<bool> TryDispatchLightCommandAsync(
         TurnContext turn,
         string intentName,

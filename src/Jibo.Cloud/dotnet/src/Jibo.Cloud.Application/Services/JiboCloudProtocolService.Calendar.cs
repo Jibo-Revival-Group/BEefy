@@ -38,7 +38,11 @@ public sealed partial class JiboCloudProtocolService
                 if (calendarFeedProbe is null)
                     return CalendarError(503, "Calendar probe is unavailable.");
 
+                // The saved private URL is never returned to Beacon. An omitted URL
+                // updates the enabled setting without replacing the existing feed.
                 var icalUrl = ReadString(body, "icalUrl");
+                if (string.IsNullOrWhiteSpace(icalUrl))
+                    icalUrl = userIntegrationStore.FindMemberCalendarFeed(loopId, memberId)?.IcalUrl;
                 if (!calendarFeedProbe.TryValidateHttpsPublicUrl(icalUrl, out var validationError))
                     return CalendarError(400, validationError ?? "iCal URL is required.");
 
