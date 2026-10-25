@@ -985,8 +985,8 @@ public sealed class WebSocketTurnFinalizationService(
             foreach (var pair in sttResult.Metadata) attributes[$"stt:{pair.Key}"] = pair.Value;
 
             var rawTranscript = sttResult.Text.Trim();
-            var normalizedTranscript = NormalizeBufferedAudioTranscript(turn, rawTranscript);
-            var correctedTranscript = AsrGrammarCorrector.Correct(normalizedTranscript);
+            var normalizedTranscript = AgentModeRouting.IsConversation(turn) ? rawTranscript : NormalizeBufferedAudioTranscript(turn, rawTranscript);
+            var correctedTranscript = AgentModeRouting.IsConversation(turn) ? rawTranscript : AsrGrammarCorrector.Correct(normalizedTranscript);
             if (!string.Equals(correctedTranscript, normalizedTranscript, StringComparison.Ordinal))
             {
                 attributes["stt:grammarCorrection"] = "preference-frame";
@@ -1328,6 +1328,30 @@ public sealed class WebSocketTurnFinalizationService(
             var sttStarted = Stopwatch.GetTimestamp();
             var finalizedTurn = await ResolveTranscriptAsync(turn, session, envelope, cancellationToken);
             var sttDurationMs = (int)Stopwatch.GetElapsedTime(sttStarted).TotalMilliseconds;
+            // Return free-form speech before command heuristics, correction, classification,
+            // personal reports, or cloud actions can consume an agent-owned listen.
+            if (AgentModeRouting.IsConversation(finalizedTurn))
+            {
+                var agentPlan = new ResponsePlan
+                {
+                    SessionId = finalizedTurn.SessionId,
+                    Status = ResponseStatus.Succeeded,
+                    IntentName = "skill_listen",
+                    FollowUp = FollowUpPolicy.None
+                };
+                var agentReplies = ResponsePlanToSocketMessagesMapper.Map(agentPlan, finalizedTurn, session, false)
+                    .Select(reply => new WebSocketReply { Text = reply.Text, DelayMs = reply.DelayMs }).ToArray();
+                session.LastTranscript = finalizedTurn.RawTranscript ?? finalizedTurn.NormalizedTranscript;
+                session.LastIntent = "skill_listen";
+                session.LastListenType = null;
+                session.FollowUpExpiresUtc = null;
+                turnState.AwaitingTurnCompletion = false;
+                turnState.IgnoreAdditionalAudioUntilUtc = DateTimeOffset.UtcNow.Add(WebSocketTurnState.DefaultLateAudioIgnoreWindow);
+                turnState.IgnoreLateListenSetupUntilUtc = DateTimeOffset.UtcNow.Add(WebSocketTurnState.LateListenSetupIgnoreWindow);
+                ResetBufferedAudio(session);
+                ClearListenTracking(turnState);
+                return agentReplies;
+            }
             var closeTrigger = ResolveAutoFinalizeCloseTrigger(turnState);
             if (string.Equals(closeTrigger, "audio_gap", StringComparison.Ordinal))
             {

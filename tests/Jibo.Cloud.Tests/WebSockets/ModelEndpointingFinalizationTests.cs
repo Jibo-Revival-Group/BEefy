@@ -3,11 +3,37 @@ using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Runtime.Abstractions;
 using Moq;
+using System.Text.Json;
 
 namespace Jibo.Cloud.Tests.WebSockets;
 
 public sealed class ModelEndpointingFinalizationTests
 {
+    [Theory]
+    [InlineData("turn off the lights")]
+    [InlineData("play Hello by Adele")]
+    [InlineData("hmm")]
+    [InlineData("what's your paper color")]
+    public async Task AgentListen_ReturnsUnmodifiedBufferedTranscript_WithoutBroker(string heard)
+    {
+        var incremental = new FakeIncrementalSttSession { PartialText = heard, IsEndpoint = true };
+        var service = CreateService(incremental, out var broker);
+        var session = CreateArmedSession(incremental);
+        session.TurnState.ListenHotphrase = false;
+        session.TurnState.ListenRules = [AgentModeRouting.ConversationRule];
+        var replies = await service.HandleIdleAsync(session, new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen",
+            Text = """{"type":"IDLE"}"""
+        });
+        broker.Verify(b => b.HandleTurnAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        var listen = Assert.Single(replies, reply => JsonDocument.Parse(reply.Text!).RootElement.GetProperty("type").GetString() == "LISTEN");
+        using var document = JsonDocument.Parse(listen.Text!);
+        Assert.Equal(heard, document.RootElement.GetProperty("data").GetProperty("asr").GetProperty("text").GetString());
+        Assert.Null(session.TurnState.IncrementalSttSession);
+        Assert.False(session.FollowUpOpen);
+    }
+
     [Fact]
     public async Task ConfirmedIndependentSpeechEndpointDoesNotWaitForLegacyAudioByteThreshold()
     {

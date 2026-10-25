@@ -273,7 +273,7 @@ internal static class SkillListenOwnership
         };
     }
 
-    private static IEnumerable<string> ReadRuleList(TurnContext turn, string key)
+    internal static IEnumerable<string> ReadRuleList(TurnContext turn, string key)
     {
         if (!turn.Attributes.TryGetValue(key, out var value) || value is null) return [];
 

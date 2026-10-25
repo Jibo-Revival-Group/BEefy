@@ -166,6 +166,12 @@ public sealed class ResponsePlanToSocketMessagesMapper
                                                     : rules;
         if (nativeLaunch && !string.IsNullOrWhiteSpace(localIntent)) outboundIntent = localIntent;
         if (nativeContextual) outboundIntent = nativeParse!.Intent;
+        if (AgentModeRouting.IsConversation(turn))
+        {
+            outboundIntent = "skill_listen";
+            outboundAsrText = turn.RawTranscript ?? transcript;
+            outboundRules = [AgentModeRouting.ConversationRule];
+        }
         if ((nativeLaunch || nativeContextual) && nativeParse is not null) outboundRules = nativeParse.Rules.ToArray();
         var entities = ReadEntities(
             turn,

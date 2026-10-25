@@ -8,6 +8,17 @@ public sealed partial class JiboInteractionService
     public async Task<JiboInteractionDecision> BuildDecisionCoreAsync(TurnContext turn,
         CancellationToken cancellationToken = default)
     {
+        // Agent conversations belong to the robot; never classify or execute their contents.
+        if (AgentModeRouting.IsConversation(turn))
+            return new JiboInteractionDecision("skill_listen", string.Empty);
+        if (!SkillListenOwnership.IsSkillOwnedListen(turn) &&
+            AgentModeRouting.IsLaunch(turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty))
+            return new JiboInteractionDecision("agent_mode", string.Empty, "@be/agent",
+                new Dictionary<string, object?>
+                {
+                    ["skillId"] = "@be/agent", ["nativeLaunch"] = true, ["localIntent"] = "chat"
+                });
+
         SyncLoopPeopleFromTurn(turn);
         var catalog = await contentCache.GetCatalogAsync(cancellationToken);
         var transcript = (turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty).Trim();
