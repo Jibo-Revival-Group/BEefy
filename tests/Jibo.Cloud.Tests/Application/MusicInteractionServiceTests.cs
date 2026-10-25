@@ -50,13 +50,24 @@ public sealed class MusicInteractionServiceTests
         Assert.DoesNotContain(messages, message => message.GetProperty("type").GetString() is "SKILL_ACTION" or "SKILL_REDIRECT");
     }
 
-    [Fact]
-    public async Task StockRobot_DoesNotLaunchMissingPlayer()
+    [Theory]
+    [InlineData("12.10.0")]
+    [InlineData("13.0.7")]
+    [InlineData("1.9.2")]
+    [InlineData("2.0.1")]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task FullStackRelease_DoesNotGateInstalledMusicPlayer(string? release)
     {
-        var decision = await Service().BuildDecisionAsync(Turn("play Hello by Adele", "1.9.2"));
-        Assert.Equal("music_play", decision.IntentName);
-        Assert.Null(decision.SkillName);
-        Assert.Contains("BEam", decision.ReplyText);
+        var turn = Turn("play Hello by Adele", release);
+        var plan = await new DemoConversationBroker(Service()).HandleTurnAsync(turn);
+        Assert.Equal("music_play", plan.IntentName);
+        Assert.Equal("@be/music", Assert.Single(plan.Actions.OfType<InvokeNativeSkillAction>()).SkillName);
+        Assert.False(plan.FollowUp.KeepMicOpen);
+        var messages = ResponsePlanToSocketMessagesMapper.Map(plan, turn, new CloudSession(), false)
+            .Select(message => JsonDocument.Parse(message.Text).RootElement.Clone()).ToArray();
+        var listen = Assert.Single(messages, message => message.GetProperty("type").GetString() == "LISTEN");
+        Assert.Equal("@be/music", listen.GetProperty("data").GetProperty("match").GetProperty("skillID").GetString());
     }
 
     [Theory]
@@ -69,7 +80,7 @@ public sealed class MusicInteractionServiceTests
         Assert.Equal(intent, decision.IntentName);
     }
 
-    private static TurnContext Turn(string text, string release = "BEam.1.0.0") => new()
+    private static TurnContext Turn(string text, string? release = "BEam.1.0.0") => new()
     {
         RawTranscript = text, NormalizedTranscript = text, InputMode = TurnInputMode.DirectText,
         FirmwareVersion = release, DeviceId = "music-test", Attributes = new Dictionary<string, object?> { ["transID"] = "music-turn" }
