@@ -44,6 +44,7 @@ internal static class SkillListenOwnership
         "snapshot",
         "photobooth",
         "photo_gallery",
+        "music_play",
         "radio",
         "radio_genre",
         "bad_apple",

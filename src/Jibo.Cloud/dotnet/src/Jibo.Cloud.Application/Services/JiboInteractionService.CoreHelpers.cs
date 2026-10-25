@@ -31,6 +31,17 @@ public sealed partial class JiboInteractionService
         bool isAlarmValueTurn,
         bool isSkillOwnedListen)
     {
+        // A song title can contain greeting or personality keywords. Recognize
+        // the explicit play request before broad conversational phrase matching.
+        if (!isSkillOwnedListen && !isYesNoTurn && !isTimerValueTurn && !isAlarmValueTurn &&
+            MusicCommandParser.TryParse(loweredTranscript, out _))
+        {
+            var nativeActivity = NativeGrammar.Instance.Parse(loweredTranscript);
+            if (nativeActivity?.Skill is not ("@be/circuit-saver" or "@be/exercise" or "@be/radio" or "@be/jibotube" or "@be/jukebox" or "@be/bad-apple") &&
+                TryResolveRadioGenre(loweredTranscript) is null)
+                return "music_play";
+        }
+
         var intent = ResolveSemanticIntentCore(
             loweredTranscript,
             referenceLocalTime,

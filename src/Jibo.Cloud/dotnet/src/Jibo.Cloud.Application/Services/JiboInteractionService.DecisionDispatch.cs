@@ -504,6 +504,7 @@ public sealed partial class JiboInteractionService
                 "request_stop_staring",
                 "stop staring",
                 "stop staring at me"),
+            "music_play" => BuildMusicLaunchDecision(turn, transcript),
             "radio" => BuildRadioLaunchDecision(),
             "radio_genre" => BuildRadioGenreLaunchDecision(lowered),
             "bad_apple" => BuildBadAppleLaunchDecision(turn),

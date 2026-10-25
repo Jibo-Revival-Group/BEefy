@@ -193,6 +193,13 @@ public sealed class ResponsePlanToSocketMessagesMapper
             entities = nativeParse.Entities.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
         else if (nativeLaunch && NativeConversationValue.Read(skill?.Payload, "nluEntities") is IReadOnlyDictionary<string, object?> nativeEntities)
             entities = nativeEntities.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+        if (string.Equals(skill?.SkillName, "@be/music", StringComparison.OrdinalIgnoreCase) &&
+            NativeConversationValue.Read(skill?.Payload, "nluEntities") is IReadOnlyDictionary<string, object?> musicEntities)
+        {
+            outboundIntent = "playSong";
+            outboundRules = [];
+            entities = musicEntities.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+        }
         var isKnowledgeSearchIntent =
             string.Equals(plan.IntentName, "knowledge_search", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(plan.IntentName, "knowledge_search_not_found", StringComparison.OrdinalIgnoreCase) ||

@@ -2083,6 +2083,8 @@ public sealed class WebSocketTurnFinalizationService(
 
             var emitSkillActions =
                 !string.Equals(plan.IntentName, "word_of_the_day", StringComparison.OrdinalIgnoreCase) &&
+                !(string.Equals(plan.IntentName, "music_play", StringComparison.OrdinalIgnoreCase) &&
+                  plan.Actions.OfType<InvokeNativeSkillAction>().Any(action => action.SkillName == "@be/music")) &&
                 !string.Equals(plan.IntentName, "radio", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(plan.IntentName, "radio_genre", StringComparison.OrdinalIgnoreCase) &&
                 !IsBadAppleSkillLaunch(plan) &&

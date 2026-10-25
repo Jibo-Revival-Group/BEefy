@@ -16,6 +16,7 @@ public sealed partial class JiboInteractionService
         "timer_value" => TryReadStructuredTimerValue(entities) is not null || TryParseTimerValue(transcript, false) is not null,
         "alarm_value" or "alarm_edit_value" => TryReadStructuredAlarmValue(entities) is not null ||
             TryParseAlarmValue(transcript, false, localTime) is not null,
+        "music_play" => MusicCommandParser.TryParse(transcript, out _),
         "radio_genre" => TryResolveRadioGenre(transcript) is not null,
         // These routes depend on typed parsers or entities.
         // A classifier cannot replace their extraction with an invented value.

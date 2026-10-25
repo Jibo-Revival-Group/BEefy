@@ -41,6 +41,8 @@ Those environment names stay as they are so an existing launch keeps working. `O
 
 Conversations run entirely in .NET. The managed grammar matcher and native handlers use embedded, revision-pinned text resources; Node, npm, and localhost helper services are unnecessary. Existing provider configuration and personal data stores continue to work. See [native command coverage and hardware checks](docs/native-conversation.md).
 
+On an updated BEam robot, say “Hey Jibo, play Yes I'm A Mess” or “play Yes I'm A Mess by AJR” to launch the built-in online music player. Specific song requests carry the title and optional artist to `@be/music`; JiboTube is not required. Deploy the BEam music skill before enabling this BEefy version.
+
 Say “Hey Jibo, sing me a song” for the original Twinkle Twinkle performance.
 “Sing a Christmas song” chooses from all seven original holiday song MIMs:
 Jingle Bells, Frosty the Snowman, Rudolph, Winter Wonderland, Santa Claus Is
