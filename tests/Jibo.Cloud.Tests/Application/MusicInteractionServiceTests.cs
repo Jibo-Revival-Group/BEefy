@@ -13,6 +13,8 @@ public sealed class MusicInteractionServiceTests
     [InlineData("Hey Jibo, play Yes I'm A Mess", "Yes I'm A Mess", null)]
     [InlineData("play Yes I’m A Mess by AJR", "Yes I’m A Mess", "AJR")]
     [InlineData("Could you play the song Hello by Adele?", "Hello", "Adele")]
+    [InlineData("play Bang! by A J R", "Bang!", "A J R")]
+    [InlineData("play The Big Goodbye by A jar", "The Big Goodbye", "A jar")]
     public void Parser_PreservesSongAndArtist(string text, string title, string? artist)
     {
         Assert.True(MusicCommandParser.TryParse(text, out var request));
@@ -32,6 +34,8 @@ public sealed class MusicInteractionServiceTests
     [Theory]
     [InlineData("Hey Jibo, play Yes I'm A Mess", "Yes I'm A Mess", "")]
     [InlineData("play Yes I’m A Mess by AJR", "Yes I’m A Mess", "AJR")]
+    [InlineData("play Bang! by A J R", "Bang!", "A J R")]
+    [InlineData("play The Big Goodbye", "The Big Goodbye", "")]
     public async Task Request_LaunchesBuiltInPlayer_WithEntitiesAndNoCloudSpeech(string text, string title, string artist)
     {
         var turn = Turn(text);
