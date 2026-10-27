@@ -63,3 +63,65 @@ command can resume on the same worker connection. `speech_started` clears that
 latch. BEefy does not substitute transport gaps or byte-density silence for a
 working independent detector. Firmware EOS, completeness checks and hard listen
 limits remain in force.
+
+## Optional Free Agent chat extension
+
+This is an additive protocol-v1 extension on the same authenticated outbound
+WSS connection. Every chat envelope includes `version: 1` and the connection's
+`generation`. Only `BEEFYER_CHAT_ENABLED=true` enables the worker capability;
+only then does `ready` add `chatModel: "gemma3:4b"` and `chatCapacity: 1`.
+Chat capacity is independent of ASR capacity.
+
+| Direction | Type | Additional fields |
+| --- | --- | --- |
+| BEefy → worker | `chat_start` | `requestId`, `messages` |
+| Worker → BEefy | `chat_result` | `requestId`, `text` |
+| Worker → BEefy | `chat_error` | `requestId`, sanitized `code` |
+| BEefy → worker | `chat_cancel` | `requestId` |
+| Worker → BEefy | `chat_cancelled` | `requestId` |
+
+`requestId` is exactly 32 lowercase hexadecimal characters. Accepted request
+IDs must not be reused within a generation, even after cancellation or completion.
+At most 4,096 accepted chat identities are retained per connection. At the
+bound, every well-formed `chat_start` returns `busy` without starting inference
+or closing the shared ASR connection, including attempts to reuse an accepted ID.
+Identities are never evicted. Chat remains unavailable until a fresh connection
+and generation; schedule a worker restart only during explicit maintenance when
+interrupting ASR is acceptable. Below the bound, malformed/reused identities,
+extra cancellation fields and protocol/generation mismatches terminate the
+connection. A cancellation for an unknown or completed
+well-formed ID is harmless and produces no reply. An active canceled task sends
+`chat_cancelled` only after its HTTP cleanup completes and its worker slot is
+released. A result or error may already be in flight instead. BEefy quarantines
+the chat slot until a matching terminal frame or connection teardown; an
+unacknowledged cancellation never tears down the shared ASR connection.
+
+A start envelope has exactly the five documented fields (`version`, `generation`,
+`type`, `requestId`, `messages`), with serialized UTF-8 wire size **at most 32,000
+bytes**, including all envelope fields/JSON whitespace. Its history contains
+**1–22 messages**, each exactly `{role, content}` with nonblank string content.
+An optional single initial `system` message is followed by alternating `user`
+and `assistant` messages; the first non-system and final message must be `user`.
+No tools, images, URL/model overrides or other fields are accepted.
+
+Invalid histories, extra fields and oversized starts return `invalid_request`;
+disabled chat returns `chat_disabled`. A valid different request while the slot
+is occupied returns `busy`. A rejected invalid/busy start does not claim a slot
+or consume an accepted-request ID. HTTP errors (including redirects), invalid
+JSON/response shapes, blank/non-string/oversized replies or connection failures
+return `inference_failure`; the total **120-second** deadline returns `timeout`.
+Errors contain no upstream error messages. The complete HTTP response body is
+bounded to 65,536 bytes before JSON decoding. A successful reply is at most
+**12,000 characters**, and its complete serialized result envelope is at most
+**65,536 UTF-8 bytes**; replies are rejected, never silently truncated. Escaped
+control characters/non-ASCII characters may hit the frame bound first. All
+outgoing frames share the 65,536-byte bound; overflow terminates the connection.
+
+The worker POSTs only to `http://localhost:11434/api/chat`, using exactly
+`{model: "gemma3:4b", messages: [...], stream: false}`. Redirects and environment
+HTTP proxies are disabled. There is no cloud/public fallback. Request tasks are
+asynchronous: heartbeat, cancellation and ASR continue while chat waits. A slot
+remains occupied until HTTP cleanup completes, including after repeated cancels.
+Disconnect cancels and awaits all generation-owned chat tasks before reconnect;
+no task is transferred to a successor connection. Closing the HTTP client is
+not a guarantee about the timing of Ollama's server-side compute cancellation.

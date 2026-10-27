@@ -23,7 +23,7 @@ jobs:
 
       - name: Test pronunciation recovery and model setup
         run: |
-          python3 -m pip install -r BEefyER/requirements.txt
+          python3 -m pip install -r BEefyER/requirements-chat.txt
           python3 -B -m unittest discover -s tests/python -p 'test_*.py'
 
       - name: Restore and test

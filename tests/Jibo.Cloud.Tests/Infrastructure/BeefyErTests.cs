@@ -325,6 +325,84 @@ public sealed class BeefyErTests
     }
 
     [Fact]
+    public async Task ChatCannotConsumeLastAsrQueueSlot()
+    {
+        var options = Options();
+        options.SendQueueCapacity = 4;
+        var socket = new FakeSocket();
+        var broker = new BeefyErBroker(options, NullLogger<BeefyErBroker>.Instance);
+        using var connection = new BeefyErBroker.Connection(socket, options) { Ready = true, ChatCapacity = 1 };
+        typeof(BeefyErBroker).GetField("_connection", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(broker, connection);
+        using var session = new BeefyErSession(broker, connection, options, "robot", "turn");
+        connection.Sessions[session.Id] = session;
+        for (var i = 0; i < 3; i++) Assert.True(session.SendPcm(new float[1]));
+        var chat = broker.ChatAsync([new("user", "hello")], CancellationToken.None, TimeSpan.FromMinutes(1));
+        Assert.True(session.SendPcm(new float[1]));
+        Assert.Equal(WebSocketState.Open, socket.State);
+        connection.Fail("test");
+        await Assert.ThrowsAsync<FreeAgentRelayException>(() => chat);
+    }
+
+    [Fact]
+    public async Task FullQueueRejectsChatStartWithoutAbortingActiveAsr()
+    {
+        var options = Options();
+        options.SendQueueCapacity = 4;
+        var socket = new FakeSocket();
+        var broker = new BeefyErBroker(options, NullLogger<BeefyErBroker>.Instance);
+        using var connection = new BeefyErBroker.Connection(socket, options) { Ready = true, ChatCapacity = 1 };
+        typeof(BeefyErBroker).GetField("_connection", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(broker, connection);
+        using var session = new BeefyErSession(broker, connection, options, "robot", "turn");
+        connection.Sessions[session.Id] = session;
+        for (var i = 0; i < 4; i++) Assert.True(session.SendPcm(new float[1]));
+        var error = await Assert.ThrowsAsync<FreeAgentRelayException>(() => broker.ChatAsync([new("user", "hello")], CancellationToken.None, TimeSpan.FromMinutes(1)));
+        Assert.Equal("free_unavailable", error.Code);
+        Assert.Null(connection.Chat);
+        Assert.True(connection.Ready);
+        Assert.Equal(WebSocketState.Open, socket.State);
+        Assert.False(session.Failed);
+        Assert.True(connection.Outgoing.Reader.TryRead(out _));
+        Assert.True(session.SendPcm(new float[1]));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FullQueueDuringChatCancelQuarantinesSlotAndPreservesAsr(bool timeout)
+    {
+        var options = Options();
+        options.SendQueueCapacity = 4;
+        var socket = new FakeSocket();
+        var broker = new BeefyErBroker(options, NullLogger<BeefyErBroker>.Instance);
+        using var connection = new BeefyErBroker.Connection(socket, options) { Ready = true, ChatCapacity = 1 };
+        typeof(BeefyErBroker).GetField("_connection", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(broker, connection);
+        using var session = new BeefyErSession(broker, connection, options, "robot", "turn");
+        connection.Sessions[session.Id] = session;
+        using var cancel = new CancellationTokenSource();
+        var task = broker.ChatAsync([new("user", "hello")], cancel.Token, TimeSpan.FromMinutes(1));
+        var chat = connection.Chat!;
+        for (var i = 0; i < 4; i++) Assert.True(session.SendPcm(new float[1]));
+        if (timeout)
+            typeof(BeefyErBroker).GetMethod("ExpireChat", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(broker, [connection, chat]);
+        else cancel.Cancel();
+        if (timeout) Assert.Equal("free_timeout", (await Assert.ThrowsAsync<FreeAgentRelayException>(() => task)).Code);
+        else await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
+        Assert.Equal(WebSocketState.Open, socket.State);
+        Assert.True(connection.Ready);
+        Assert.False(session.Failed);
+        Assert.Same(chat, connection.Chat);
+        Assert.True(chat.CancelSent);
+        var busy = await Assert.ThrowsAsync<FreeAgentRelayException>(() => broker.ChatAsync([new("user", "again")], CancellationToken.None, TimeSpan.FromMinutes(1)));
+        Assert.Equal("free_busy", busy.Code);
+        Assert.True(connection.ChatOutgoing.Reader.TryRead(out _)); // start
+        Assert.True(connection.ChatOutgoing.Reader.TryRead(out _)); // cancel
+        broker.HandleMessage(connection, new BeefyErMessage { Type = "chat_cancelled", Generation = connection.Generation, RequestId = chat.Id });
+        Assert.Null(connection.Chat);
+        Assert.True(connection.Outgoing.Reader.TryRead(out _));
+        Assert.True(session.SendPcm(new float[1]));
+    }
+
+    [Fact]
     public async Task BoundedQueueOverflowAbandonsAllRemoteWork()
     {
         var options = Options();

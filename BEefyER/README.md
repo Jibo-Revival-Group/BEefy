@@ -162,6 +162,49 @@ worker with `--no-start-runtime` and use the same loopback realtime endpoint.
 when updating an existing installation. The Python 3.11+ worker, including
 Python 3.14, does not need PyTorch for EOS detection.
 
+## Optional Free Agent chat
+
+Chat is off by default and does not replace ASR. To enable it, install the
+optional HTTP client into the worker's own environment (not a system/Hermes
+Python environment) and set the worker environment variable:
+
+```sh
+/opt/BEefyER/.venv/bin/python -m pip install -r /opt/BEefyER/requirements-chat.txt
+```
+
+```dotenv
+BEEFYER_CHAT_ENABLED=true
+```
+
+Only the literal value `true` (case-insensitive) enables chat. The extra HTTP
+client is pinned in `requirements-chat.txt`, which also includes the base worker
+requirements. It is optional and is not included in the ASR-only requirements file.
+The enabled worker advertises `chatModel: "gemma3:4b"` and `chatCapacity: 1` in
+its existing `ready` envelope. This announces configured capability, not an
+Ollama/model health probe. Provision Ollama and the model separately; the worker
+never downloads models or starts Ollama.
+
+The endpoint is fixed to **`http://localhost:11434/api/chat` on the BEefyER host**,
+with model **`gemma3:4b`**, non-streaming replies, a 120-second total timeout and
+one independent chat slot. There is no endpoint/model configuration, redirect
+following, environment-proxy use, cloud fallback, tool execution or public
+Ollama fallback. Incoming chat envelopes cannot supply an upstream or model.
+If the local service/model is unavailable, chat fails with a sanitized code;
+ASR and application heartbeats remain independent. No prompts, replies or
+upstream exception details are logged.
+
+Cancellation and disconnect cancel the asynchronous HTTP request, close its
+client resources, and retain the slot until cleanup completes. The worker
+cannot guarantee when Ollama stops server-side computation after its HTTP
+client disconnects. Generation-owned tasks cannot send into a later connection.
+See `PROTOCOL.md` for validation, byte limits, cancellation and error semantics.
+
+Offline verification (HTTP and ASR fixtures only, no models or live backend):
+
+```sh
+python -m unittest discover -s tests/python -p 'test_beefyer_chat*.py' -v
+```
+
 ## Prepare higher-precision ASR
 
 F16 is an optional single-model accuracy profile for the 6 GB Ryzen server.

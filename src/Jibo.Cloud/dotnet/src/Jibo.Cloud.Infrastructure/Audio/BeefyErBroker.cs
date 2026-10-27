@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Jibo.Cloud.Infrastructure.Audio;
 
 /// <summary>One outbound worker connection, with bounded multiplexed audio and per-turn leases.</summary>
-public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker> logger,
+public sealed partial class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker> logger,
     ListenEndpointingOptions? listenOptions = null)
 {
     internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -130,8 +130,21 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
     {
         try
         {
-            await foreach (var item in connection.Outgoing.Reader.ReadAllAsync(token))
-                await connection.Socket.SendAsync(item.Bytes.AsMemory(), item.Type, true, token);
+            while (!token.IsCancellationRequested)
+            {
+                if (connection.Outgoing.Reader.TryRead(out var item) || connection.ChatOutgoing.Reader.TryRead(out item))
+                {
+                    await connection.Socket.SendAsync(item.Bytes.AsMemory(), item.Type, true, token);
+                    continue;
+                }
+                using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
+                var asr = connection.Outgoing.Reader.WaitToReadAsync(wait.Token).AsTask();
+                var chat = connection.ChatOutgoing.Reader.WaitToReadAsync(wait.Token).AsTask();
+                await Task.WhenAny(asr, chat);
+                wait.Cancel();
+                token.ThrowIfCancellationRequested();
+                if (connection.Outgoing.Reader.Completion.IsCompleted && connection.ChatOutgoing.Reader.Completion.IsCompleted) break;
+            }
         }
         catch (Exception ex) when (ex is WebSocketException or OperationCanceledException)
         {
@@ -199,12 +212,30 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
                 connection.Threads = message.Threads;
                 connection.RightContext = message.RightContext;
                 connection.IndependentEndpointing = message.IndependentEndpointing;
+                connection.ChatModel = message.ChatModel;
+                connection.ChatCapacity = message.ChatModel == "gemma3:4b" && message.ChatCapacity == 1 ? 1 : 0;
                 connection.Ready = true;
             }
             logger.LogInformation("BEefyER ready model={Model} capacity={Capacity}", connection.Model, connection.Capacity);
             return;
         }
         if (!connection.Ready) throw new InvalidDataException("Worker is not ready.");
+        if (message.Type is "chat_result" or "chat_error" or "chat_cancelled")
+        {
+            lock (_gate)
+            {
+                if (connection.Chat is { } chat && message.RequestId == chat.Id
+                    && (message.Type != "chat_cancelled" || chat.CancelSent))
+                {
+                    connection.Chat = null;
+                    chat.Deadline?.Dispose();
+                    if (message.Type == "chat_result" && !string.IsNullOrWhiteSpace(message.Text) && message.Text.Length <= 12000)
+                        chat.Completion.TrySetResult(message.Text);
+                    else chat.Completion.TrySetException(new FreeAgentRelayException("upstream", 502));
+                }
+            }
+            return;
+        }
         if (message.StreamId is not null && connection.Sessions.TryGetValue(message.StreamId, out var session))
             session.Receive(message);
         // Unknown streams are canceled/disposed turns; late results cannot resurrect them.
@@ -215,11 +246,15 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
         public readonly WebSocket Socket;
         public readonly string Generation = Guid.NewGuid().ToString("N");
         public readonly Channel<(byte[] Bytes, WebSocketMessageType Type)> Outgoing;
+        public readonly Channel<(byte[] Bytes, WebSocketMessageType Type)> ChatOutgoing;
         public readonly ConcurrentDictionary<string, BeefyErSession> Sessions = new();
         public long LastPong = Stopwatch.GetTimestamp();
         public volatile bool Ready;
         public string? Model;
         public int Capacity;
+        public string? ChatModel;
+        public int ChatCapacity;
+        public PendingChat? Chat;
         public int? Threads;
         public int? RightContext;
         public bool IndependentEndpointing;
@@ -228,6 +263,11 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
         public Connection(WebSocket socket, BeefyErOptions options)
         {
             Socket = socket;
+            // A prior late cancel may precede the current start and its cancel.
+            ChatOutgoing = Channel.CreateBounded<(byte[], WebSocketMessageType)>(new BoundedChannelOptions(3)
+            {
+                SingleReader = true, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = false
+            });
             Outgoing = Channel.CreateBounded<(byte[], WebSocketMessageType)>(new BoundedChannelOptions(options.SendQueueCapacity)
             {
                 SingleReader = true, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = false
@@ -248,11 +288,18 @@ public sealed class BeefyErBroker(BeefyErOptions options, ILogger<BeefyErBroker>
         public void Fail(string reason)
         {
             Ready = false;
+            if (Chat is { } chat)
+            {
+                Chat = null;
+                chat.Deadline?.Dispose();
+                chat.Completion.TrySetException(new FreeAgentRelayException("free_unavailable", 503));
+            }
             foreach (var session in Sessions.Values) session.Fail(reason);
             Outgoing.Writer.TryComplete();
+            ChatOutgoing.Writer.TryComplete();
         }
 
-        public void Dispose() => Outgoing.Writer.TryComplete();
+        public void Dispose() { Outgoing.Writer.TryComplete(); ChatOutgoing.Writer.TryComplete(); }
     }
 }
 
@@ -261,6 +308,10 @@ internal sealed class BeefyErMessage
     public int Version { get; set; } = 1;
     public string Type { get; set; } = "";
     public string Generation { get; set; } = "";
+    public string? ChatModel { get; set; }
+    public int ChatCapacity { get; set; }
+    public string? RequestId { get; set; }
+    public IReadOnlyList<FreeAgentChatMessage>? Messages { get; set; }
     public string? StreamId { get; set; }
     public string? SessionId { get; set; }
     public string? TurnId { get; set; }

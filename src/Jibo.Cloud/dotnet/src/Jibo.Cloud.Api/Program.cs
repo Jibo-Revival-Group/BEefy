@@ -78,6 +78,7 @@ builder.Services.AddSingleton<HomeAssistantWebSocketHandler>();
 builder.Services.AddSingleton<SingleRobotHttpHubAccessGuard>();
 builder.Services.AddSingleton<WebSocketTransportPolicy>();
 builder.Services.AddSingleton<WebSocketRequestCoordinator>();
+builder.Services.AddFreeAgent(builder.Configuration);
 builder.Services.AddSingleton<BeefyErWebSocketHandler>();
 builder.Services.AddHttpClient(JoapUpdateProxy.ClientName, client =>
 {
@@ -101,6 +102,8 @@ app.Logger.LogInformation(
     protocolAuthDiagnosticsEnabled,
     Environment.GetEnvironmentVariable("CONTAINER_APP_REVISION") ?? "local");
 
+// Reject missing transport identity before forwarded headers can supply one.
+app.UseFreeAgentTransportGuard();
 app.UseForwardedHeaders();
 app.UseCors();
 app.UseDefaultFiles();
@@ -109,8 +112,9 @@ app.UseWebSockets();
 
 app.Use(async (context, next) =>
 {
-    var skipLogging = PortalLogPollingDiagnosticsState.DisableServerLogsEndpointLogging &&
-        context.Request.Path.StartsWithSegments("/api/portal/server/logs");
+    var skipLogging = context.Request.Path.StartsWithSegments("/api/agent/free", StringComparison.OrdinalIgnoreCase) ||
+        (PortalLogPollingDiagnosticsState.DisableServerLogsEndpointLogging &&
+        context.Request.Path.StartsWithSegments("/api/portal/server/logs"));
 
     if (skipLogging)
     {
@@ -208,6 +212,7 @@ app.MapGet("/beefyer/status", (HttpContext context, Jibo.Cloud.Infrastructure.Au
 app.MapAdminPanelStaticFiles();
 app.MapPortalEndpoints();
 app.MapHomeAssistantRobotEndpoints();
+app.MapFreeAgentEndpoints();
 
 app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, JiboCloudProtocolService service,
     JoapUpdateProxy joapUpdateProxy,

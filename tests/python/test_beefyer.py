@@ -163,6 +163,23 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.pcm_packets[0], first_pcm)
         self.assertEqual(self.settings[0]["session"]["sample_rate"], 16000)
 
+    async def test_chat_identity_saturation_does_not_interrupt_active_asr(self):
+        self.config.chat_enabled = True
+        self.owner.chat_ids.update(f"{i:032x}" for i in range(4096))
+        stream = self.start()
+        self.audio(stream, 1)
+        await self.socket.result("partial")
+        self.socket.event("chat_start", requestId="f" * 32, messages=[{"role": "user", "content": "hi"}])
+        self.assertEqual((await self.socket.result("chat_error"))["code"], "busy")
+        self.audio(stream, 2)
+        await self.socket.result("endpoint")
+        self.audio(stream, 3)
+        self.assertEqual((await self.socket.result("partial"))["text"], "turn on the light")
+        self.socket.event("finish", streamId=stream, sessionId="robot", turnId="turn", sequence=3)
+        self.assertEqual((await self.socket.result("final"))["text"], "turn on the light")
+        self.assertFalse(self.run.done())
+        self.assertEqual(len(self.owner.chat_ids), 4096)
+
     async def test_recognition_uses_robot_hints_and_configured_names(self):
         self.config.hotwords = ["Jibo", "Samantha"]
         stream = self.start(hints=["Samantha", "kitchen light"])

@@ -10,6 +10,7 @@ import logging
 import math
 import os
 import random
+import re
 import secrets
 import signal
 import ssl
@@ -28,6 +29,13 @@ VERSION = 1
 MAX_MESSAGE = 65536
 DELTA = "conversation.item.input_audio_transcription.delta"
 COMPLETED = "conversation.item.input_audio_transcription.completed"
+CHAT_URL = "http://localhost:11434/api/chat"
+CHAT_MODEL = "gemma3:4b"
+CHAT_TIMEOUT = 120
+MAX_CHAT_IDENTITIES = 4096
+# Longer than the trusted broker's two-minute replay horizon, measured from
+# completed cleanup rather than admission so delayed tasks remain protected.
+CHAT_ID_RETENTION = 300
 
 
 def available_cpu_count() -> int:
@@ -75,6 +83,7 @@ class Config:
     vad_enabled: bool = True
     vad_model: str = str(Path(__file__).resolve().parent / "models" / "silero-v6.2.1.onnx")
     vad_silence_ms: int = 320
+    chat_enabled: bool = False
 
     @property
     def resolved_model(self):
@@ -268,15 +277,140 @@ class WorkerConnection:
         self.generation = generation
         self.turns: dict[str, Turn] = {}
         self.outgoing = asyncio.Queue(128)
+        self.chat_outgoing = asyncio.Queue(128)
+        self.outgoing_ready = asyncio.Event()
+        self.chat_delivery = set()
         self.failed = asyncio.Event()
         self.vad_factory = vad_factory
+        self.chats = {}
+        self.chat_ids = set()
+        self.completed_chat_ids = {}
+        self.closed = False
+
+    async def chat(self, request_id, messages):
+        try:
+            import aiohttp
+            async with asyncio.timeout(CHAT_TIMEOUT):
+                payload = json.dumps({"model": CHAT_MODEL, "messages": messages, "stream": False},
+                                     ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                if len(payload) > 32000:
+                    raise ValueError("Chat request too large")
+                async with aiohttp.ClientSession(trust_env=False) as session:
+                    async with session.post(CHAT_URL, data=payload, headers={"Content-Type": "application/json"},
+                                            allow_redirects=False) as response:
+                        if response.status != 200:
+                            raise ValueError("Invalid chat response")
+                        body = bytearray()
+                        async for chunk in response.content.iter_chunked(8192):
+                            body.extend(chunk)
+                            if len(body) > MAX_MESSAGE:
+                                raise ValueError("Chat response too large")
+                        result = json.loads(body)
+                text = result["message"]["content"]
+                if not isinstance(text, str) or not text.strip() or len(text) > 12000:
+                    raise ValueError("Invalid chat reply")
+                frame = json.dumps({"version": VERSION, "type": "chat_result", "generation": self.generation,
+                                    "requestId": request_id, "text": text})
+                if len(frame.encode("utf-8")) > MAX_MESSAGE:
+                    raise ValueError("Chat frame too large")
+            return "chat_result", {"text": text}
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            return "chat_error", {"code": "timeout"}
+        except Exception:
+            # Never log or forward prompt, response body or exception details.
+            return "chat_error", {"code": "inference_failure"}
+
+    def chat_cleanup(self, request_id, task):
+        if task.cancelled():
+            kind, fields = "chat_cancelled", {}
+        else:
+            kind, fields = task.result()
+        frame = json.dumps({"version": VERSION, "type": kind, "generation": self.generation,
+                            "requestId": request_id, **fields})
+        def release():
+            self.outgoing_ready.set()
+            if self.chats.get(request_id) is task:
+                del self.chats[request_id]
+                self.completed_chat_ids[request_id] = time.monotonic()
+        try:
+            self.chat_outgoing.put_nowait(frame)
+            release()
+        except asyncio.QueueFull:
+            async def deliver():
+                await self.chat_outgoing.put(frame)
+                release()
+            delivery = asyncio.create_task(deliver())
+            self.chat_delivery.add(delivery)
+            delivery.add_done_callback(self.chat_delivery.discard)
+
+    def start_chat(self, event, raw):
+        request_id = event.get("requestId")
+        if not isinstance(request_id, str) or re.fullmatch("[0-9a-f]{32}", request_id) is None:
+            raise ValueError("Invalid chat identity")
+        now = time.monotonic()
+        for identity, completed_at in list(self.completed_chat_ids.items()):
+            if now - completed_at >= CHAT_ID_RETENTION and identity not in self.chats:
+                del self.completed_chat_ids[identity]
+                self.chat_ids.discard(identity)
+        if len(self.chat_ids) >= MAX_CHAT_IDENTITIES:
+            # Never evict replay identities or tear down the shared ASR connection.
+            self.send("chat_error", requestId=request_id, code="busy")
+            return
+        if request_id in self.chat_ids:
+            raise ValueError("Reused chat identity")
+        code = None
+        messages = event.get("messages")
+        if not self.config.chat_enabled:
+            code = "chat_disabled"
+        else:
+            valid = (set(event) == {"version", "generation", "type", "requestId", "messages"}
+                     and len(raw.encode("utf-8")) <= 32000
+                     and isinstance(messages, list) and 1 <= len(messages) <= 22)
+            expected = "user"
+            if valid:
+                for index, message in enumerate(messages):
+                    if (not isinstance(message, dict) or set(message) != {"role", "content"}
+                            or not isinstance(message["content"], str) or not message["content"].strip()):
+                        valid = False
+                        break
+                    role = message["role"]
+                    if index == 0 and role == "system":
+                        continue
+                    if role != expected:
+                        valid = False
+                        break
+                    expected = "assistant" if role == "user" else "user"
+                valid = valid and expected == "assistant"
+            if not valid:
+                code = "invalid_request"
+        if code:
+            self.send("chat_error", requestId=request_id, code=code)
+            return
+        if len(self.chats) >= 1:
+            self.send("chat_error", requestId=request_id, code="busy")
+            return
+        self.chat_ids.add(request_id)
+        task = asyncio.create_task(self.chat(request_id, messages))
+        self.chats[request_id] = task
+        task.add_done_callback(lambda task, rid=request_id: self.chat_cleanup(rid, task))
 
     def send(self, kind: str, **fields):
+        if self.closed:
+            return
         try:
-            self.outgoing.put_nowait(json.dumps({"version": VERSION, "type": kind,
-                                               "generation": self.generation, **fields}))
+            frame = json.dumps({"version": VERSION, "type": kind, "generation": self.generation, **fields})
+            if len(frame.encode("utf-8")) > MAX_MESSAGE:
+                self.failed.set()
+                return
+            queue = self.chat_outgoing if kind.startswith("chat_") else self.outgoing
+            queue.put_nowait(frame)
+            self.outgoing_ready.set()
         except asyncio.QueueFull:
-            self.failed.set()
+            # A rejected chat request must never tear down ongoing ASR.
+            if not kind.startswith("chat_"):
+                self.failed.set()
 
     def validate(self, event: dict):
         if event.get("version") != VERSION or event.get("generation") != self.generation:
@@ -284,7 +418,15 @@ class WorkerConnection:
 
     async def writer(self):
         while True:
-            await self.socket.send(await self.outgoing.get())
+            await self.outgoing_ready.wait()
+            if not self.outgoing.empty():
+                frame = self.outgoing.get_nowait()
+            elif not self.chat_outgoing.empty():
+                frame = self.chat_outgoing.get_nowait()
+            else:
+                self.outgoing_ready.clear()
+                continue
+            await self.socket.send(frame)
 
     async def watch_failure(self):
         await self.failed.wait()
@@ -309,6 +451,18 @@ class WorkerConnection:
             kind = event.get("type")
             if kind == "ping":
                 self.send("pong")
+                continue
+            if kind == "chat_start":
+                self.start_chat(event, raw)
+                continue
+            if kind == "chat_cancel":
+                request_id = event.get("requestId")
+                if (set(event) != {"version", "generation", "type", "requestId"}
+                        or not isinstance(request_id, str) or re.fullmatch("[0-9a-f]{32}", request_id) is None):
+                    raise ValueError("Invalid chat cancellation")
+                task = self.chats.get(request_id)
+                if task is not None and not task.cancelling():
+                    task.cancel()
                 continue
             stream_id = event.get("streamId")
             if kind == "start":
@@ -351,18 +505,25 @@ class WorkerConnection:
         self.send("ready", capacity=self.config.capacity, model=model,
                   threads=self.config.inference_threads if self.config.start_runtime else None,
                   rightContext=self.config.right_context if self.config.start_runtime else None,
-                  independentEndpointing=self.vad_factory is not None)
+                  independentEndpointing=self.vad_factory is not None,
+                  **({"chatModel": "gemma3:4b", "chatCapacity": 1} if self.config.chat_enabled else {}))
         try:
             async with asyncio.TaskGroup() as group:
                 group.create_task(self.writer())
                 group.create_task(self.reader())
                 group.create_task(self.watch_failure())
         finally:
-            tasks = [turn.task for turn in self.turns.values()]
+            self.closed = True
+            tasks = [turn.task for turn in self.turns.values()] + list(self.chats.values())
             for task in tasks:
-                task.cancel()
+                if not task.cancelling():
+                    task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            for delivery in self.chat_delivery:
+                delivery.cancel()
+            await asyncio.gather(*self.chat_delivery, return_exceptions=True)
             self.turns.clear()
+            self.chats.clear()
 
 
 async def probe_runtime(config: Config) -> str:
@@ -457,7 +618,8 @@ def config_from_env(args) -> Config:
         hotword_boost=float(os.environ.get("BEEFYER_HOTWORD_BOOST", "2.5")),
         vad_enabled=os.environ.get("BEEFYER_VAD_ENABLED", "true").lower() not in {"false", "0", "no"},
         vad_model=os.environ.get("BEEFYER_VAD_MODEL", Config.vad_model),
-        vad_silence_ms=int(os.environ.get("BEEFYER_VAD_SILENCE_MS", "320")))
+        vad_silence_ms=int(os.environ.get("BEEFYER_VAD_SILENCE_MS", "320")),
+        chat_enabled=os.environ.get("BEEFYER_CHAT_ENABLED", "").lower() == "true")
 
 
 async def main_async(config):
