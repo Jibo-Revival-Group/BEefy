@@ -287,6 +287,8 @@ header, never in a URL or command argument.
   first partial latency, final drain latency, and maximum processing backlog.
   `BEEFYER_CAPACITY` and BEefy's `MaxConcurrentTurns` both limit active remote
   turns; the smaller limit wins. Increase capacity only after measuring CPU load.
+  The worker starts the runtime with `BEEFYER_CAPACITY + 1` HTTP workers, since each
+  live turn holds one runtime websocket.
 - Disable offloading by setting `OpenJibo__Stt__BeefyEr__Enabled=false` and
   restarting BEefy. Local ASR and existing robot protocols remain available.
 

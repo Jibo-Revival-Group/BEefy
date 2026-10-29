@@ -550,7 +550,10 @@ async def serve(config: Config):
         LOG.info("Starting resident ASR model=%s threads=%s availableCPUs=%s rightContext=%s capacity=%s",
                  config.resolved_model, config.inference_threads, available_cpu_count(), config.right_context, config.capacity)
         runtime = await asyncio.create_subprocess_exec(
+            # The runtime serves one websocket per HTTP worker (default 4); one spare keeps the
+            # readiness probe from being locked out when every turn slot is busy.
             config.runtime_bin, "serve", "--host", "127.0.0.1", "--port", str(port), "--no-ui",
+            "--threads", str(config.capacity + 1),
             "--asr.model.path", config.resolved_model, "--asr.backend.gpu", "-1",
             "--asr.backend.threads", str(config.inference_threads), "--asr.streaming.rnnt_right_context", str(config.right_context),
             "--asr.decoder.boosting_tree_alpha", "1",

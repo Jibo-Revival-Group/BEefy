@@ -44,6 +44,16 @@ class LaunchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(argv[argv.index("--asr.backend.threads") + 1], "8")
         self.assertEqual(argv[argv.index("--asr.streaming.rnnt_right_context") + 1], "-1")
 
+    async def test_runtime_serves_one_websocket_per_turn_slot_plus_probe(self):
+        # The runtime's default 4 HTTP workers refused a 5th concurrent turn's websocket.
+        config = Config("wss://example.invalid/beefyer/connect", "s" * 43, capacity=5, vad_enabled=False)
+        with patch("worker.asyncio.create_subprocess_exec", new_callable=AsyncMock,
+                   return_value=types.SimpleNamespace(returncode=2)) as launch:
+            with self.assertRaises(RuntimeError):
+                await worker.serve(config)
+        argv = launch.call_args.args
+        self.assertEqual(argv[argv.index("--threads") + 1], "6")
+
 
 class FakeBeefy:
     def __init__(self):
