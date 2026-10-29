@@ -12,6 +12,9 @@ namespace Jibo.Cloud.Infrastructure.Persistence;
 /// </summary>
 public sealed partial class PostgreSqlCloudStateStore : ICloudStateStore
 {
+    /// <inheritdoc cref="InMemoryCloudStateStore.DefaultRobotStandsInForUnidentified"/>
+    public bool DefaultRobotStandsInForUnidentified { get; init; } = true;
+
     private const string DefaultLoopId = "openjibo-default-loop";
     private readonly ICloudAccountRepository _accounts;
     private readonly ICloudAuthTokenRepository _authTokens;
@@ -411,7 +414,7 @@ public sealed partial class PostgreSqlCloudStateStore : ICloudStateStore
         var account = GetAccount();
         var resolvedDeviceId = !string.IsNullOrWhiteSpace(deviceId)
             ? deviceId.Trim()
-            : useDefaultRobot
+            : useDefaultRobot && DefaultRobotStandsInForUnidentified
                 ? GetRobot().DeviceId
                 : null;
         var token = $"hub-{account.AccountId}-{Guid.NewGuid():N}";
@@ -484,7 +487,7 @@ public sealed partial class PostgreSqlCloudStateStore : ICloudStateStore
             ? deviceId.Trim()
             : !string.IsNullOrWhiteSpace(durableToken?.DeviceId)
                 ? durableToken.DeviceId
-            : IsAmbiguousConnectionToken(sessionToken)
+            : IsAmbiguousConnectionToken(sessionToken) || !DefaultRobotStandsInForUnidentified
                 ? null
                 : GetRobot().DeviceId;
         var session = CreateSession(kind, durableToken?.AccountId ?? GetAccount().AccountId, resolvedDeviceId,

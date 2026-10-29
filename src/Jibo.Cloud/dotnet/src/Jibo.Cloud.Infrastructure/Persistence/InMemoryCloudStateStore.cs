@@ -72,6 +72,13 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
     private DateTimeOffset? _lastSavedUtc;
     private long _revision;
     private DeviceRegistration _robot;
+
+    /// <summary>
+    /// Whether the default robot stands in for a robot that has not identified itself. Right for a
+    /// single-robot self-hosted server; a managed server sets this false, because there it would merge
+    /// every unidentified robot (and their in-progress conversations) into one identity.
+    /// </summary>
+    public bool DefaultRobotStandsInForUnidentified { get; init; } = true;
     private RobotProfile _robotProfile;
 
     public InMemoryCloudStateStore(string? persistencePath = null)
@@ -1171,7 +1178,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
     {
         var resolvedDeviceId = !string.IsNullOrWhiteSpace(deviceId)
             ? deviceId.Trim()
-            : useDefaultRobot
+            : useDefaultRobot && DefaultRobotStandsInForUnidentified
                 ? _robot.DeviceId
                 : null;
         var token = $"hub-{_account.AccountId}-{Guid.NewGuid():N}";
@@ -1287,7 +1294,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
             ? deviceId.Trim()
             : !string.IsNullOrWhiteSpace(durableToken?.DeviceId)
                 ? durableToken.DeviceId
-            : IsAmbiguousConnectionToken(token)
+            : IsAmbiguousConnectionToken(token) || !DefaultRobotStandsInForUnidentified
                 ? null
                 : _robot.DeviceId;
         var resolvedAccountId = durableToken?.AccountId ?? _account.AccountId;

@@ -177,6 +177,9 @@ public static class ServiceCollectionExtensions
                                             ?? Path.Combine(AppContext.BaseDirectory, "App_Data",
                                                 "personal-memory.json");
         var stateBackendKind = ParseBackendKind(configuration?["OpenJibo:State:Backend"]);
+        // Many unrelated robots share a managed server, so none may borrow the default robot's identity.
+        var defaultRobotStandsIn = !string.Equals(configuration?["OpenJibo:Deployment:Mode"], "managed",
+            StringComparison.OrdinalIgnoreCase);
         var personalMemoryBackendKind = ParseBackendKind(configuration?["OpenJibo:PersonalMemory:Backend"]);
         var stateConnectionString = configuration?["OpenJibo:State:ConnectionString"]
                                     ?? Environment.GetEnvironmentVariable("OPENJIBO_STATE_STORAGE_CONNECTION_STRING")
@@ -267,7 +270,10 @@ public static class ServiceCollectionExtensions
                 backupPayloadStore: provider.GetRequiredService<IBackupPayloadStore>(),
                 ownerFirstName: ownerFirstName,
                 ownerLastName: ownerLastName,
-                transportMetrics: provider.GetRequiredService<ITransportMetrics>()));
+                transportMetrics: provider.GetRequiredService<ITransportMetrics>())
+            {
+                DefaultRobotStandsInForUnidentified = defaultRobotStandsIn
+            });
         }
         else
         {
@@ -281,7 +287,10 @@ public static class ServiceCollectionExtensions
                     holidayCalendarProvider,
                     ownerFirstName,
                     ownerLastName,
-                    provider.GetRequiredService<ITransportMetrics>());
+                    provider.GetRequiredService<ITransportMetrics>())
+                {
+                    DefaultRobotStandsInForUnidentified = defaultRobotStandsIn
+                };
             });
         }
         var releaseSmokeAuthorization = new ReleaseSmokeAuthorizationOptions();
