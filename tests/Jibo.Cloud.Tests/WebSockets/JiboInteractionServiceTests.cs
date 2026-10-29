@@ -2663,6 +2663,41 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
+    public async Task BuildDecisionAsync_PersonalReport_SynchronouslyBlockingCalendarStillMeetsRobotDeadline()
+    {
+        // Store-backed providers (PostgreSQL Sync, holiday lookup) block before returning a Task.
+        using var release = new ManualResetEventSlim();
+        var calendar = new Mock<ICalendarReportProvider>();
+        calendar.Setup(provider => provider.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                release.Wait(TimeSpan.FromSeconds(30));
+                return Task.FromResult<CalendarReportSnapshot?>(null);
+            });
+        var service = CreateService(calendarReportProvider: calendar.Object);
+        try
+        {
+            var decision = await Task.Run(() => service.BuildDecisionAsync(new TurnContext
+            {
+                RawTranscript = "yes", NormalizedTranscript = "yes",
+                Attributes = new Dictionary<string, object?>
+                {
+                    [PersonalReportStateKey] = "awaiting_identity_confirmation",
+                    [PersonalReportUserNameKey] = "alex",
+                    [PersonalReportCommuteEnabledKey] = false,
+                    [PersonalReportNewsEnabledKey] = false
+                }
+            })).WaitAsync(TimeSpan.FromSeconds(7));
+            Assert.Equal("personal_report_delivered", decision.IntentName);
+            Assert.Contains("couldn't fetch your calendar", decision.ReplyText);
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Fact]
     public async Task BuildDecisionAsync_PersonalReport_StartsOptInStateMachine()
     {
         var service = CreateService();

@@ -14,6 +14,11 @@ internal sealed class BoundedCloudSessionRegistry(int maximumActiveSessions = 25
     private readonly Lock _mutationGate = new();
     private readonly ConcurrentDictionary<string, CloudSession> _active = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, CloudSession> _durableTokens = new(StringComparer.OrdinalIgnoreCase);
+    // Robots open a new listen socket per turn; keep the last closed session briefly so a
+    // cloud-owned follow-up (personal report yes/no, name) can inherit its dialog state.
+    private readonly ConcurrentDictionary<string, (CloudSession Session, DateTimeOffset ClosedUtc)> _recentlyClosed =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan RecentlyClosedLifetime = TimeSpan.FromMinutes(2);
     private readonly int _maximumActiveSessions = Math.Max(1, maximumActiveSessions);
     private readonly int _maximumDurableTokens = Math.Max(1, maximumDurableTokens);
     private readonly ITransportMetrics _transportMetrics = transportMetrics ?? NullTransportMetrics.Instance;
@@ -144,8 +149,20 @@ internal sealed class BoundedCloudSessionRegistry(int maximumActiveSessions = 25
                 pair.Value.SessionId.Equals(sessionId, StringComparison.OrdinalIgnoreCase));
             if (match.Key is null || !_active.TryRemove(match.Key, out _)) return false;
             _transportMetrics.ActiveSessionsChanged(-1);
+            var now = DateTimeOffset.UtcNow;
+            foreach (var stale in _recentlyClosed.Where(pair => now - pair.Value.ClosedUtc > RecentlyClosedLifetime))
+                _recentlyClosed.TryRemove(stale.Key, out _);
+            if (!string.IsNullOrWhiteSpace(match.Value.DeviceId))
+                _recentlyClosed[match.Value.DeviceId.Trim()] = (match.Value, now);
             return true;
         }
+    }
+
+    public CloudSession? FindRecentlyClosed(string? deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId) ||
+            !_recentlyClosed.TryGetValue(deviceId.Trim(), out var entry)) return null;
+        return DateTimeOffset.UtcNow - entry.ClosedUtc <= RecentlyClosedLifetime ? entry.Session : null;
     }
 
     public bool TryRemove(string token, out CloudSession? session)

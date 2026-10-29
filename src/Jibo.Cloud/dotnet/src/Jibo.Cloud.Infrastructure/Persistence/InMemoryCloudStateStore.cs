@@ -1355,7 +1355,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
                 string.Equals(candidate.DeviceId, session.DeviceId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(candidate => candidate.LastSeenUtc)
             .ThenByDescending(candidate => candidate.CreatedUtc)
-            .FirstOrDefault();
+            .FirstOrDefault() ?? _sessions.FindRecentlyClosed(session.DeviceId);
         if (donor is null)
         {
             var observed = _devices.GetValueOrDefault(session.DeviceId.Trim());

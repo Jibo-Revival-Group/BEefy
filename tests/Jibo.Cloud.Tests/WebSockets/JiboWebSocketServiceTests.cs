@@ -10017,6 +10017,8 @@ public sealed class JiboWebSocketServiceTests
                 robotId + "\"}}}"
         });
         Assert.Equal(robotId, optInSession.DeviceId);
+        // The live coordinator closes the opt-in socket before the robot opens the yes/no socket.
+        _store.CloseSession(optInSession.SessionId);
 
         await _service.HandleMessageAsync(new WebSocketMessageEnvelope
         {

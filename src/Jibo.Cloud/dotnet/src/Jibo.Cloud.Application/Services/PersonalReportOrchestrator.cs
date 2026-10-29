@@ -319,7 +319,9 @@ internal static partial class PersonalReportOrchestrator
             if (!enabled) return new JiboInteractionDecision(section, string.Empty);
             try
             {
-                return await build(reportDeadline.Token).WaitAsync(reportDeadline.Token);
+                // Task.Run: store-backed providers block synchronously before returning a Task,
+                // which would otherwise hold this turn past the deadline.
+                return await Task.Run(() => build(reportDeadline.Token)).WaitAsync(reportDeadline.Token);
             }
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
             {

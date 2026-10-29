@@ -8,7 +8,8 @@ namespace Jibo.Cloud.Infrastructure.Holidays;
 
 public sealed class NagerDateHolidayCalendarProvider(HolidayCalendarOptions options) : IHolidayCalendarProvider
 {
-    private static readonly HttpClient HttpClient = new();
+    // Called synchronously from turn handling; the 100 s default would outlast the robot's wait.
+    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(3) };
     private static readonly ConcurrentDictionary<string, HolidayRecord[]> Cache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)

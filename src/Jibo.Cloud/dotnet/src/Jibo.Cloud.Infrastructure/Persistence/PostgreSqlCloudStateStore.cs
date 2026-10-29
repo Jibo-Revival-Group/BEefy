@@ -594,7 +594,7 @@ public sealed partial class PostgreSqlCloudStateStore : ICloudStateStore
                                 string.Equals(candidate.DeviceId, session.DeviceId,
                                     StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(candidate => candidate.LastSeenUtc)
-            .FirstOrDefault();
+            .FirstOrDefault() ?? _sessions.FindRecentlyClosed(session.DeviceId);
         if (donor is null) return;
         foreach (var pair in donor.Metadata.Where(pair => ShouldInheritDialogMetadataKey(pair.Key)))
         {
