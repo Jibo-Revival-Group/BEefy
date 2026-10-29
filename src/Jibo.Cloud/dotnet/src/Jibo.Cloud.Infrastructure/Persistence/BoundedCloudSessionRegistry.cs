@@ -165,6 +165,26 @@ internal sealed class BoundedCloudSessionRegistry(int maximumActiveSessions = 25
         return DateTimeOffset.UtcNow - entry.ClosedUtc <= RecentlyClosedLifetime ? entry.Session : null;
     }
 
+    // The newest live or just-closed dialog session for a device. Durable token records are
+    // auth-only and never carry dialog state, so they must not shadow a just-closed session
+    // (a robot can hold hundreds of issued tokens).
+    public CloudSession? FindDialogDonor(string? deviceId, string excludeSessionId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId)) return null;
+        lock (_mutationGate)
+        {
+            var closed = FindRecentlyClosed(deviceId);
+            return _active.Values
+                .Concat(closed is null ? Array.Empty<CloudSession>() : new[] { closed })
+                .Where(candidate =>
+                    !string.Equals(candidate.SessionId, excludeSessionId, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(candidate.DeviceId, deviceId.Trim(), StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(candidate => candidate.LastSeenUtc)
+                .ThenByDescending(candidate => candidate.CreatedUtc)
+                .FirstOrDefault();
+        }
+    }
+
     public bool TryRemove(string token, out CloudSession? session)
     {
         lock (_mutationGate)

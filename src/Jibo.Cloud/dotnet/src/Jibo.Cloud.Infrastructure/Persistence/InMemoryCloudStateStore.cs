@@ -1349,13 +1349,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
     {
         if (string.IsNullOrWhiteSpace(session.DeviceId)) return;
 
-        var donor = _sessions.Values
-            .Where(candidate =>
-                !string.Equals(candidate.SessionId, session.SessionId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(candidate.DeviceId, session.DeviceId, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(candidate => candidate.LastSeenUtc)
-            .ThenByDescending(candidate => candidate.CreatedUtc)
-            .FirstOrDefault() ?? _sessions.FindRecentlyClosed(session.DeviceId);
+        var donor = _sessions.FindDialogDonor(session.DeviceId, session.SessionId);
         if (donor is null)
         {
             var observed = _devices.GetValueOrDefault(session.DeviceId.Trim());

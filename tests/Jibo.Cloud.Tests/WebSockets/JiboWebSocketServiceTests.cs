@@ -10123,6 +10123,33 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task IssuedTokenPersonalReport_YesOnNewSocketAfterClose_ContinuesStateMachine()
+    {
+        // Live robots use an issued path token and open a new socket per turn; the
+        // durable token record must not hide the closed socket's report state.
+        const string stateKey = "personalReportState";
+        var token = _store.IssueRobotToken("Luster-Test-Robot");
+        // Earlier issued tokens for the same robot are auth records with no dialog state.
+        _store.IssueRobotToken("Luster-Test-Robot"); _store.IssueRobotToken("Luster-Test-Robot");
+        Task<IReadOnlyList<WebSocketReply>> Send(string text) => _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "api.5x1.com", Path = "/v1/listen/" + token, Kind = "neo-hub-listen", Token = token, Text = text
+        });
+
+        await Send("""{"type":"CLIENT_ASR","transID":"trans-tok-start","data":{"text":"give me my personal report"}}""");
+        var first = _store.FindActiveSessionByToken(token);
+        Assert.NotNull(first);
+        Assert.Equal("awaiting_opt_in", first.Metadata[stateKey]?.ToString());
+        _store.CloseSession(first.SessionId);
+
+        var yes = await Send("""{"type":"CLIENT_ASR","transID":"trans-tok-yes","data":{"text":"yes"}}""");
+        Assert.NotSame(first, _store.FindActiveSessionByToken(token));
+        using var listen = JsonDocument.Parse(yes[0].Text!);
+        Assert.Equal("personal_report_request_name",
+            listen.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
+    }
+
+    [Fact]
     public async Task ClientAsrPersonalReport_StateMachinePersistsAcrossTurns()
     {
         const string stateKey = "personalReportState";

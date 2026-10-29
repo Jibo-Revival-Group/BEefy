@@ -589,12 +589,7 @@ public sealed partial class PostgreSqlCloudStateStore : ICloudStateStore
         var registered = ResolveRegisteredDevice(session.DeviceId);
         if (registered is not null) ApplyRegisteredDeviceMetadata(session, registered);
 
-        var donor = _sessions.Values
-            .Where(candidate => candidate.SessionId != session.SessionId &&
-                                string.Equals(candidate.DeviceId, session.DeviceId,
-                                    StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(candidate => candidate.LastSeenUtc)
-            .FirstOrDefault() ?? _sessions.FindRecentlyClosed(session.DeviceId);
+        var donor = _sessions.FindDialogDonor(session.DeviceId, session.SessionId);
         if (donor is null) return;
         foreach (var pair in donor.Metadata.Where(pair => ShouldInheritDialogMetadataKey(pair.Key)))
         {
