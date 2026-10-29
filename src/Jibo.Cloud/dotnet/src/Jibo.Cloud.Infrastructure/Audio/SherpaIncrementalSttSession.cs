@@ -57,13 +57,14 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
 
     public void AcceptFrames(IReadOnlyList<byte[]> frames)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var pcm = _pcmDecoder.DecodeNewTo16kMono(frames);
-        if (pcm.Length == 0)
-            return;
-
+        // Check and decode under the session lock: a concurrent Dispose frees the native stream, and
+        // feeding a freed stream crashes the whole process (sherpa-onnx dereferences a null handle).
         lock (_sessionLock)
         {
+            if (_disposed) return;
+            var pcm = _pcmDecoder.DecodeNewTo16kMono(frames);
+            if (pcm.Length == 0)
+                return;
             _provider.WithRecognizerLock(() =>
             {
                 _stream.AcceptWaveform(16000, pcm);
@@ -79,9 +80,9 @@ internal sealed class SherpaIncrementalSttSession : IIncrementalSttSession
 
     public void ResetEndpoint()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_sessionLock)
         {
+            if (_disposed) return;
             _provider.WithRecognizerLock(() =>
             {
                 if (!_isEndpoint) return;

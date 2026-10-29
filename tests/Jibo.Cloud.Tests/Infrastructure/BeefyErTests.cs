@@ -502,6 +502,41 @@ public sealed class BeefyErTests
         Assert.Equal(1, localFactory.Creations);
     }
 
+    [Fact]
+    public async Task DisposeWaitsForInFlightLocalAudio()
+    {
+        // Live crash: the turn was finalized (session disposed) while late audio was still being fed to
+        // the local Sherpa fallback, and sherpa-onnx segfaulted on the freed stream, killing BEefy.
+        await using var worker = await Harness.Connect();
+        var local = new BlockingLocalSession();
+        var failover = new BeefyErSessionFactory.FailoverSession(null, new FakeFactory(local), null, worker.Broker);
+        var feeding = Task.Run(() => failover.AcceptFrames(new byte[][] { [] }));
+        Assert.True(local.Entered.Wait(TimeSpan.FromSeconds(5)));
+        var disposing = Task.Run(failover.Dispose);
+        await Task.Delay(100);
+        Assert.False(local.Disposed, "Dispose must not free the local session while audio is being fed");
+        local.Release.Set();
+        await Task.WhenAll(feeding, disposing);
+        Assert.True(local.Disposed);
+        Assert.False(local.DisposedDuringAccept);
+    }
+
+    private sealed class BlockingLocalSession : IIncrementalSttSession
+    {
+        public readonly ManualResetEventSlim Entered = new(), Release = new();
+        public volatile bool Disposed, DisposedDuringAccept;
+        public string PartialText => "";
+        public bool IsEndpoint => false;
+        public void AcceptFrames(IReadOnlyList<byte[]> frames)
+        {
+            Entered.Set();
+            Release.Wait(TimeSpan.FromSeconds(5));
+            if (Disposed) DisposedDuringAccept = true;
+        }
+        public void ResetEndpoint() { }
+        public void Dispose() => Disposed = true;
+    }
+
     private static async Task Until(Func<bool> predicate)
     {
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));

@@ -35,6 +35,9 @@ public sealed class BeefyErSessionFactory(
         private IReadOnlyList<byte[]> _frames = [];
         private bool _failedOver = remote is null;
         private bool _disposed;
+        // Serializes the local fallback with Dispose: the turn can be finalized (and this session
+        // disposed) on one thread while late audio arrives on another.
+        private readonly object _gate = new();
         public bool IsAvailable { get { EnsureFallback(); return !_failedOver || _local is not null; } }
         public bool AllowAudioGapEndpointing { get { EnsureFallback(); return _failedOver ? _local?.AllowAudioGapEndpointing ?? true : remote!.AllowAudioGapEndpointing; } }
         public string PartialText { get { EnsureFallback(); return _failedOver ? _local?.PartialText ?? "" : remote!.PartialText; } }
@@ -42,27 +45,37 @@ public sealed class BeefyErSessionFactory(
 
         private void EnsureFallback()
         {
-            if (_disposed || _failedOver || remote is null || !remote.Failed) return;
-            _failedOver = true;
-            broker.RecordFallback(remote.Failure);
-            remote.Dispose();
-            _local = localFactory.TryCreate(maxSpeechTimeout);
-            _local?.AcceptFrames(_frames);
+            lock (_gate)
+            {
+                if (_disposed || _failedOver || remote is null || !remote.Failed) return;
+                _failedOver = true;
+                broker.RecordFallback(remote.Failure);
+                remote.Dispose();
+                _local = localFactory.TryCreate(maxSpeechTimeout);
+                _local?.AcceptFrames(_frames);
+            }
         }
 
         public void AcceptFrames(IReadOnlyList<byte[]> frames)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            _frames = frames.ToArray();
-            EnsureFallback();
-            if (_failedOver) _local?.AcceptFrames(frames);
-            else { remote!.AcceptFrames(frames); EnsureFallback(); }
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _frames = frames.ToArray();
+                EnsureFallback();
+                if (_failedOver) _local?.AcceptFrames(frames);
+                else { remote!.AcceptFrames(frames); EnsureFallback(); }
+            }
         }
 
         public void ResetEndpoint()
         {
-            EnsureFallback();
-            if (_failedOver) _local?.ResetEndpoint(); else remote!.ResetEndpoint();
+            lock (_gate)
+            {
+                if (_disposed) return;
+                EnsureFallback();
+                if (_failedOver) _local?.ResetEndpoint(); else remote!.ResetEndpoint();
+            }
         }
 
         public async Task<SttResult> FinishAsync(CancellationToken cancellationToken)
@@ -75,11 +88,14 @@ public sealed class BeefyErSessionFactory(
 
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
-            remote?.Dispose();
-            _local?.Dispose();
-            _frames = [];
+            lock (_gate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                remote?.Dispose();
+                _local?.Dispose();
+                _frames = [];
+            }
         }
     }
 }
