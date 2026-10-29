@@ -24,6 +24,10 @@ internal sealed class BeefyErSession(
     private long _firstAudioStarted;
     private bool _sawPartial;
     public string Id { get; } = Guid.NewGuid().ToString("N");
+    private readonly long _created = Stopwatch.GetTimestamp();
+    /// <summary>How long this turn may hold a worker slot; no real turn lasts longer.</summary>
+    internal TimeSpan Lifetime { get; init; } = TimeSpan.MaxValue;
+    internal bool IsStale => Stopwatch.GetElapsedTime(_created) > Lifetime;
     public bool Failed { get { lock (_gate) return _failure is not null; } }
     public string Failure { get { lock (_gate) return _failure ?? "unavailable"; } }
     public string PartialText { get { lock (_gate) return _text; } }

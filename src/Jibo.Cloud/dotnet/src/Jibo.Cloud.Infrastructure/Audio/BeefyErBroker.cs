@@ -64,13 +64,18 @@ public sealed partial class BeefyErBroker(BeefyErOptions options, ILogger<BeefyE
     internal BeefyErSession? TryCreate(string sessionId, string turnId, TimeSpan? maxSpeechTimeout,
         IReadOnlyList<string>? hints = null)
     {
+        ReleaseStaleSessions();
         BeefyErSession session;
         Connection connection;
+        var speechLimit = maxSpeechTimeout ?? TimeSpan.FromSeconds(20);
         lock (_gate)
         {
             if (_connection is not { Ready: true } current || current.Sessions.Count >= current.Capacity) return null;
             connection = current;
-            session = new BeefyErSession(this, connection, options, sessionId, turnId);
+            session = new BeefyErSession(this, connection, options, sessionId, turnId)
+            {
+                Lifetime = speechLimit + options.FinalTimeout + options.StaleTurnGrace
+            };
             connection.Sessions[session.Id] = session;
         }
         if (session.Send("start", endpointMs: connection.EndpointMs,
@@ -79,6 +84,22 @@ public sealed partial class BeefyErBroker(BeefyErOptions options, ILogger<BeefyE
                     .Where(hint => hint.Length <= 80).Distinct(StringComparer.OrdinalIgnoreCase).Take(32).ToArray())) return session;
         session.Dispose();
         return null;
+    }
+
+    // A turn that is never finished or disposed would hold its worker slot until the worker reconnects;
+    // with one slot, every later turn on the server fell back to local ASR for hours. Reclaim any
+    // session past its lifetime. Runs outside _gate: Dispose takes the session lock, and a session
+    // takes _gate while holding its own lock.
+    private void ReleaseStaleSessions()
+    {
+        var current = _connection;
+        if (current is null) return;
+        foreach (var stale in current.Sessions.Values.Where(session => session.IsStale).ToArray())
+        {
+            logger.LogWarning("BEefyER reclaimed a stale turn slot stream={StreamId}", stale.Id);
+            stale.Fail("stale_turn");
+            stale.Dispose();
+        }
     }
 
     public async Task RunAsync(WebSocket socket, CancellationToken cancellationToken)

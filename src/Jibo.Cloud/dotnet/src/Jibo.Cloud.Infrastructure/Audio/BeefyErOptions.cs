@@ -13,6 +13,8 @@ public sealed class BeefyErOptions
     public int MaxConcurrentTurns { get; set; } = 1;
     public TimeSpan FinalTimeout { get; set; } = TimeSpan.FromSeconds(3);
     public TimeSpan HeartbeatTimeout { get; set; } = TimeSpan.FromSeconds(15);
+    /// <summary>Extra time past a turn's speech limit and final timeout before its worker slot is reclaimed.</summary>
+    public TimeSpan StaleTurnGrace { get; set; } = TimeSpan.FromSeconds(15);
 
     public void Validate()
     {

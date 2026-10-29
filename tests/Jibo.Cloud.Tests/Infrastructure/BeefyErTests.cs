@@ -537,6 +537,39 @@ public sealed class BeefyErTests
         public void Dispose() => Disposed = true;
     }
 
+    [Fact]
+    public async Task AbandonedTurnReleasesItsWorkerSlot()
+    {
+        // Live: one never-finished turn held the only worker slot, so every later turn for hours
+        // logged "local fallback reason=unavailable_or_busy" while BEefyER sat idle.
+        var options = Options();
+        options.FinalTimeout = TimeSpan.FromMilliseconds(20);
+        options.StaleTurnGrace = TimeSpan.Zero;
+        await using var worker = await Harness.Connect(options);
+        await worker.Ready();
+        var abandoned = worker.Broker.TryCreate("robot-a", "turn-1", TimeSpan.FromMilliseconds(30));
+        Assert.NotNull(abandoned);
+        Assert.Null(worker.Broker.TryCreate("robot-b", "turn-1", null)); // slot really is taken
+
+        await Task.Delay(120);
+        using var next = worker.Broker.TryCreate("robot-b", "turn-1", null);
+        Assert.NotNull(next);
+        Assert.True(abandoned!.Failed);
+        Assert.Equal("stale_turn", abandoned.Failure);
+    }
+
+    [Fact]
+    public async Task LiveTurnKeepsItsWorkerSlot()
+    {
+        await using var worker = await Harness.Connect();
+        await worker.Ready();
+        using var live = worker.Broker.TryCreate("robot-a", "turn-1", TimeSpan.FromSeconds(20));
+        Assert.NotNull(live);
+        await Task.Delay(50);
+        Assert.Null(worker.Broker.TryCreate("robot-b", "turn-1", null));
+        Assert.False(live!.Failed);
+    }
+
     private static async Task Until(Func<bool> predicate)
     {
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
