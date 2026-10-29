@@ -197,6 +197,8 @@ internal static class SkillListenOwnership
 
     private static bool IsPersonalReportFollowUp(TurnContext turn)
     {
+        // A fresh "Hey Jibo" turn is a new request, not an answer to the report's question.
+        if (ReadListenHotphrase(turn)) return false;
         if (!turn.Attributes.TryGetValue(PersonalReportOrchestrator.StateMetadataKey, out var value) ||
             value is null)
             return false;

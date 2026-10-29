@@ -356,6 +356,17 @@ public sealed partial class JiboInteractionService(
             { ["chitchatNativeState"] = null };
             decision = decision with { ContextUpdates = updates };
         }
+        // A fresh "Hey Jibo" turn ends any unanswered personal-report question.
+        if (SkillListenOwnership.ReadListenHotphrase(turn) &&
+            decision.ContextUpdates?.ContainsKey(PersonalReportOrchestrator.StateMetadataKey) is not true &&
+            turn.Attributes.TryGetValue(PersonalReportOrchestrator.StateMetadataKey, out var reportState) &&
+            reportState is not null &&
+            !string.Equals(reportState.ToString(), PersonalReportOrchestrator.IdleState, StringComparison.OrdinalIgnoreCase))
+        {
+            var updates = new Dictionary<string, object?>(decision.ContextUpdates ?? new Dictionary<string, object?>())
+            { [PersonalReportOrchestrator.StateMetadataKey] = PersonalReportOrchestrator.IdleState };
+            decision = decision with { ContextUpdates = updates };
+        }
         RecordRepeatableCommand(turn, decision);
         if (conversationHistory is not null && decision.IntentName is not ("skill_listen" or "prompt_echo" or "trigger_ignored"))
         {

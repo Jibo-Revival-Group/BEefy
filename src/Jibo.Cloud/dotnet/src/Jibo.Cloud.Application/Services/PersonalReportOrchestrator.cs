@@ -113,7 +113,9 @@ internal static partial class PersonalReportOrchestrator
         Func<TurnContext, CancellationToken, Task<JiboInteractionDecision>> buildNewsDecisionAsync,
         CancellationToken cancellationToken)
     {
-        var state = ReadState(turn);
+        // A fresh "Hey Jibo" turn abandons an unanswered report question (the robot may
+        // never have opened the follow-up listen); BuildDecisionAsync resets the state.
+        var state = SkillListenOwnership.ReadListenHotphrase(turn) ? IdleState : ReadState(turn);
         var isActiveState = !string.Equals(state, IdleState, StringComparison.OrdinalIgnoreCase);
         if (!isActiveState &&
             !string.Equals(semanticIntent, "personal_report", StringComparison.OrdinalIgnoreCase)) return null;
@@ -168,10 +170,10 @@ internal static partial class PersonalReportOrchestrator
                                     false,
                                     string.Empty));
 
-                        return new JiboInteractionDecision(
+                        return BuildNamePromptDecision(
                             "personal_report_request_name",
                             "Who is this?",
-                            ContextUpdates: BuildContextUpdates(
+                            BuildContextUpdates(
                                 AwaitingIdentityNameState,
                                 0,
                                 0,
@@ -217,10 +219,10 @@ internal static partial class PersonalReportOrchestrator
             {
                 var currentName = ReadString(turn, UserNameMetadataKey);
                 if (string.IsNullOrWhiteSpace(currentName))
-                    return new JiboInteractionDecision(
+                    return BuildNamePromptDecision(
                         "personal_report_request_name",
                         "Who is this?",
-                        ContextUpdates: BuildContextUpdates(
+                        BuildContextUpdates(
                             AwaitingIdentityNameState,
                             0,
                             0,
@@ -234,9 +236,9 @@ internal static partial class PersonalReportOrchestrator
                     YesNoReply.Affirmative => await BuildDeliveredReportDecisionAsync(turn, catalog,
                         toggles, currentName, buildWeatherDecisionAsync, buildCalendarDecisionAsync,
                         buildCommuteDecisionAsync, buildNewsDecisionAsync, cancellationToken),
-                    YesNoReply.Negative => new JiboInteractionDecision("personal_report_request_name",
+                    YesNoReply.Negative => BuildNamePromptDecision("personal_report_request_name",
                         "Okay, who is this?",
-                        ContextUpdates: BuildContextUpdates(AwaitingIdentityNameState, 0, 0, toggles, null, false,
+                        BuildContextUpdates(AwaitingIdentityNameState, 0, 0, toggles, null, false,
                             string.Empty)),
                     _ => BuildNoMatchDecision(turn, state,
                         yesNoReply == YesNoReply.Ambiguous
@@ -649,6 +651,9 @@ internal static partial class PersonalReportOrchestrator
                 "I am still here. Do you want your personal report?",
                 contextUpdates);
 
+        if (string.Equals(state, AwaitingIdentityNameState, StringComparison.OrdinalIgnoreCase))
+            return BuildNamePromptDecision("personal_report_no_input", "I am still here. Who is this?", contextUpdates);
+
         return new JiboInteractionDecision(
             "personal_report_no_input",
             "I am still here. Do you want your personal report?",
@@ -677,6 +682,9 @@ internal static partial class PersonalReportOrchestrator
 
         if (IsYesNoPromptState(state))
             return BuildYesNoPromptDecision("personal_report_no_match", repromptText, contextUpdates);
+
+        if (string.Equals(state, AwaitingIdentityNameState, StringComparison.OrdinalIgnoreCase))
+            return BuildNamePromptDecision("personal_report_no_match", repromptText, contextUpdates);
 
         return new JiboInteractionDecision(
             "personal_report_no_match",
@@ -754,6 +762,29 @@ internal static partial class PersonalReportOrchestrator
             reply,
             "chitchat-skill",
             BuildYesNoPromptPayload(),
+            contextUpdates);
+    }
+
+    // Open-ended question: the robot keeps listening for any answer (same payload shape as
+    // the native color question), so the name reply arrives without a new "Hey Jibo".
+    private static JiboInteractionDecision BuildNamePromptDecision(
+        string intentName,
+        string reply,
+        IDictionary<string, object?> contextUpdates)
+    {
+        return new JiboInteractionDecision(
+            intentName,
+            reply,
+            "chitchat-skill",
+            new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["mim_id"] = "runtime-chat",
+                ["mim_type"] = "question",
+                ["prompt_id"] = "RUNTIME_PROMPT",
+                ["prompt_sub_category"] = "Q",
+                ["listen_contexts"] = new[] { "global" },
+                ["listen_asr_hints"] = new[] { "$ANYTHING" }
+            },
             contextUpdates);
     }
 

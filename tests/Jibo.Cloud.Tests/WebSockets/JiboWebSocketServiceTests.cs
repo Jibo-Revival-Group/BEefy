@@ -10088,6 +10088,41 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task ClientAsrPersonalReport_NamePromptListensAndNewHotphraseTurnIsNotTakenAsName()
+    {
+        // Live bug: "Who is this?" opened no listen, the robot went idle, and the next
+        // "Hey Jibo, what's the weather" was used as the name and delivered the report.
+        const string stateKey = "personalReportState";
+        var token = _store.IssueRobotToken("personal-report-name-listen-device");
+        Task<IReadOnlyList<WebSocketReply>> Send(string text) => _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = token, Text = text
+        });
+
+        await Send("""{"type":"CLIENT_ASR","transID":"trans-pr-name-start","data":{"text":"personal report"}}""");
+        var nameReplies = await Send("""{"type":"CLIENT_ASR","transID":"trans-pr-name-yes","data":{"text":"yes"}}""");
+
+        using (var skill = JsonDocument.Parse(nameReplies[^1].Text!))
+        {
+            var jcp = skill.RootElement.GetProperty("data").GetProperty("action").GetProperty("config")
+                .GetProperty("jcp").GetProperty("config");
+            Assert.Contains("Who is this?", jcp.GetProperty("play").GetProperty("esml").GetString());
+            Assert.Equal("LISTEN", jcp.GetProperty("listen").GetProperty("type").GetString());
+        }
+        Assert.Equal("awaiting_identity_name", _store.FindSessionByToken(token)!.Metadata[stateKey]?.ToString());
+
+        await Send("""{"type":"LISTEN","transID":"trans-pr-name-new","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}""");
+        var weatherReplies = await Send("""{"type":"CLIENT_ASR","transID":"trans-pr-name-new","data":{"text":"what's the weather"}}""");
+
+        using (var listen = JsonDocument.Parse(weatherReplies[0].Text!))
+        {
+            var intent = listen.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString();
+            Assert.False(intent!.StartsWith("personal_report", StringComparison.Ordinal), intent);
+        }
+        Assert.Equal("idle", _store.FindSessionByToken(token)!.Metadata[stateKey]?.ToString());
+    }
+
+    [Fact]
     public async Task ClientAsrPersonalReport_StateMachinePersistsAcrossTurns()
     {
         const string stateKey = "personalReportState";
