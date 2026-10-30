@@ -249,7 +249,24 @@ public sealed partial class JiboInteractionService
 
     private static bool MatchesAny(string loweredTranscript, params string[] candidates)
     {
-        return candidates.Any(candidate => loweredTranscript.Contains(candidate, StringComparison.Ordinal));
+        return candidates.Any(candidate => ContainsWholePhrase(loweredTranscript, candidate));
+    }
+
+    // Whole words only, so "hi" does not match "highest"/"which" and "sup" does not match "super".
+    // A phrase edge that is not a letter/digit (e.g. a trailing space) needs no boundary.
+    private static bool ContainsWholePhrase(string text, string phrase)
+    {
+        if (phrase.Length == 0) return true;
+        for (var i = text.IndexOf(phrase, StringComparison.Ordinal); i >= 0;
+             i = text.IndexOf(phrase, i + 1, StringComparison.Ordinal))
+        {
+            var end = i + phrase.Length;
+            if ((i == 0 || !char.IsLetterOrDigit(phrase[0]) || !char.IsLetterOrDigit(text[i - 1])) &&
+                (end == text.Length || !char.IsLetterOrDigit(phrase[^1]) || !char.IsLetterOrDigit(text[end])))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsAffirmativeReply(string loweredTranscript)
