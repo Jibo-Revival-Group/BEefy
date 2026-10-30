@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Jibo.Cloud.Application.Abstractions;
+using Jibo.Cloud.Domain.Models;
 using Jibo.Runtime.Abstractions;
 using Microsoft.Extensions.Logging;
 
@@ -23,14 +24,19 @@ public sealed class IcalCalendarReportProvider(
         TurnContext turn,
         CancellationToken cancellationToken = default)
     {
-        var loopId = ResolveLoopId(turn);
-        var memberId = ResolveMemberId(turn, loopId);
-        if (string.IsNullOrWhiteSpace(memberId))
-            return await fallbackProvider.GetReportAsync(turn, cancellationToken);
+        var feed = FindRobotFeed(turn);
+        var loopId = feed?.LoopId ?? ResolveLoopId(turn);
+        if (feed is null)
+        {
+            var memberId = ResolveMemberId(turn, loopId);
+            if (string.IsNullOrWhiteSpace(memberId))
+                return await fallbackProvider.GetReportAsync(turn, cancellationToken);
+            feed = integrationStore.FindMemberCalendarFeed(loopId, memberId);
+        }
 
-        var feed = integrationStore.FindMemberCalendarFeed(loopId, memberId);
         if (feed is null || !feed.IsEnabled || string.IsNullOrWhiteSpace(feed.IcalUrl))
             return await fallbackProvider.GetReportAsync(turn, cancellationToken);
+        var memberIdForStatus = feed.MemberId;
 
         var cacheKey = BuildCacheKey(feed.FeedId, feed.UpdatedUtc);
         if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresUtc > DateTimeOffset.UtcNow)
@@ -47,7 +53,7 @@ public sealed class IcalCalendarReportProvider(
                     fetch.Error ?? "unknown");
                 integrationStore.UpdateMemberCalendarFeedSyncStatus(
                     loopId,
-                    memberId,
+                    memberIdForStatus,
                     null,
                     fetch.Error ?? "fetch_failed");
                 var failureSnapshot = new CalendarReportSnapshot([], [], [], HasServiceError: true);
@@ -55,7 +61,7 @@ public sealed class IcalCalendarReportProvider(
                 return failureSnapshot;
             }
 
-            var localZone = TimeZoneInfo.Local;
+            var localZone = ZoneFor(feed);
             var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, localZone).DateTime);
             var tomorrow = today.AddDays(1);
             var events = IcalCalendarParser.ParseEventsForWindow(fetch.Body, today, tomorrow, localZone);
@@ -67,7 +73,7 @@ public sealed class IcalCalendarReportProvider(
                 todayEvents.Select(static item => item.TimeLabel).ToArray(),
                 tomorrowEvents.Select(static item => item.Summary).ToArray());
 
-            integrationStore.UpdateMemberCalendarFeedSyncStatus(loopId, memberId, DateTimeOffset.UtcNow, null);
+            integrationStore.UpdateMemberCalendarFeedSyncStatus(loopId, memberIdForStatus, DateTimeOffset.UtcNow, null);
             _cache[cacheKey] = new CacheEntry(snapshot, DateTimeOffset.UtcNow.Add(SuccessCacheTtl));
             return snapshot;
         }
@@ -78,11 +84,46 @@ public sealed class IcalCalendarReportProvider(
         catch (Exception exception)
         {
             logger.LogWarning(exception, "iCal calendar parse failed for loop {LoopId}", loopId);
-            integrationStore.UpdateMemberCalendarFeedSyncStatus(loopId, memberId, null, "parse_failed");
+            integrationStore.UpdateMemberCalendarFeedSyncStatus(loopId, memberIdForStatus, null, "parse_failed");
             var failureSnapshot = new CalendarReportSnapshot([], [], [], HasServiceError: true);
             _cache[cacheKey] = new CacheEntry(failureSnapshot, DateTimeOffset.UtcNow.Add(FailureCacheTtl));
             return failureSnapshot;
         }
+    }
+
+    /// <summary>
+    /// Managed hosting stores feeds per robot. Pick the feed of the person the report is for (by the
+    /// name BEacon saved with it). Without a name, a robot with just one calendar uses it; a name that
+    /// matches no saved calendar never reads someone else's.
+    /// </summary>
+    private MemberCalendarFeedRecord? FindRobotFeed(TurnContext turn)
+    {
+        var robot = (string.IsNullOrWhiteSpace(turn.DeviceId) ? null : turn.DeviceId.Trim()) ??
+                    ReadAttribute(turn, "deviceId") ?? ReadAttribute(turn, "robotId");
+        if (robot is null) return null;
+        var feeds = integrationStore.GetMemberCalendarFeeds(MemberCalendarFeedRecord.RobotScope(robot))
+            .Where(static feed => feed.IsEnabled && !string.IsNullOrWhiteSpace(feed.IcalUrl))
+            .ToArray();
+        if (feeds.Length == 0) return null;
+
+        var name = ReadAttribute(turn, "personalReportUserName") ?? ReadAttribute(turn, "userName");
+        if (name is null) return feeds.Length == 1 ? feeds[0] : null;
+
+        var spoken = NormalizeName(name);
+        return feeds.FirstOrDefault(feed => feed.MemberName is { } saved &&
+                   (NormalizeName(saved) == spoken || NormalizeName(saved).Split(' ')[0] == spoken.Split(' ')[0])) ??
+               (feeds.Length == 1 && feeds[0].MemberName is null ? feeds[0] : null);
+    }
+
+    private static TimeZoneInfo ZoneFor(MemberCalendarFeedRecord feed)
+    {
+        if (!string.IsNullOrWhiteSpace(feed.TimeZoneId))
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById(feed.TimeZoneId); }
+            catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException) { }
+        }
+
+        return TimeZoneInfo.Local;
     }
 
     private string ResolveLoopId(TurnContext turn)

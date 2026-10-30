@@ -16,7 +16,7 @@ public sealed partial class JiboCloudProtocolService
         if (userIntegrationStore is null)
             return CalendarError(503, "Calendar store is unavailable.");
 
-        var loopId = ResolvePersonalReportLoopId();
+        var loopId = ResolveCalendarScope(envelope);
         var body = envelope.TryParseBody();
 
         switch (operation)
@@ -53,7 +53,9 @@ public sealed partial class JiboCloudProtocolService
                     loopId,
                     memberId,
                     icalUrl!.Trim(),
-                    isEnabled);
+                    isEnabled,
+                    ReadString(body, "memberName"),
+                    ReadString(body, "timeZone"));
                 return ProtocolDispatchResult.Ok(CalendarFeedStatus(memberId, feed));
             }
             case "ClearCalendarFeed":
@@ -125,6 +127,16 @@ public sealed partial class JiboCloudProtocolService
         var ownerLoop = loops.FirstOrDefault(loop =>
             string.Equals(loop.OwnerAccountId, accountId, StringComparison.OrdinalIgnoreCase));
         return ownerLoop?.LoopId ?? loops.FirstOrDefault()?.LoopId ?? "openjibo-default-loop";
+    }
+
+    /// <summary>
+    /// A robot's feeds live under its own scope (see <see cref="MemberCalendarFeedRecord.RobotScope"/>).
+    /// Requests without a robot identity (account-signed self-hosted tools) keep the account loop.
+    /// </summary>
+    private string ResolveCalendarScope(ProtocolEnvelope envelope)
+    {
+        var identity = _identityResolver.Resolve(envelope);
+        return identity.IsResolved ? MemberCalendarFeedRecord.RobotScope(identity.DeviceId!) : ResolvePersonalReportLoopId();
     }
 
     private ProtocolDispatchResult? AuthorizeMemberCalendar(ProtocolEnvelope envelope)

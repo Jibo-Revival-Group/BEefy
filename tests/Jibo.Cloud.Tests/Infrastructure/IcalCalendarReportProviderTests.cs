@@ -140,6 +140,54 @@ public sealed class IcalCalendarReportProviderTests
         }
     }
 
+    [Fact]
+    public async Task GetReportAsync_ReadsTheRobotsFeedForTheSpeakerInTheHomeTimeZone()
+    {
+        // Live: feeds saved from BEacon were never spoken, because the report looked people up by
+        // name in the server's loop, which has no copy of a robot's people.
+        var path = Path.Combine(Path.GetTempPath(), $"openjibo-ical-robot-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new InMemoryUserIntegrationStore(new EncryptedUserDataSnapshotStore(path, new UserDataEncryptionService()));
+            var home = TimeZoneInfo.FindSystemTimeZoneById("Pacific/Kiritimati"); // UTC+14: its "today" differs from UTC most of the day
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, home).DateTime);
+            string Ics(string summary, DateOnly day) => $"""
+                BEGIN:VCALENDAR
+                BEGIN:VEVENT
+                DTSTART;VALUE=DATE:{day:yyyyMMdd}
+                SUMMARY:{summary}
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            var robot = MemberCalendarFeedRecord.RobotScope("Auburn-Motor-Salad-Angora");
+            store.UpsertMemberCalendarFeed(robot, "m-zane", "https://cal.example/zane.ics", memberName: "Zane Vincent", timeZoneId: home.Id);
+            store.UpsertMemberCalendarFeed(robot, "m-zoe", "https://cal.example/zoe.ics", memberName: "Zoe", timeZoneId: home.Id);
+            store.UpsertMemberCalendarFeed(MemberCalendarFeedRecord.RobotScope("Other-Robot"), "m-x", "https://cal.example/x.ics", memberName: "Zane");
+            var cloud = new InMemoryCloudStateStore();
+            var provider = new IcalCalendarReportProvider(store, cloud, new StubIcalFeedFetcher(new Dictionary<string, string>
+            {
+                ["https://cal.example/zane.ics"] = Ics("Zane dentist", today),
+                ["https://cal.example/zoe.ics"] = Ics("Zoe recital", today),
+                ["https://cal.example/x.ics"] = Ics("Someone else's meeting", today)
+            }), new CloudStateCalendarReportProvider(cloud), NullLogger<IcalCalendarReportProvider>.Instance);
+            TurnContext Turn(string? device, string? name) => new()
+            {
+                DeviceId = device,
+                Attributes = name is null ? new Dictionary<string, object?>() : new Dictionary<string, object?> { ["personalReportUserName"] = name }
+            };
+
+            Assert.Equal(["Zane dentist"], (await provider.GetReportAsync(Turn("Auburn-Motor-Salad-Angora", "zane")))!.EventSummaries);
+            Assert.Equal(["Zoe recital"], (await provider.GetReportAsync(Turn("Auburn-Motor-Salad-Angora", "Zoe")))!.EventSummaries);
+            Assert.Empty((await provider.GetReportAsync(Turn("Auburn-Motor-Salad-Angora", "Jon")))!.EventSummaries);
+            Assert.Empty((await provider.GetReportAsync(Turn("Third-Robot", "Zane")))!.EventSummaries);
+            Assert.Empty((await provider.GetReportAsync(Turn(null, "Zane")))!.EventSummaries);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     private sealed class StubIcalFeedFetcher(IReadOnlyDictionary<string, string> bodies) : IIcalFeedFetcher
     {
         public Task<IcalFeedFetchResult> FetchAsync(string icalUrl, CancellationToken cancellationToken = default)

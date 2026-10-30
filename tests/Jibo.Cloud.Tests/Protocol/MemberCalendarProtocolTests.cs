@@ -10,6 +10,32 @@ namespace Jibo.Cloud.Tests.Protocol;
 public sealed class MemberCalendarProtocolTests
 {
     private const string FeedUrl = "https://calendar.example/private/secret-feed-token.ics";
+    private static readonly string Robot = MemberCalendarFeedRecord.RobotScope("observed-runtime-robot");
+
+    [Fact]
+    public async Task Feeds_AreKeptPerRobot()
+    {
+        // Live: every robot shared one loop, so any robot could list others' feeds and change them.
+        using var harness = CreateHarness();
+        await harness.Service.DispatchAsync(Signed(harness, "SetCalendarFeed", new
+        {
+            memberId = "looper-zane", icalUrl = FeedUrl, memberName = "Zane", timeZone = "America/New_York"
+        }, accessKeyId: "robot-a-key", secret: "s", deviceId: "Auburn-Motor-Salad-Angora"));
+
+        var other = await harness.Service.DispatchAsync(Signed(harness, "GetCalendarFeeds", new { },
+            accessKeyId: "robot-b-key", secret: "s", deviceId: "Luster-Lead-Truffle-Denim"));
+        Assert.Equal(200, other.StatusCode);
+        Assert.DoesNotContain("looper-zane", other.BodyText);
+        var cleared = await harness.Service.DispatchAsync(Signed(harness, "ClearCalendarFeed", new { memberId = "looper-zane" },
+            accessKeyId: "robot-b-key", secret: "s", deviceId: "Luster-Lead-Truffle-Denim"));
+        Assert.Equal(404, cleared.StatusCode);
+
+        var saved = harness.Store.FindMemberCalendarFeed(MemberCalendarFeedRecord.RobotScope("Auburn-Motor-Salad-Angora"), "looper-zane");
+        Assert.Equal(("Zane", "America/New_York"), (saved?.MemberName, saved?.TimeZoneId));
+        var own = await harness.Service.DispatchAsync(Signed(harness, "GetCalendarFeeds", new { },
+            accessKeyId: "robot-a-key", secret: "s", deviceId: "Auburn-Motor-Salad-Angora"));
+        Assert.Contains("looper-zane", own.BodyText);
+    }
 
     [Fact]
     public async Task SetAndGet_DoNotEchoTheFeedUrl()
@@ -36,7 +62,7 @@ public sealed class MemberCalendarProtocolTests
         Assert.DoesNotContain("secret-feed-token", get.BodyText);
         Assert.Contains("looper-zane", get.BodyText);
 
-        var stored = harness.Store.FindMemberCalendarFeed("openjibo-default-loop", "looper-zane");
+        var stored = harness.Store.FindMemberCalendarFeed(Robot, "looper-zane");
         Assert.Equal(FeedUrl, stored?.IcalUrl);
     }
 
@@ -56,7 +82,7 @@ public sealed class MemberCalendarProtocolTests
             }));
             Assert.Equal(200, result.StatusCode);
             Assert.DoesNotContain("secret-feed-token", result.BodyText);
-            var stored = harness.Store.FindMemberCalendarFeed("openjibo-default-loop", "looper-zane");
+            var stored = harness.Store.FindMemberCalendarFeed(Robot, "looper-zane");
             Assert.Equal(FeedUrl, stored?.IcalUrl);
             Assert.Equal(enabled, stored?.IsEnabled);
         }
@@ -71,7 +97,7 @@ public sealed class MemberCalendarProtocolTests
             memberId = "looper-zane", isEnabled = true
         }));
         Assert.Equal(400, result.StatusCode);
-        Assert.Null(harness.Store.FindMemberCalendarFeed("openjibo-default-loop", "looper-zane"));
+        Assert.Null(harness.Store.FindMemberCalendarFeed(Robot, "looper-zane"));
     }
 
     [Fact]
@@ -86,7 +112,7 @@ public sealed class MemberCalendarProtocolTests
 
         Assert.Equal(400, result.StatusCode);
         Assert.Contains("https", result.BodyText);
-        Assert.Null(harness.Store.FindMemberCalendarFeed("openjibo-default-loop", "looper-zane"));
+        Assert.Null(harness.Store.FindMemberCalendarFeed(Robot, "looper-zane"));
     }
 
     [Fact]
@@ -107,7 +133,7 @@ public sealed class MemberCalendarProtocolTests
         Assert.Equal(200, cleared.StatusCode);
         using var payload = JsonDocument.Parse(cleared.BodyText);
         Assert.True(payload.RootElement.GetProperty("cleared").GetBoolean());
-        Assert.Null(harness.Store.FindMemberCalendarFeed("openjibo-default-loop", "looper-jon"));
+        Assert.Null(harness.Store.FindMemberCalendarFeed(Robot, "looper-jon"));
     }
 
     [Fact]
@@ -155,7 +181,7 @@ public sealed class MemberCalendarProtocolTests
 
         var result = await harness.Service.DispatchAsync(envelope);
         Assert.Equal(200, result.StatusCode);
-        Assert.NotNull(harness.Store.FindMemberCalendarFeed("openjibo-default-loop", "looper-amber"));
+        Assert.NotNull(harness.Store.FindMemberCalendarFeed(MemberCalendarFeedRecord.RobotScope("kitchen-jibo"), "looper-amber"));
     }
 
     [Fact]

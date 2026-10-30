@@ -34,7 +34,9 @@ public interface IUserIntegrationStore
         string loopId,
         string memberId,
         string icalUrl,
-        bool isEnabled = true);
+        bool isEnabled = true,
+        string? memberName = null,
+        string? timeZoneId = null);
 
     MemberCalendarFeedRecord? ClearMemberCalendarFeed(string loopId, string memberId);
 

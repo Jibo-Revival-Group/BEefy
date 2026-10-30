@@ -185,7 +185,9 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
         string loopId,
         string memberId,
         string icalUrl,
-        bool isEnabled = true)
+        bool isEnabled = true,
+        string? memberName = null,
+        string? timeZoneId = null)
     {
         if (string.IsNullOrWhiteSpace(loopId))
             throw new ArgumentException("Loop id is required.", nameof(loopId));
@@ -208,7 +210,9 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
                 CreatedUtc = existing?.CreatedUtc ?? now,
                 UpdatedUtc = now,
                 LastSuccessUtc = existing?.LastSuccessUtc,
-                LastError = existing?.LastError
+                LastError = existing?.LastError,
+                MemberName = string.IsNullOrWhiteSpace(memberName) ? existing?.MemberName : memberName.Trim(),
+                TimeZoneId = string.IsNullOrWhiteSpace(timeZoneId) ? existing?.TimeZoneId : timeZoneId.Trim()
             };
 
             if (existing is null)
@@ -257,7 +261,9 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
                 CreatedUtc = existing.CreatedUtc,
                 UpdatedUtc = existing.UpdatedUtc,
                 LastSuccessUtc = lastSuccessUtc ?? existing.LastSuccessUtc,
-                LastError = lastError
+                LastError = lastError,
+                MemberName = existing.MemberName,
+                TimeZoneId = existing.TimeZoneId
             };
 
             _calendarFeeds = _calendarFeeds

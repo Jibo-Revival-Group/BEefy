@@ -11,4 +11,14 @@ public sealed class MemberCalendarFeedRecord
     public DateTimeOffset UpdatedUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastSuccessUtc { get; init; }
     public string? LastError { get; init; }
+    /// <summary>The person's name as BEacon shows it, so the report can pick the speaker's feed.</summary>
+    public string? MemberName { get; init; }
+    /// <summary>The robot's home time zone (IANA id), so "today" and event times are the household's.</summary>
+    public string? TimeZoneId { get; init; }
+
+    /// <summary>
+    /// Feeds are stored per robot (its friendly id, the deviceId its speech turns carry) in managed
+    /// hosting, so one household never sees or changes another's calendars.
+    /// </summary>
+    public static string RobotScope(string deviceId) => "robot:" + deviceId.Trim();
 }
