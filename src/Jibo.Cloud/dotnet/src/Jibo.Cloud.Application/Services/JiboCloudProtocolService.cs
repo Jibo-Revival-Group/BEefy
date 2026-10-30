@@ -44,6 +44,8 @@ public sealed partial class JiboCloudProtocolService(
     private readonly string? _configuredRobotId = ReadConfiguredRobotId(configuration);
     private readonly string? _canonicalApiBaseUrl = ReadCanonicalApiBaseUrl(configuration);
     private readonly bool _protocolAuthDiagnosticsEnabled = ReadProtocolAuthDiagnosticsEnabled(configuration);
+    private readonly bool _managedDeployment = string.Equals(configuration?["OpenJibo:Deployment:Mode"], "managed",
+        StringComparison.OrdinalIgnoreCase);
     private readonly ILogger _logger = logger ?? NullLogger<JiboCloudProtocolService>.Instance;
     private readonly ProtocolRobotIdentityResolver _identityResolver = new(stateStore);
 
@@ -1617,6 +1619,13 @@ public sealed partial class JiboCloudProtocolService(
 
     private ProtocolDispatchResult HandleBackup(string operation, ProtocolEnvelope envelope)
     {
+        if (operation.Equals("Create", StringComparison.OrdinalIgnoreCase) ||
+            operation.Equals("Restore", StringComparison.OrdinalIgnoreCase))
+        {
+            var denied = AuthorizeBackupSnapshot(operation, envelope);
+            if (denied is not null) return denied;
+        }
+
         if (operation.Equals("List", StringComparison.OrdinalIgnoreCase))
         {
             var listBody = envelope.TryParseBody();
@@ -1666,6 +1675,22 @@ public sealed partial class JiboCloudProtocolService(
         return ProtocolDispatchResult.Ok(
             MapBackup(stateStore.CreateBackup(createLoopId,
                 requestedName ?? $"backup-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}")));
+    }
+
+    // Create/Restore snapshot or replace every robot's state, so they need a signature with a known server secret.
+    private ProtocolDispatchResult? AuthorizeBackupSnapshot(string operation, ProtocolEnvelope envelope)
+    {
+        var accessKeyId = AwsRequestAccessKey.Read(envelope);
+        var secret = LookupCalendarCredentialSecret(accessKeyId);
+        if (secret is null || !Aws3Signature.Verify(envelope, secret))
+            return CalendarError(401, "Cloud credentials are required.");
+
+        if (!operation.Equals("Restore", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // Restore rolls back all robots: only the self-hosted account owner may, never a user or a managed server.
+        var accountSigned = string.Equals(accessKeyId, stateStore.GetAccount().AccessKeyId, StringComparison.Ordinal);
+        return accountSigned && !_managedDeployment ? null : CalendarError(403, "Backup restore is not allowed.");
     }
 
     private ProtocolDispatchResult HandleKey(string operation, ProtocolEnvelope envelope)

@@ -2850,14 +2850,8 @@ public sealed class JiboCloudProtocolServiceTests
                 """{"fromVersion":"12.10.0","toVersion":"12.10.1","changes":"Location restore baseline","subsystem":"robot"}"""
         });
 
-        var backup = await _service.DispatchAsync(new ProtocolEnvelope
-        {
-            HostName = "api.jibo.com",
-            Method = "POST",
-            ServicePrefix = "Backup_20170222",
-            Operation = "Create",
-            BodyText = """{"name":"location-restore-point"}"""
-        });
+        var backup = await _service.DispatchAsync(
+            BackupAuthorizationTests.SignedBackup("Create", """{"name":"location-restore-point"}"""));
 
         using var backupPayload = JsonDocument.Parse(backup.BodyText);
         var locationUrl = backupPayload.RootElement.GetProperty("location").GetProperty("url").GetString();
@@ -2876,14 +2870,7 @@ public sealed class JiboCloudProtocolServiceTests
         var restoreBody = locationShape == "locationObject"
             ? JsonSerializer.Serialize(new { location = new { url = locationUrl } })
             : JsonSerializer.Serialize(new { location = locationUrl });
-        var restore = await _service.DispatchAsync(new ProtocolEnvelope
-        {
-            HostName = "api.jibo.com",
-            Method = "POST",
-            ServicePrefix = "Backup_20170222",
-            Operation = "Restore",
-            BodyText = restoreBody
-        });
+        var restore = await _service.DispatchAsync(BackupAuthorizationTests.SignedBackup("Restore", restoreBody));
 
         using var restorePayload = JsonDocument.Parse(restore.BodyText);
         Assert.Equal(200, restore.StatusCode);
@@ -3159,14 +3146,8 @@ public sealed class JiboCloudProtocolServiceTests
                     """{"fromVersion":"12.10.0","toVersion":"12.10.1","changes":"Restore proof","subsystem":"robot"}"""
             });
 
-            await firstService.DispatchAsync(new ProtocolEnvelope
-            {
-                HostName = "api.jibo.com",
-                Method = "POST",
-                ServicePrefix = "Backup_20160715",
-                Operation = "Create",
-                BodyText = """{"name":"manual-backup"}"""
-            });
+            await firstService.DispatchAsync(
+                BackupAuthorizationTests.SignedBackup("Create", """{"name":"manual-backup"}"""));
 
             var firstStore = new InMemoryCloudStateStore(persistencePath);
             var firstInfo = firstStore.GetPersistenceStateInfo();
@@ -3244,14 +3225,8 @@ public sealed class JiboCloudProtocolServiceTests
                     """{"fromVersion":"12.10.0","toVersion":"12.10.1","changes":"Restore baseline","subsystem":"robot"}"""
             });
 
-            var backup = await service.DispatchAsync(new ProtocolEnvelope
-            {
-                HostName = "api.jibo.com",
-                Method = "POST",
-                ServicePrefix = "Backup_20170222",
-                Operation = "Create",
-                BodyText = """{"name":"restore-point"}"""
-            });
+            var backup = await service.DispatchAsync(
+                BackupAuthorizationTests.SignedBackup("Create", """{"name":"restore-point"}"""));
 
             using var backupPayload = JsonDocument.Parse(backup.BodyText);
             var backupId = backupPayload.RootElement.GetProperty("etag").GetString();
@@ -3267,14 +3242,8 @@ public sealed class JiboCloudProtocolServiceTests
                     """{"fromVersion":"12.10.1","toVersion":"12.10.2","changes":"After backup","subsystem":"robot"}"""
             });
 
-            var restore = await service.DispatchAsync(new ProtocolEnvelope
-            {
-                HostName = "api.jibo.com",
-                Method = "POST",
-                ServicePrefix = "Backup_20170222",
-                Operation = "Restore",
-                BodyText = $$"""{"backupId":"{{backupId}}"}"""
-            });
+            var restore = await service.DispatchAsync(
+                BackupAuthorizationTests.SignedBackup("Restore", $$"""{"backupId":"{{backupId}}"}"""));
 
             using var restorePayload = JsonDocument.Parse(restore.BodyText);
             Assert.Equal(200, restore.StatusCode);
