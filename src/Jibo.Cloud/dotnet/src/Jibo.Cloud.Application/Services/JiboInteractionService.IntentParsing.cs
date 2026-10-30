@@ -261,6 +261,8 @@ public sealed partial class JiboInteractionService
              i = text.IndexOf(phrase, i + 1, StringComparison.Ordinal))
         {
             var end = i + phrase.Length;
+            // Phrases of 4+ characters also match their plain plural ("cancel timer" in "cancel timers").
+            if (phrase.Length >= 4 && end < text.Length && text[end] == 's') end++;
             if ((i == 0 || !char.IsLetterOrDigit(phrase[0]) || !char.IsLetterOrDigit(text[i - 1])) &&
                 (end == text.Length || !char.IsLetterOrDigit(phrase[^1]) || !char.IsLetterOrDigit(text[end])))
                 return true;

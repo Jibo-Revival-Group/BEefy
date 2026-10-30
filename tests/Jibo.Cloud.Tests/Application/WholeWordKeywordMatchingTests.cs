@@ -37,6 +37,7 @@ public sealed class WholeWordKeywordMatchingTests
     [InlineData("hey there", "hello")]
     [InlineData("sup", "whats_up")]
     [InlineData("what's up", "whats_up")]
+    [InlineData("cancel timers", "timer_delete")]
     public async Task WholeWordKeywords_StillRoute(string transcript, string intent)
     {
         var decision = await CreateInteractionService().BuildDecisionAsync(Turn(transcript));
