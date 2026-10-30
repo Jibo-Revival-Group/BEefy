@@ -989,9 +989,14 @@ public sealed partial class JiboCloudProtocolService(
         if (operation is "ListMembers" or "ListLoopMembers")
         {
             var listBody = envelope.TryParseBody();
-            var loopId = ReadString(listBody, "loopId") ??
-                         ReadString(listBody, "id") ??
-                         stateStore.GetLoops().FirstOrDefault()?.LoopId;
+            var requestedLoopId = ReadString(listBody, "loopId") ?? ReadString(listBody, "id");
+            // Household names are private: only the calling robot's own loop, never another robot's.
+            var caller = _identityResolver.Resolve(envelope);
+            var loopId = caller.IsResolved
+                ? stateStore.GetLoops().FirstOrDefault(loop =>
+                    (requestedLoopId is null || loop.LoopId.Equals(requestedLoopId, StringComparison.OrdinalIgnoreCase)) &&
+                    BuildLoopRobotKeys(loop).Contains(caller.DeviceId!))?.LoopId
+                : null;
 
             var members = stateStore.GetLoopMembers(loopId ?? string.Empty)
                 .Where(static member => !string.Equals(member.Type, "robot", StringComparison.OrdinalIgnoreCase))

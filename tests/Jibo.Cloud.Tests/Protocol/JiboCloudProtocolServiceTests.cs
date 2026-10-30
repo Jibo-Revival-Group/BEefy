@@ -2336,12 +2336,14 @@ public sealed class JiboCloudProtocolServiceTests
     [Fact]
     public async Task LoopListMembers_ReturnsSeededMembersForDefaultLoop()
     {
-        var result = await _service.DispatchAsync(new ProtocolEnvelope
+        var store = new InMemoryCloudStateStore();
+        var result = await new JiboCloudProtocolService(store).DispatchAsync(new ProtocolEnvelope
         {
             HostName = "api.jibo.com",
             Method = "POST",
             ServicePrefix = "Loop_20160715",
             Operation = "ListMembers",
+            DeviceId = store.GetRobot().DeviceId,
             BodyText = """{"loopId":"openjibo-default-loop"}"""
         });
 
