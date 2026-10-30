@@ -30,6 +30,7 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
         PropertyNameCaseInsensitive = true
     };
 
+    private const int MaxRetainedBackups = 5;
     private readonly List<BackupRecord> _backups = [];
     private readonly List<CalendarEventRecord> _calendarEvents = [];
     private readonly List<CommuteProfileRecord> _commuteProfiles = [];
@@ -2443,6 +2444,9 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
         };
 
         _backups.Add(backup);
+        // Each backup is a full-state copy inside the snapshot, so keep only the newest few.
+        if (_backups.Count > MaxRetainedBackups)
+            _backups.RemoveRange(0, _backups.Count - MaxRetainedBackups);
         TouchState();
         return backup;
     }
