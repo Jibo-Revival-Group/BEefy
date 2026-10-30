@@ -498,6 +498,8 @@ class WorkerConnection:
         raise ConnectionError("BEefy disconnected")
 
     def fail_turn(self, turn: Turn, code: str):
+        if turn.task.cancelling():
+            return  # Already failed or canceled; packets still buffered for it must not each send an error.
         turn.emit("error", code=code)
         turn.task.cancel()
 

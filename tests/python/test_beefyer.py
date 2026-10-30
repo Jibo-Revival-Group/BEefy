@@ -297,6 +297,36 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         error = await self.socket.result("error")
         self.assertEqual(error["code"], "invalid_audio_or_overload")
 
+    async def test_failed_turn_sends_one_error_for_buffered_packets(self):
+        self.config.queue_capacity = 1
+        self.block_configuration = True
+        stream = self.start()
+        for seq in range(1, 6):
+            self.audio(stream, seq)  # already buffered on the BEefy socket
+        self.socket.event("ping")
+        errors = []
+        async with asyncio.timeout(3):
+            while (event := await self.socket.output.get())["type"] != "pong":
+                if event["type"] == "error":
+                    errors.append(event["code"])
+        self.assertEqual(errors, ["invalid_audio_or_overload"])
+
+    async def test_failed_turn_backlog_does_not_drop_connection(self):
+        self.config.capacity = 2
+        self.config.queue_capacity = 1
+        self.block_configuration = True
+        stream = self.start()
+        for seq in range(1, 140):  # more errors than the outbound queue holds
+            self.audio(stream, seq)
+        self.socket.event("ping")
+        await self.socket.result("pong")
+        await asyncio.sleep(0.2)
+        self.assertFalse(self.run.done(), "shared BEefy connection was torn down")
+        self.block_configuration = False
+        other = self.start(session="robot2", turn="turn2")
+        self.audio(other, 1)
+        self.assertEqual((await self.socket.result("partial"))["streamId"], other)
+
     async def test_inference_failure_is_sanitized(self):
         self.fail_inference = True
         stream = self.start()
