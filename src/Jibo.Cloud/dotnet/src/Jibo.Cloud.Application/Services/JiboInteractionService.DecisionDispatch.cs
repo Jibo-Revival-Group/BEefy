@@ -316,7 +316,7 @@ public sealed partial class JiboInteractionService
             "cloud_version" => BuildCloudVersionDecision(),
             "server_info" => new JiboInteractionDecision("server_info", "I'm connected to five ex one."),
             "add_person_help" => new JiboInteractionDecision("add_person_help",
-                "To add someone to my loop, open beacon from portal dot five ex one dot com, choose People, then Add a person."),
+                "You can manage Jibo on beacon, available at portal dot five ex one dot com."),
             "robot_flavor" => BuildRobotFlavorDecision(turn),
             "backup_help" => BuildScriptedSupportDecision(
                 catalog,

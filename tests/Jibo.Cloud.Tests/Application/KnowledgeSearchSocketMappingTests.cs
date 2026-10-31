@@ -266,6 +266,29 @@ public sealed class KnowledgeSearchSocketMappingTests
     }
 
     [Fact]
+    public void Map_AddPersonHelp_ShowsPortalAddressOnDisplay()
+    {
+        var plan = new ResponsePlan
+        {
+            IntentName = "add_person_help",
+            Actions = { new SpeakAction { Sequence = 0, Text = "To add someone to my loop, open beacon.", Voice = "griffin" } }
+        };
+        var turn = new TurnContext
+        {
+            NormalizedTranscript = "add my mom",
+            Attributes = new Dictionary<string, object?> { ["transID"] = "trans-add-person", ["messageType"] = "LISTEN", ["listenRules"] = new[] { "launch" } }
+        };
+
+        var skillAction = ResponsePlanToSocketMessagesMapper.Map(plan, turn, new CloudSession(), emitSkillActions: true)
+            .Select(reply => reply.Text).Where(text => !string.IsNullOrWhiteSpace(text)).Select(text => JsonDocument.Parse(text!))
+            .First(document => document.RootElement.GetProperty("type").GetString() == "SKILL_ACTION");
+        var view = skillAction.RootElement.GetProperty("data").GetProperty("action").GetProperty("config")
+            .GetProperty("jcp").GetProperty("config").GetProperty("display").GetProperty("view").GetProperty("data");
+
+        Assert.Equal("portal.5x1.com", view.GetProperty("componentConfigs")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public void Map_NotUnderstood_ShowsHeardTranscriptOnDisplay()
     {
         var plan = new ResponsePlan

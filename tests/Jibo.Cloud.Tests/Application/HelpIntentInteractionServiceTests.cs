@@ -39,7 +39,7 @@ public sealed class HelpIntentInteractionServiceTests
         var decision = await Service().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
         Assert.Equal("add_person_help", decision.IntentName);
         Assert.Contains("portal dot five ex one dot com", decision.ReplyText);
-        Assert.Contains("Add a person", decision.ReplyText);
+        Assert.Contains("manage Jibo on beacon", decision.ReplyText);
     }
 
     [Theory]

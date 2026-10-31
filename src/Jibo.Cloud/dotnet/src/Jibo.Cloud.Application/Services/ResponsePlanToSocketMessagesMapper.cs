@@ -1013,7 +1013,10 @@ public sealed class ResponsePlanToSocketMessagesMapper
         // paints Idle's quoted "heard" Label. Attach that view on not-found or not-understood
         // speech instead.
         if ((isKnowledgeSearchNotFound || isNotUnderstood) && !string.IsNullOrWhiteSpace(heardTranscript))
-            AttachHeardTranscriptDisplay(jcpConfig, heardTranscript.Trim());
+            AttachHeardTranscriptDisplay(jcpConfig, $"\"{heardTranscript.Trim()}\"");
+        // Same on-screen label, showing where BEacon is.
+        if (string.Equals(plan.IntentName, "add_person_help", StringComparison.OrdinalIgnoreCase))
+            AttachHeardTranscriptDisplay(jcpConfig, "portal.5x1.com");
 
         var weatherHiLoView = BuildWeatherHiLoView(skillPayload);
         var weeklyWeatherCards = BuildWeatherHiLoSequenceCards(skillPayload);
@@ -1656,7 +1659,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
     /// Idle HJNoMatch Label — quoted ASR text centered on the face while speaking not-found.
     /// Nimbus ProcessCloud reads display.view.context as the MIM gui.
     /// </summary>
-    private static void AttachHeardTranscriptDisplay(IDictionary<string, object?> config, string transcript)
+    private static void AttachHeardTranscriptDisplay(IDictionary<string, object?> config, string text)
     {
         const string viewName = "heardTranscript";
         // FaceRenderer.WIDTH/HEIGHT on stock robot.
@@ -1675,7 +1678,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 {
                     id = "bottom",
                     type = "Label",
-                    text = $"\"{transcript}\"",
+                    text,
                     style = new
                     {
                         fontSize = "120",
