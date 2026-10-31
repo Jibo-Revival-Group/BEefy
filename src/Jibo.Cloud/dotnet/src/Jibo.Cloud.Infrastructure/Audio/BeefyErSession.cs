@@ -50,7 +50,9 @@ internal sealed class BeefyErSession(
             if (_disposed || _failure is not null) return;
             var pcm = _decoder.DecodeNewTo16kMono(frames);
             if (pcm.Length == 0) return;
-            if (_finishing) { Fail("audio_after_finish"); return; }
+            // The robot keeps streaming until it hears back, so audio after "finish" is normal. It is past the
+            // endpoint; drop it rather than discarding the worker's complete transcript for the local partial.
+            if (_finishing) return;
             // Limit each message to 100 ms of PCM, including on initial buffered replay.
             for (var offset = 0; offset < pcm.Length; offset += 1600)
                 if (!SendPcm(pcm.AsSpan(offset, Math.Min(1600, pcm.Length - offset)))) return;

@@ -206,6 +206,33 @@ public sealed class BeefyErTests
         Assert.Same(result, await session.FinishAsync(CancellationToken.None));
     }
 
+    // Prod: 582 turns lost their BEefyER transcript because the robot's trailing audio arrived after "finish",
+    // leaving a clipped local partial ("let's cha", "what's on my calend").
+    [Fact]
+    public async Task AudioArrivingAfterFinishIsDroppedAndTheFinalTranscriptIsKept()
+    {
+        await using var worker = await Harness.Connect();
+        await worker.Ready();
+        using var session = await worker.Create();
+        await worker.Socket.ReadJson("start");
+        var ogg = Convert.FromBase64String("T2dnUwACAAAAAAAAAAB/UCj4AAAAAMWYSAsBE09wdXNIZWFkAQE4AYA+AAAAAABPZ2dTAAAAAAAAAAAAAH9QKPgBAAAA84rE7AE8T3B1c1RhZ3MMAAAATGF2ZjYzLjEuMTAxAQAAABwAAABlbmNvZGVyPUxhdmM2My4xLjEwMSBsaWJvcHVzT2dnUwAAwBIAAAAAAAB/UCj4AgAAANiST0AFXSkzMjRIgRcd7xTpBIV8AAGyf+JvyBQLSCEHp43tlGb7z2a7JN6S39RXsQ/eVeFUAKXnk6wp33AwK31tOwzW8CeajGPHqvCV85UV/UZ1gZnirwcHPqtm6B3TjL/p+g/8xotInh5jYXFGoyV+msY8rTEWbZJhljQzHkGGb+pZWhAp6BKTetS4YihywEiZDJTDY2PlXNGEsraqVIPapeeURLP+bn0B0Q8MeGk9j5fdksVmhR5xsJFSAVN2Oh9v8EiZDJTDY2PlXNFU8TK0Pp3G16TPx0338qOol4dXua8D21R62+A9M6UA90A7cFs7IVeASJkMlMNjY+Vc0bRw1r1ZaKukdA1viv+aUp0+NW6tMQAffso+ndS4Bm8QCptptSLE+MN/Pk9nZ1MAAIAlAAAAAAAAf1Ao+AMAAADVIk0gBTIyMjMzSJkMlMNjY+Vc0VT0YYAAqwGu6KSiXLAWQ4MnaphUTScoABSTzSNc3Zx5rDpGOQ7l2cBImQyUw2Nj5VzR5C6+VDtMkLDcsIrghAzMI24OfhnoVfLxR0crSSGWYBVJjhO7/4U/QUiZDJTDY2PlXNFU9GF/4kuJ/g0ujgrgqLFrdGuiotzjlc7w/5pPYk4k9Au4bMXXL35LSJkMlMNjY+Vc0bRwoX/hYfJHSg1rt+sDmQ4EeLp+I7pEENXCcceJtcsOylT2PRJL/CiASJkMlMNjY+Vc0VTxNd/cLVh+h9d/SWWbe5FzGmiVdj+XMt8p0huMF13IMJM2e2169HGbT2dnUwAAQDgAAAAAAAB/UCj4BAAAACM+Z0EFMzIyMzFImQyUw2Nj5VzRtHChf+SjqN7S4OvwUMr8O+JNH4LMXhcLhh6tLlVzvVnscmrXc1fvmwxImQyUw2Nj5VzR5C7EqaZABDG4woYI3mJwCPYcH1PZ9ej5zWrN06Nvtn8RDO5qbQX1SUiZDJTDY2PlXNG0cKF/2yp5CQ6z//USZIwGq1AYcQhIiUJj7sTH4vhP3CzopcXM4Y7QSJkMlMNjY+Vc0eQrkrSKyr88krbPxj83T6zVu20DuD+agVPCAomatMvtGNc/HtEhGAV0SJkLZuVnSvBnpH0+iZOATQh7INA4+EFBw9RIxUICkvYAHufY1I1a76zuXgbEwtxuWU9nZ1MAAABLAAAAAAAAf1Ao+AUAAABon13FBS4vMC5LSJkLZuVnSvBnqzVsnEaQNKRyRfVAbVnjh772pd1fbXaAoW25dUFnN9bqsH1I+kiZC2blZ0rwZ6R9GFCPpUjojZA+g4GK0S6iLVpxNR1MoTrDpCmR6unlEj0cJeGASJkLZuVnSvBnqzVsKZvd0pStAiFewpryg09u6BdsLnRl5I4YdMNLeDzPBCFPS5JASJkLZuVnSvBnqzVGPShcpeO9f2Ek1SmXHUWgxH7orwimgfN2ELcQbbrqsjVuQkiZC2blZ0rwZ6QGT+pqnEvMhEBKW13fzdzBR58PhbZdTmO2UljYdsPCkxrZYma44zIlRdn3934Vus2Yv3kFX7q3yMVLXJew1s42KE9nZ1MABDhMAAAAAAAAf1Ao+AYAAADJa70UAXS4eluhB75JDF4NvwhuMgMytnh1DuMpGhzKD6m1BOwlq0bwtc8DTf61Rm4nTVYrBQ2Xna5vU2yAlBs6QyNfu4PncnKkhunZ243weguGeRRcPKMXhfEIcU9+W8m0cRTO323sy5s8htwbqll00f/f6Lz/IIDA1Q==");
+        var pages = new List<byte[]>();
+        for (int start = 0, next; start < ogg.Length; start = next)
+        {
+            next = ogg.AsSpan(start + 4).IndexOf("OggS"u8);
+            next = next < 0 ? ogg.Length : start + 4 + next;
+            pages.Add(ogg[start..next]);
+        }
+        session.AcceptFrames(pages.Take(4).ToArray());
+        await worker.Socket.ReadBinary();
+        var final = session.FinishAsync(CancellationToken.None);
+        var finish = await worker.Socket.ReadJson("finish");
+        session.AcceptFrames(pages.ToArray());
+        Assert.False(session.Failed);
+        worker.Result(session, "final", "what's on my calendar", sequence: finish.Sequence);
+        Assert.Equal("what's on my calendar", (await final).Text);
+    }
+
     [Fact]
     public async Task InvalidIdentityOrOutOfOrderResultsAbandonRemoteTurn()
     {
