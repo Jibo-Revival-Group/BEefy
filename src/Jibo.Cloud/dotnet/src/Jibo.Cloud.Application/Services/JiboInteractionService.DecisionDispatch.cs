@@ -313,7 +313,7 @@ public sealed partial class JiboInteractionService
             "day" => BuildClockLaunchDecision("day", "clock", "askForDay", "Showing the day."),
             "current_location" => BuildCurrentLocationDecision(turn),
             "cloud_version" => BuildCloudVersionDecision(),
-            "server_info" => BuildServerInfoDecision(turn),
+            "server_info" => new JiboInteractionDecision("server_info", "I'm connected to five ex one."),
             "add_person_help" => new JiboInteractionDecision("add_person_help",
                 "To add someone to my loop, open beacon from portal dot five ex one dot com, choose People, then Add a person."),
             "robot_flavor" => BuildRobotFlavorDecision(turn),

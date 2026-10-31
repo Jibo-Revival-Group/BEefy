@@ -9,16 +9,23 @@ namespace Jibo.Cloud.Tests.Application;
 public sealed class HelpIntentInteractionServiceTests
 {
     [Theory]
-    [InlineData("what server are you connected to", "api.5x1.com", "I'm connected to api dot five ex one dot com, running BEefy cloud version")]
-    [InlineData("hey jibo which server are you on", "api.5x1.com:443", "I'm connected to api dot five ex one dot com, running")]
-    [InlineData("what server are you connected to oliver", "self.example.org", "I'm connected to self dot example dot org, running")]
-    [InlineData("what server are you using", null, "I'm connected to my cloud server, running")]
-    public async Task ServerQuestion_NamesTheConnectedHost(string transcript, string? host, string expected)
+    [InlineData("what server are you connected to")]
+    [InlineData("hey jibo which server are you on")]
+    [InlineData("what server are you connected to oliver")]
+    [InlineData("what server are you using")]
+    public async Task ServerQuestion_SaysFiveExOne(string transcript)
     {
-        var decision = await Service().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript, HostName = host });
+        var decision = await Service().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript, HostName = "api.5x1.com" });
         Assert.Equal("server_info", decision.IntentName);
-        Assert.StartsWith(expected, decision.ReplyText);
+        Assert.Equal("I'm connected to five ex one.", decision.ReplyText);
     }
+
+    // Ending in "on"/"to" must not make the turn wait for more speech.
+    [Theory]
+    [InlineData("what server are you on")]
+    [InlineData("hey jibo which server are you connected to")]
+    public void ServerQuestion_IsACompleteUtterance(string transcript) =>
+        Assert.True(UtteranceCompletenessClassifier.Classify(transcript, ["launch"]).IsComplete);
 
     [Theory]
     [InlineData("i wanna add a new person")]

@@ -50,7 +50,10 @@ public static class UtteranceCompletenessClassifier
         "do you know me",
         "do you remember me",
         "who is this",
-        "can you recognize me"
+        "can you recognize me",
+        // server_info questions end in "on"/"to"; without these the turn waited ~17 s for more speech.
+        "server are you on",
+        "server are you connected to"
     ];
 
     public static Result Classify(
