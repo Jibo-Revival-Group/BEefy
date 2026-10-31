@@ -50,10 +50,30 @@ public sealed class AgentModeTests
         Assert.DoesNotContain(messages, message => message.GetProperty("type").GetString() is "SKILL_ACTION" or "SKILL_REDIRECT");
     }
 
+    // Misheard "let's chat" variants seen in production transcripts.
+    [Theory]
+    [InlineData("less chat")]
+    [InlineData("list chat")]
+    [InlineData("let chat")]
+    [InlineData("let's cha")]
+    [InlineData("lis chap")]
+    [InlineData("less chap")]
+    [InlineData("less cha")]
+    [InlineData("let's chant")]
+    [InlineData("let's have a chat")]
+    [InlineData("hey jibo let's chat please")]
+    [InlineData("Let's Chat")]
+    public void Launch_AcceptsMisheardLetsChat(string text) => Assert.True(AgentModeRouting.IsLaunch(text));
+
     [Theory]
     [InlineData("tell me about AI mode")]
     [InlineData("I wish we could have a conversation")]
     [InlineData("let's chat about music")]
+    [InlineData("less is more")]
+    [InlineData("list chat history")]
+    [InlineData("chat")]
+    [InlineData("let's go")]
+    [InlineData("pass chat")]
     public void Launch_DoesNotCaptureUnrelatedSentences(string text) => Assert.False(AgentModeRouting.IsLaunch(text));
 
     private static JsonElement[] Messages(ResponsePlan plan, TurnContext turn) =>

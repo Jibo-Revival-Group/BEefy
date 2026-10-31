@@ -17,8 +17,24 @@ public static class AgentModeRouting
         normalized = TranscriptTextNormalizer.StripLeadingPhrases(normalized,
             ["hey jibo", "hello jibo", "hi jibo", "jibo"]);
         normalized = TranscriptTextNormalizer.StripTrailingCourtesyWords(normalized);
-        return normalized is "let's chat" or "let s chat" or "lets chat" or "let us chat" or
-            "let's have a conversation" or "let s have a conversation" or "lets have a conversation" or "let us have a conversation" or
+        return IsLetsChat(normalized) ||
+            normalized is "let's have a conversation" or "let s have a conversation" or "lets have a conversation" or "let us have a conversation" or
             "ai mode" or "a i mode" or "agent mode" or "enter ai mode" or "start ai mode";
+    }
+
+    // ASR often mishears "let's chat" (prod: "less chat", "list chat", "let's cha", "lis chap", "let's chant").
+    // Only the whole phrase counts, so "let's chat about music" or "list" alone never launch.
+    private static readonly HashSet<string> LetsSounds = ["let's", "let s", "lets", "let us", "let", "less", "list", "lis", "lest"];
+    private static readonly HashSet<string> ChatSounds = ["chat", "cha", "chap", "chant", "chad"];
+
+    private static bool IsLetsChat(string normalized)
+    {
+        var space = normalized.LastIndexOf(' ');
+        if (space <= 0 || !ChatSounds.Contains(normalized[(space + 1)..]))
+            return false;
+        var lead = normalized[..space];
+        if (lead.EndsWith(" have a", StringComparison.Ordinal))
+            lead = lead[..^" have a".Length];
+        return LetsSounds.Contains(lead);
     }
 }
