@@ -5,10 +5,6 @@ namespace Jibo.Cloud.Tests.Application;
 
 public sealed class KnowledgeSearchSpokenReplyFormatterTests
 {
-    [Fact]
-    public void FormatReply_FreeModelSpeaksAsJiboWithoutCitingASource() =>
-        Assert.Equal("The answer is forty two.", KnowledgeSearchSpokenReplyFormatter.FormatReply("The answer is forty two.", SearchBackendKind.Free));
-
     [Theory]
     [InlineData(SearchBackendKind.Wolfram, "wolf ram alpha")]
     [InlineData(SearchBackendKind.ChatGPT, "chat gee pee tee")]

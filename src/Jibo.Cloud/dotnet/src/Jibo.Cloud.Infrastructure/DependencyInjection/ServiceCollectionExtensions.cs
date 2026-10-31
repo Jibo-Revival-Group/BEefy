@@ -140,7 +140,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IKnowledgeSearchProvider, WolframAlphaSearchProvider>();
         services.AddSingleton<IKnowledgeSearchProvider, OllamaSearchProvider>();
         services.AddSingleton<IKnowledgeSearchProvider, ChatGptSearchProvider>();
-        services.AddSingleton<IKnowledgeSearchProvider, FreeSearchProvider>();
         services.AddSingleton<IKnowledgeSearchService, KnowledgeSearchService>();
         services.AddSingleton<IHolidayCalendarProvider>(provider =>
             new NagerDateHolidayCalendarProvider(provider.GetRequiredService<HolidayCalendarOptions>()));

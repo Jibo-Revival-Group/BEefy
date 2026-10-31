@@ -27,7 +27,12 @@ public static class WikipediaLookupParser
         "who was",
         "who is",
         "what was",
-        "what is"
+        "what is",
+        "what's",
+        "what s",
+        "whats",
+        "who's",
+        "who s"
     ];
 
     public static bool TryParse(string? transcript, out string? subject)
@@ -57,6 +62,10 @@ public static class WikipediaLookupParser
 
         var cleaned = value.Trim().TrimEnd('?', '.', '!', ',');
         if (string.IsNullOrWhiteSpace(cleaned)) return null;
+
+        // "what is a imac" -> "imac": Wikipedia's title search does not match a leading "a"/"an" ("the" can be in titles).
+        foreach (var article in new[] { "a ", "an " })
+            if (cleaned.StartsWith(article, StringComparison.Ordinal)) { cleaned = cleaned[article.Length..]; break; }
 
         if (!cleaned.Any(char.IsLetter)) return null;
 

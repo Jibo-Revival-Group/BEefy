@@ -13,7 +13,7 @@ public sealed record SearchBackendSpec(
             SearchBackendKind.None => false,
             SearchBackendKind.Wolfram or SearchBackendKind.ChatGPT =>
                 !string.IsNullOrWhiteSpace(Credential),
-            SearchBackendKind.Ollama or SearchBackendKind.Free => true,
+            SearchBackendKind.Ollama => true,
             _ => false
         };
 }

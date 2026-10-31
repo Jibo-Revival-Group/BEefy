@@ -357,30 +357,6 @@ public sealed class FreeAgentEndpointTests
         Assert.Equal("{\"error\":\"free_busy\"}", await blocked.Content.ReadAsStringAsync());
     }
 
-    // Knowledge questions ("how does a plane fly") are answered by the Free model when it is the search backend.
-    [Fact]
-    public async Task FreeSearchProviderAnswersThroughTheWorkerAndReportsUnavailableWhenBusyOrOffline()
-    {
-        await using var factory = Factory();
-        var provider = factory.Services.GetServices<IKnowledgeSearchProvider>().Single(p => p.Kind == SearchBackendKind.Free);
-        var request = new KnowledgeSearchRequest("how does a plane fly", new SearchBackendSpec(SearchBackendKind.Free, null, null));
-        Assert.Equal(KnowledgeSearchOutcome.Unavailable, (await provider.SearchAsync(request))!.Outcome);
-
-        using var worker = await Worker.Connect(factory);
-        var answer = provider.SearchAsync(request);
-        var start = await worker.Read("chat_start");
-        var messages = start.GetProperty("messages");
-        Assert.Equal("system", messages[0].GetProperty("role").GetString());
-        Assert.Equal("how does a plane fly", messages[1].GetProperty("content").GetString());
-        var busy = await provider.SearchAsync(request);
-        Assert.Equal(KnowledgeSearchOutcome.Unavailable, busy!.Outcome);
-        await worker.Send(new { version = 1, generation = worker.Generation, type = "chat_result", requestId = start.GetProperty("requestId").GetString(), text = "Wings push air down, so the air pushes the plane up." });
-        var result = await answer;
-        Assert.Equal(KnowledgeSearchOutcome.Found, result!.Outcome);
-        Assert.Equal(SearchBackendKind.Free, result.BackendKind);
-        Assert.Contains("Wings push air down", result.AnswerText);
-    }
-
     internal sealed class Worker(WebSocket socket, string generation) : IDisposable
     {
         public readonly string Generation = generation;

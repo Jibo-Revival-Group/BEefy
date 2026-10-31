@@ -11,6 +11,10 @@ public sealed class WikipediaLookupParserTests
     [InlineData("what is Jibo", "jibo")]
     [InlineData("what was the internet", "the internet")]
     [InlineData("Who is the 20th president", "the 20th president")]
+    [InlineData("what is a imac", "imac")]
+    [InlineData("what's an iPhone", "iphone")]
+    [InlineData("whats a black hole", "black hole")]
+    [InlineData("who's Taylor Swift", "taylor swift")]
     public void TryParse_WhoWhatLookup_ExtractsSubject(string transcript, string expectedSubject)
     {
         var parsed = WikipediaLookupParser.TryParse(transcript, out var subject);
