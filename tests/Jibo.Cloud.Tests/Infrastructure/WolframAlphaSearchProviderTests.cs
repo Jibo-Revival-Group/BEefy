@@ -126,6 +126,48 @@ public sealed class WolframAlphaSearchProviderTests
         Assert.Equal("llava:7b", fallbackRequest.BackendSpec.Model);
     }
 
+    [Fact]
+    public async Task SearchAsync_SendsTheRobotsLocation()
+    {
+        var uris = new List<string>();
+        var provider = CreateProvider(new RecordingHttpMessageHandler(r => { uris.Add(r.RequestUri!.ToString()); return TextResponse("About 190 miles"); }));
+        await provider.SearchAsync(new KnowledgeSearchRequest("how far is new york city", new SearchBackendSpec(SearchBackendKind.Wolfram, "test-app-id", null), "42.67,-71.42"));
+        Assert.Contains("latlong=42.67%2C-71.42", Assert.Single(uris));
+    }
+
+    [Fact]
+    public async Task SearchAsync_RetriesWithoutFillerWords()
+    {
+        var asked = new List<string>();
+        var provider = CreateProvider(new RecordingHttpMessageHandler(r =>
+        {
+            var input = Uri.UnescapeDataString(r.RequestUri!.Query);
+            asked.Add(input);
+            return input.Contains("perfect") ? new HttpResponseMessage(HttpStatusCode.NotImplemented) : TextResponse("Chicken is cooked at 165 degrees Fahrenheit");
+        }));
+        var result = await provider.SearchAsync(CreateRequest("what's the perfect temperature to cook chicken"));
+        Assert.Equal("Chicken is cooked at 165 degrees Fahrenheit", result!.AnswerText);
+        Assert.Contains("i=what's the temperature to cook chicken", asked[1]);
+    }
+
+    [Fact]
+    public async Task SearchAsync_FallsBackToTheTextApiResult()
+    {
+        const string lions = "Query:\n\"when did the detroit lions play\"\n\nInput interpretation:\nnext NFL game | with | NFL team | Detroit Lions (NFL team) | time\n\nResult:\n1:00 pm EST | Sunday, November 1, 2026\n(Vikings at Lions (2026 week 8)) \n\nTime offset from EST:\n0 hours\n";
+        var provider = CreateProvider(new RecordingHttpMessageHandler(r =>
+            r.RequestUri!.AbsolutePath.Contains("llm-api") ? TextResponse(lions) : new HttpResponseMessage(HttpStatusCode.NotImplemented)));
+        var result = await provider.SearchAsync(CreateRequest("when did the detroit lions play"));
+        Assert.Equal(KnowledgeSearchOutcome.Found, result!.Outcome);
+        Assert.Equal("next NFL game with NFL team Detroit Lions time is 1:00 pm EST, Sunday, November 1, 2026.", result.AnswerText);
+    }
+
+    [Theory]
+    [InlineData("Query:\n\"how far is new york city\"\n\nInput interpretation:\ndistance | from | near Tyngsborough, Massachusetts\nto | New York City, New York\n\nResult:\n190.1 miles\n\nUnit conversions:\n305.9 km\n",
+        "distance from near Tyngsborough, Massachusetts to New York City, New York is 190.1 miles.")]
+    [InlineData("Query:\n\"what is a imac\"\n\nInput interpretation:\nApple iMacs\n\nOverview:\n | models | prices\n", null)]
+    public void ReadResultSection_UsesOnlyTheResult(string text, string? expected) =>
+        Assert.Equal(expected, WolframAlphaSearchProvider.ReadResultSection(text));
+
     private static KnowledgeSearchRequest CreateRequest(string query, string? apiKey = "test-app-id")
     {
         return new KnowledgeSearchRequest(

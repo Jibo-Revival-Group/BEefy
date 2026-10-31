@@ -227,7 +227,8 @@ public sealed partial class JiboInteractionService
                 lowered,
                 chitchatEmotion,
                 preferredName,
-                cancellationToken);
+                cancellationToken,
+                turn);
         }
 
         var chitchatDecision = ChitchatStateMachine.TryBuildDecision(
@@ -1606,7 +1607,8 @@ public sealed partial class JiboInteractionService
                 lowered,
                 chitchatEmotion,
                 preferredName,
-                cancellationToken)
+                cancellationToken,
+                turn)
         };
     }
 

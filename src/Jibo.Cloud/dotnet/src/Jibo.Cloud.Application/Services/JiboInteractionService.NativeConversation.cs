@@ -89,7 +89,7 @@ public sealed partial class JiboInteractionService
             case "answer-skill":
                 return await BuildChatFallbackDecisionAsync(catalog, transcript, transcript.ToLowerInvariant(),
                     NativeConversationValue.Read(turn.Attributes, ChitchatStateMachine.EmotionMetadataKey)?.ToString(),
-                    ResolvePreferredGreetingName(turn, ResolveGreetingPresenceProfile(turn)), cancellationToken);
+                    ResolvePreferredGreetingName(turn, ResolveGreetingPresenceProfile(turn)), cancellationToken, turn);
             case "color-skill": return BuildNativeColorQuestion();
             case "template-skill":
                 return new("template_skill", "This is a template skill", "template-skill");

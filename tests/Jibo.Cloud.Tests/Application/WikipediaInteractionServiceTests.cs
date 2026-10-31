@@ -74,6 +74,27 @@ public sealed class WikipediaInteractionServiceTests
         Assert.NotNull(knowledgeSearch.LastQuery);
     }
 
+    // Wolfram must hear where the robot is, not assume the cloud server's location.
+    [Fact]
+    public async Task BuildDecisionAsync_KnowledgeSearchGetsTheRobotsLocation()
+    {
+        var knowledgeSearch = new CapturingKnowledgeSearchService(
+            new KnowledgeSearchResult("About 190 miles.", SearchBackendKind.Wolfram));
+        var service = CreateService(knowledgeSearchService: knowledgeSearch);
+
+        await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "how far is new york city",
+            NormalizedTranscript = "how far is new york city",
+            Attributes = new Dictionary<string, object?>
+            {
+                ["context"] = """{"runtime":{"location":{"lat":42.67,"lng":-71.42}}}"""
+            }
+        });
+
+        Assert.Equal("42.67,-71.42", knowledgeSearch.LastLatLong);
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_WikipediaWorksWithoutKnowledgeSearchConfigured()
     {
@@ -228,10 +249,18 @@ public sealed class WikipediaInteractionServiceTests
 
         public string? LastQuery { get; private set; }
 
+        public string? LastLatLong { get; private set; }
+
         public Task<KnowledgeSearchResult?> SearchAsync(string query, CancellationToken cancellationToken = default)
         {
             LastQuery = query;
             return Task.FromResult(result);
+        }
+
+        public Task<KnowledgeSearchResult?> SearchAsync(string query, string? latLong, CancellationToken cancellationToken = default)
+        {
+            LastLatLong = latLong;
+            return SearchAsync(query, cancellationToken);
         }
     }
 

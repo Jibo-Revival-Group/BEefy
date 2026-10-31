@@ -15,8 +15,13 @@ public sealed class KnowledgeSearchService(
     public bool IsConfigured =>
         options.Primary.IsUsable || options.Fallback?.IsUsable == true;
 
+    public Task<KnowledgeSearchResult?> SearchAsync(
+        string query,
+        CancellationToken cancellationToken = default) => SearchAsync(query, null, cancellationToken);
+
     public async Task<KnowledgeSearchResult?> SearchAsync(
         string query,
+        string? latLong,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query)) return null;
@@ -24,7 +29,7 @@ public sealed class KnowledgeSearchService(
         KnowledgeSearchResult? primaryResult = null;
         if (options.Primary.IsUsable)
         {
-            primaryResult = await TrySearchBackendAsync(options.Primary, query, cancellationToken);
+            primaryResult = await TrySearchBackendAsync(options.Primary, query, latLong, cancellationToken);
             if (primaryResult?.Outcome == KnowledgeSearchOutcome.Found)
                 return primaryResult;
         }
@@ -32,7 +37,7 @@ public sealed class KnowledgeSearchService(
         if (options.Fallback is null || !options.Fallback.IsUsable)
             return primaryResult ?? KnowledgeSearchResult.Unavailable(options.Primary.Kind);
 
-        var fallbackResult = await TrySearchBackendAsync(options.Fallback, query, cancellationToken);
+        var fallbackResult = await TrySearchBackendAsync(options.Fallback, query, latLong, cancellationToken);
         if (fallbackResult?.Outcome == KnowledgeSearchOutcome.Found)
             return fallbackResult;
 
@@ -42,6 +47,7 @@ public sealed class KnowledgeSearchService(
     private async Task<KnowledgeSearchResult?> TrySearchBackendAsync(
         SearchBackendSpec backendSpec,
         string query,
+        string? latLong,
         CancellationToken cancellationToken)
     {
         if (!_providers.TryGetValue(backendSpec.Kind, out var provider))
@@ -53,7 +59,7 @@ public sealed class KnowledgeSearchService(
         }
 
         var result = await provider.SearchAsync(
-            new KnowledgeSearchRequest(query, backendSpec),
+            new KnowledgeSearchRequest(query, backendSpec, latLong),
             cancellationToken);
         return result ?? KnowledgeSearchResult.Unavailable(backendSpec.Kind);
     }

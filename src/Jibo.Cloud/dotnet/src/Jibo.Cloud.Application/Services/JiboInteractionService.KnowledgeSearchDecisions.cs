@@ -1,4 +1,5 @@
 using Jibo.Cloud.Application.Abstractions;
+using Jibo.Runtime.Abstractions;
 
 namespace Jibo.Cloud.Application.Services;
 
@@ -10,7 +11,8 @@ public sealed partial class JiboInteractionService
         string lowered,
         string? chitchatEmotion,
         string? preferredName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TurnContext? turn = null)
     {
         var emotionDecision = ChitchatStateMachine.TryBuildChatEmotionDecision(
             lowered,
@@ -42,7 +44,7 @@ public sealed partial class JiboInteractionService
 
         var searchDecision = skipKnowledgeSearch
             ? null
-            : await TryBuildKnowledgeSearchDecisionAsync(transcript, cancellationToken);
+            : await TryBuildKnowledgeSearchDecisionAsync(transcript, turn, cancellationToken);
         if (IsKnowledgeSearchFound(searchDecision))
             return searchDecision!;
 
@@ -106,6 +108,7 @@ public sealed partial class JiboInteractionService
 
     private async Task<JiboInteractionDecision?> TryBuildKnowledgeSearchDecisionAsync(
         string transcript,
+        TurnContext? turn,
         CancellationToken cancellationToken)
     {
         if (knowledgeSearchService is null || !knowledgeSearchService.IsConfigured)
@@ -118,7 +121,11 @@ public sealed partial class JiboInteractionService
         KnowledgeSearchResult? result;
         try
         {
-            result = await knowledgeSearchService.SearchAsync(query, cancellationToken);
+            var coordinates = turn is null ? null : TryResolveWeatherCoordinates(turn);
+            var latLong = coordinates is { } c
+                ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{c.Latitude},{c.Longitude}")
+                : null;
+            result = await knowledgeSearchService.SearchAsync(query, latLong, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
