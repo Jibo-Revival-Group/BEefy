@@ -74,6 +74,8 @@ public sealed class DemoConversationBroker(JiboInteractionService interactionSer
         return intentName switch
         {
             "cloud_version" => false,
+            "server_info" => false,
+            "add_person_help" => false,
             "robot_flavor" => false,
             "memory_set_name" => false,
             "memory_get_name" => false,

@@ -383,6 +383,36 @@ public sealed partial class JiboInteractionService
 
         if (MatchesAny(
                 loweredTranscript,
+                "what server are you connected to",
+                "which server are you connected to",
+                "what server are you on",
+                "which server are you on",
+                "what server are you using",
+                "which server are you using",
+                "what server do you use"))
+            return "server_info";
+
+        // People ask Jibo to add family members; that is done in BEacon's People tab.
+        if (MatchesAny(
+                loweredTranscript,
+                "add a person",
+                "add a new person",
+                "add another person",
+                "add someone",
+                "add some one",
+                "add somebody",
+                "add a family member",
+                "add a new family member",
+                "add a new user",
+                "add a user",
+                "add a new member",
+                "add someone to the loop",
+                "add to your loop",
+                "add to the loop"))
+            return "add_person_help";
+
+        if (MatchesAny(
+                loweredTranscript,
                 "cloud version",
                 "open jibo cloud version",
                 "openjibo cloud version",

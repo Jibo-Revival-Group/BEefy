@@ -10,6 +10,15 @@ public sealed partial class JiboInteractionService
             SkillPayload: new Dictionary<string, object?> { ["esml"] = OpenJiboCloudBuildInfo.EsmlVersion });
     }
 
+    private static JiboInteractionDecision BuildServerInfoDecision(TurnContext turn)
+    {
+        var host = (turn.HostName ?? string.Empty).Split(':')[0].Trim().ToLowerInvariant();
+        var spokenHost = host.Length == 0
+            ? "my cloud server"
+            : host.Replace("5x1", " five ex one ").Replace(".", " dot ").Replace("  ", " ").Trim();
+        return new JiboInteractionDecision("server_info", $"I'm connected to {spokenHost}, running {OpenJiboCloudBuildInfo.SpokenVersion}");
+    }
+
     private static JiboInteractionDecision BuildRobotFlavorDecision(TurnContext turn)
     {
         return new JiboInteractionDecision(
