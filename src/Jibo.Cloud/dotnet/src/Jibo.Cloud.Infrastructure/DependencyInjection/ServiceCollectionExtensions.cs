@@ -93,11 +93,13 @@ public static class ServiceCollectionExtensions
             ?? searchSection?["Instructions"],
             Environment.GetEnvironmentVariable("OPENJIBO_SEARCH_INSTRUCTIONS_FILE")
             ?? searchSection?["InstructionsFile"]);
+        // An empty variable (e.g. "OPENJIBO_SEARCH_FALLBACK=" in .env) means unset, so appsettings still apply.
+        static string? Env(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value && value.Trim().Length > 0 ? value : null;
         var searchBackendOptions = SearchBackendOptions.Create(
-            Environment.GetEnvironmentVariable("OPENJIBO_SEARCH_BACKEND")
+            Env("OPENJIBO_SEARCH_BACKEND")
             ?? searchSection?["Primary"]
             ?? searchSection?["Backend"],
-            Environment.GetEnvironmentVariable("OPENJIBO_SEARCH_FALLBACK")
+            Env("OPENJIBO_SEARCH_FALLBACK")
             ?? searchSection?["Fallback"]
             ?? searchSection?["FallbackBackend"],
             searchSection?.GetValue("CacheTtlSeconds", 300) ?? 300,
@@ -138,6 +140,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IKnowledgeSearchProvider, WolframAlphaSearchProvider>();
         services.AddSingleton<IKnowledgeSearchProvider, OllamaSearchProvider>();
         services.AddSingleton<IKnowledgeSearchProvider, ChatGptSearchProvider>();
+        services.AddSingleton<IKnowledgeSearchProvider, FreeSearchProvider>();
         services.AddSingleton<IKnowledgeSearchService, KnowledgeSearchService>();
         services.AddSingleton<IHolidayCalendarProvider>(provider =>
             new NagerDateHolidayCalendarProvider(provider.GetRequiredService<HolidayCalendarOptions>()));

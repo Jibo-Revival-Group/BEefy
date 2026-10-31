@@ -37,7 +37,8 @@ internal static partial class KnowledgeSearchSpokenReplyFormatter
         if (string.IsNullOrWhiteSpace(answerText)) return string.Empty;
 
         var spokenBody = ReplaceSpokenTerms(NormalizeHtmlEntities(answerText.Trim()));
-        return $"According to {DescribeSource(backendKind)}. {spokenBody}";
+        // The Free model answers as Jibo himself, so there is no source to cite.
+        return backendKind == SearchBackendKind.Free ? spokenBody : $"According to {DescribeSource(backendKind)}. {spokenBody}";
     }
 
     public static string FormatNotFoundReply() => "I can't find anything.";
