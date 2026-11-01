@@ -1907,7 +1907,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         return dictionary;
     }
 
-    // Pegasus-style event card: time-of-day card, calendar icon, event name and start time.
+    // Pegasus event card: calendar icon on the card's top edge, event name in the card, big start time below.
     private static object? BuildCalendarEventView(IDictionary<string, object?>? payload)
     {
         var summary = ReadPayloadString(payload, "calendar_event_summary");
@@ -1925,25 +1925,25 @@ public sealed class ResponsePlanToSocketMessagesMapper
             {
                 new
                 {
-                    id = "cardClip", type = "Clip", position = new { x = 140, y = 110 },
+                    id = "cardClip", type = "Clip", position = new { x = 140, y = 90 },
                     assets = new object[] { new { id = "card", src = $"{assets}cards/event{card}_v01.crn", type = "texture" } }
                 },
                 new
                 {
-                    id = "iconClip", type = "Clip", position = new { x = 530, y = 150 },
+                    id = "iconClip", type = "Clip", position = new { x = 530, y = 0 },
                     assets = new object[] { new { id = "icon", src = $"{assets}icons/calendar_v01.crn", type = "texture" } }
                 },
                 new
                 {
                     id = "summaryLabel", type = "Label", text = summary,
-                    style = new { fontSize = "80", fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill = "#FFFFFF", align = "center", wordWrap = true, wordWrapWidth = 900 },
-                    position = new { x = 640, y = 490 }, targetAnchor = new { x = 0.5, y = 1 }
+                    style = new { fontSize = "75", fontFamily = "Proxima Nova Light", fill = "#FFFFFF", align = "center", wordWrap = true, wordWrapWidth = 800 },
+                    position = new { x = 640, y = 330 }, targetAnchor = new { x = 0.5, y = 0.5 }
                 },
                 new
                 {
                     id = "timeLabel", type = "Label", text = time,
-                    style = new { fontSize = "60", fontFamily = "Proxima Nova Light", fill = "#FFFFFF", align = "center" },
-                    position = new { x = 640, y = 580 }, targetAnchor = new { x = 0.5, y = 1 }
+                    style = new { fontSize = "140", fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill = "#FFFFFF", align = "center" },
+                    position = new { x = 640, y = 690 }, targetAnchor = new { x = 0.5, y = 1 }
                 }
             }
         };

@@ -741,7 +741,9 @@ public sealed partial class JiboInteractionService
             var match = Regex.Match(time, @"^(\d{1,2})(?::\d{2})? ([ap])\.m\.$", RegexOptions.IgnoreCase);
             var hour = match.Success ? int.Parse(match.Groups[1].Value) % 12 + (match.Groups[2].Value.ToLowerInvariant() == "p" ? 12 : 0) : 12;
             payload["calendar_event_summary"] = snapshot.EventSummaries[0];
-            payload["calendar_event_time"] = string.Equals(time, "all day", StringComparison.OrdinalIgnoreCase) ? "All day" : time;
+            payload["calendar_event_time"] = match.Success
+                ? Regex.Replace(time, @"(?::00)? ([ap])\.m\.$", m => m.Groups[1].Value.ToUpperInvariant() + "M")
+                : string.Equals(time, "all day", StringComparison.OrdinalIgnoreCase) ? "All day" : time;
             payload["calendar_card"] = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Night";
         }
         return payload;

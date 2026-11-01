@@ -2684,7 +2684,7 @@ public sealed class JiboInteractionServiceTests
         var json = string.Join("\n", ResponsePlanToSocketMessagesMapper.MapProactive(plan, turn, new CloudSession()).Select(m => m.Text));
         Assert.Contains("views.calendarEvents", json);
         Assert.Contains("\"text\":\"test event\"", json);
-        Assert.Contains("\"text\":\"9:15 a.m.\"", json);
+        Assert.Contains("\"text\":\"9:15AM\"", json);
         Assert.Contains("eventMorning_v01.crn", json);
     }
 
@@ -2712,6 +2712,7 @@ public sealed class JiboInteractionServiceTests
         Assert.Contains("views.calendarEvents", json);
         Assert.Contains("\"text\":\"dentist\"", json);
         Assert.Contains("eventNight_v01.crn", json);
+        Assert.Contains("\"text\":\"6PM\"", json);
     }
 
     [Fact]
