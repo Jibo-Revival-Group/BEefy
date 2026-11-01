@@ -10,6 +10,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
     private readonly Lock _syncRoot = new();
     private List<HomeAssistantLinkRecord> _links;
     private List<MemberCalendarFeedRecord> _calendarFeeds;
+    private List<CommuteAddressRecord> _commuteAddresses;
 
     public InMemoryUserIntegrationStore(EncryptedUserDataSnapshotStore snapshotStore)
     {
@@ -17,6 +18,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
         var snapshot = snapshotStore.LoadOrReset();
         _links = snapshot.HomeAssistantLinks.ToList();
         _calendarFeeds = snapshot.MemberCalendarFeeds.ToList();
+        _commuteAddresses = (snapshot.CommuteAddresses ?? []).ToList();
     }
 
     public IReadOnlyList<HomeAssistantLinkRecord> GetHomeAssistantLinks()
@@ -160,6 +162,43 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
         }
     }
 
+    public IReadOnlyList<CommuteAddressRecord> GetCommuteAddresses(string scope)
+    {
+        lock (_syncRoot)
+        {
+            return _commuteAddresses.Where(item => item.Scope.Equals(scope, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+    }
+
+    public CommuteAddressRecord UpsertCommuteAddress(CommuteAddressRecord address)
+    {
+        if (string.IsNullOrWhiteSpace(address.Scope) || string.IsNullOrWhiteSpace(address.MemberId))
+            throw new ArgumentException("Scope and member id are required.", nameof(address));
+        lock (_syncRoot)
+        {
+            _commuteAddresses.RemoveAll(item => SameCommuteAddress(item, address.Scope, address.MemberId));
+            _commuteAddresses.Add(address);
+            PersistLocked();
+            return address;
+        }
+    }
+
+    public CommuteAddressRecord? ClearCommuteAddress(string scope, string memberId)
+    {
+        lock (_syncRoot)
+        {
+            var existing = _commuteAddresses.FirstOrDefault(item => SameCommuteAddress(item, scope, memberId));
+            if (existing is null) return null;
+            _commuteAddresses.Remove(existing);
+            PersistLocked();
+            return existing;
+        }
+    }
+
+    private static bool SameCommuteAddress(CommuteAddressRecord item, string scope, string memberId) =>
+        item.Scope.Equals(scope, StringComparison.OrdinalIgnoreCase) &&
+        item.MemberId.Equals(memberId, StringComparison.OrdinalIgnoreCase);
+
     public IReadOnlyList<MemberCalendarFeedRecord> GetMemberCalendarFeeds(string? loopId = null)
     {
         lock (_syncRoot)
@@ -287,7 +326,8 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
         {
             SchemaVersion = UserIntegrationSnapshot.CurrentSchemaVersion,
             HomeAssistantLinks = _links.ToArray(),
-            MemberCalendarFeeds = _calendarFeeds.ToArray()
+            MemberCalendarFeeds = _calendarFeeds.ToArray(),
+            CommuteAddresses = _commuteAddresses.ToArray()
         });
     }
 

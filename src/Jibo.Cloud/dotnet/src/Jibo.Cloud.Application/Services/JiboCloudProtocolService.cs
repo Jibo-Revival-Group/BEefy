@@ -22,7 +22,8 @@ public sealed partial class JiboCloudProtocolService(
     ILogger<JiboCloudProtocolService>? logger = null,
     RobotIdentitySuggestionStore? identitySuggestionStore = null,
     IUserIntegrationStore? userIntegrationStore = null,
-    IMemberCalendarFeedProbe? calendarFeedProbe = null)
+    IMemberCalendarFeedProbe? calendarFeedProbe = null,
+    ICommuteRouting? commuteRouting = null)
 {
     private const int SchedulerBackupDelayMs = 250;
     private const int SchedulerDownloadTickMs = 100;
@@ -172,6 +173,8 @@ public sealed partial class JiboCloudProtocolService(
         {
             if (IsMemberCalendarOperation(operation))
                 return HandleMemberCalendarAsync(operation, envelope);
+            if (IsCommuteOperation(operation))
+                return HandleCommuteAsync(operation, envelope);
             return Task.FromResult(HandleLoop(operation, envelope));
         }
 

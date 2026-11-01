@@ -171,8 +171,13 @@ public static class ServiceCollectionExtensions
                 provider.GetRequiredService<IIcalFeedFetcher>(),
                 provider.GetRequiredService<CloudStateCalendarReportProvider>(),
                 provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<IcalCalendarReportProvider>>()));
+        services.AddHttpClient<ICommuteRouting, TomTomCommuteRouting>(client => client.Timeout = TimeSpan.FromSeconds(4));
         services.AddSingleton<ICommuteReportProvider>(provider =>
-            new CloudStateCommuteReportProvider(provider.GetRequiredService<ICloudStateStore>()));
+            new TomTomCommuteReportProvider(
+                provider.GetRequiredService<IUserIntegrationStore>(),
+                provider.GetRequiredService<ICommuteRouting>(),
+                provider.GetRequiredService<ICloudStateStore>(),
+                new CloudStateCommuteReportProvider(provider.GetRequiredService<ICloudStateStore>())));
         var statePersistencePath = configuration?["OpenJibo:State:PersistencePath"]
                                    ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "cloud-state.json");
         var personalMemoryPersistencePath = configuration?["OpenJibo:PersonalMemory:PersistencePath"]

@@ -8,4 +8,5 @@ public sealed class UserIntegrationSnapshot
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public HomeAssistantLinkRecord[] HomeAssistantLinks { get; init; } = [];
     public MemberCalendarFeedRecord[] MemberCalendarFeeds { get; init; } = [];
+    public CommuteAddressRecord[] CommuteAddresses { get; init; } = [];
 }

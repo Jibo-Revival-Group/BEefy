@@ -27,6 +27,10 @@ public interface IUserIntegrationStore
     /// </summary>
     HomeAssistantLinkRecord? EnsureHomeAssistantCommandSecret(string linkId);
 
+    IReadOnlyList<CommuteAddressRecord> GetCommuteAddresses(string scope);
+    CommuteAddressRecord UpsertCommuteAddress(CommuteAddressRecord address);
+    CommuteAddressRecord? ClearCommuteAddress(string scope, string memberId);
+
     IReadOnlyList<MemberCalendarFeedRecord> GetMemberCalendarFeeds(string? loopId = null);
     MemberCalendarFeedRecord? FindMemberCalendarFeed(string loopId, string memberId);
 
