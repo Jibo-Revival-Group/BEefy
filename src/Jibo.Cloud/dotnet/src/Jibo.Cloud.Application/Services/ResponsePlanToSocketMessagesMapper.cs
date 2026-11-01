@@ -1039,6 +1039,10 @@ public sealed class ResponsePlanToSocketMessagesMapper
             : [];
         var usePersonalReportSequence = isPersonalReport && personalReportSections.Length > 1;
         var useNewsSequence = isNewsSkill && newsSections.Length > 1;
+        var calendarSections = skillPayload is not null &&
+                               skillPayload.TryGetValue("calendar_sections", out var calendarSectionsRaw)
+            ? ReadPayloadObjectArray(calendarSectionsRaw!)
+            : [];
 
         if (weatherHiLoView is not null)
         {
@@ -1149,6 +1153,18 @@ public sealed class ResponsePlanToSocketMessagesMapper
             useSequence = true;
             jcpConfig["children"] = BuildPersonalReportSequenceChildren(
                 personalReportSections,
+                null,
+                "cloudy",
+                promptSubCategory,
+                mimId,
+                mimType);
+        }
+        else if (calendarSections.Length > 1)
+        {
+            // Standalone calendar: count, one card per event, outro.
+            useSequence = true;
+            jcpConfig["children"] = BuildPersonalReportSequenceChildren(
+                calendarSections,
                 null,
                 "cloudy",
                 promptSubCategory,

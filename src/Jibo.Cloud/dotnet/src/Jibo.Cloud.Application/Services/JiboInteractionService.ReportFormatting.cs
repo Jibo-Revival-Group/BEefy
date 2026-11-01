@@ -734,11 +734,17 @@ public sealed partial class JiboInteractionService
             ["cloudSkill"] = "calendar"
         };
         if (snapshot is not { EventSummaries.Count: > 0, EventTimesOnAt.Count: > 0 }) return payload;
+        foreach (var (key, value) in BuildCalendarCard(snapshot.EventSummaries[0], snapshot.EventTimesOnAt[0]))
+            payload[key] = value;
+        return payload;
+    }
 
+    private static Dictionary<string, object?> BuildCalendarCard(string summary, string timeOnAt)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         // Original report-skill CalendarViews: card by start hour (<12 morning, <19 afternoon, else night),
         // icon by keyword, "6" + "PM" (minutes only when non-zero), summary cut to 50 characters.
-        var summary = snapshot.EventSummaries[0];
-        var match = Regex.Match(snapshot.EventTimesOnAt[0], @"(\d{1,2})(?::(\d{2}))? ([ap])\.m\.", RegexOptions.IgnoreCase);
+        var match = Regex.Match(timeOnAt, @"(\d{1,2})(?::(\d{2}))? ([ap])\.m\.", RegexOptions.IgnoreCase);
         var hour = match.Success
             ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) % 12 + (match.Groups[3].Value.ToLowerInvariant() == "p" ? 12 : 0)
             : 0; // all-day events: no time, morning card (midnight start)
@@ -812,7 +818,7 @@ public sealed partial class JiboInteractionService
         ("school", "school|class"),
         ("sun", "sun"),
         ("sushi", "sushi"),
-        ("tree", "tree|park|nature"),
+        // "tree" (tree|park|nature) is dropped: BEam doesn't ship tree_v01, so it fell back to a blank icon.
         ("valentine", "valentine")
     ];
 }

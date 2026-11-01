@@ -15,7 +15,8 @@ public sealed class IcalCalendarReportProvider(
     ICalendarReportProvider fallbackProvider,
     ILogger<IcalCalendarReportProvider> logger) : ICalendarReportProvider
 {
-    private static readonly TimeSpan SuccessCacheTtl = TimeSpan.FromMinutes(10);
+    // Short so new or moved events show up soon; the feed host may still lag behind.
+    private static readonly TimeSpan SuccessCacheTtl = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan FailureCacheTtl = TimeSpan.FromSeconds(45);
 
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);

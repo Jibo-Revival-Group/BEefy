@@ -83,7 +83,7 @@ public sealed partial class JiboInteractionService
                     (context, ct) => BuildNewsDecisionAsync(context, transcript, catalog, ct, includeOutro: false), cancellationToken)
                     ?? (mapped == "weather" ? await BuildWeatherReportDecisionAsync(turn, transcript, cancellationToken)
                         : mapped == "news" ? await BuildNewsDecisionAsync(turn, transcript, catalog, cancellationToken)
-                        : mapped == "calendar" ? await BuildCalendarReportDecisionAsync(turn, cancellationToken)
+                        : mapped == "calendar" ? await BuildCalendarDecisionAsync(turn, cancellationToken, standalone: true)
                         : mapped == "commute" ? await BuildCommuteReportDecisionAsync(turn, cancellationToken)
                         : new JiboInteractionDecision(mapped, "I couldn't get your personal report right now."));
             case "answer-skill":

@@ -232,9 +232,14 @@ public sealed partial class JiboInteractionService
             commutePayload);
     }
 
-    private async Task<JiboInteractionDecision> BuildCalendarReportDecisionAsync(
+    private Task<JiboInteractionDecision> BuildCalendarReportDecisionAsync(
         TurnContext turn,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) => BuildCalendarDecisionAsync(turn, cancellationToken, standalone: false);
+
+    private async Task<JiboInteractionDecision> BuildCalendarDecisionAsync(
+        TurnContext turn,
+        CancellationToken cancellationToken,
+        bool standalone)
     {
         var catalog = await contentCache.GetCatalogAsync(cancellationToken);
 
@@ -262,12 +267,56 @@ public sealed partial class JiboInteractionService
                 "report-skill",
                 BuildCalendarSkillPayload(null));
 
+        if (standalone && snapshot.EventSummaries.Count > 0 && snapshot.EventSummaries.Count == snapshot.EventTimesOnAt.Count)
+            return BuildCalendarEventsDecision(snapshot, catalog);
+
         var calendarReply = BuildCalendarSpokenReply(snapshot, catalog);
         return new JiboInteractionDecision(
             "calendar",
             calendarReply,
             "report-skill",
             BuildCalendarSkillPayload(snapshot));
+    }
+
+    // Standalone calendar, like the original single-skill flow: a count line, then each of today's
+    // events (up to five) on its own card, then an outro.
+    private JiboInteractionDecision BuildCalendarEventsDecision(CalendarReportSnapshot snapshot, JiboExperienceCatalog catalog)
+    {
+        var count = snapshot.EventSummaries.Count;
+        var sections = new List<IDictionary<string, object?>>
+        {
+            new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["kind"] = "calendar_count",
+                ["text"] = count == 1
+                    ? "Checking your calendar, I see just one thing scheduled today."
+                    : $"Checking your calendar today, I see you have {count} things coming."
+            }
+        };
+        for (var i = 0; i < Math.Min(count, 5); i += 1)
+        {
+            var summary = snapshot.EventSummaries[i];
+            var time = snapshot.EventTimesOnAt[i];
+            var section = BuildCalendarCard(summary, time);
+            section["kind"] = "calendar_event";
+            section["text"] = i > 0 && time == snapshot.EventTimesOnAt[i - 1]
+                ? $"Also {time}, is {summary}."
+                : $"{summary}, {time}.";
+            sections.Add(section);
+        }
+        sections.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["kind"] = "calendar_outro",
+            ["text"] = catalog.CalendarOutroReplies.Count > 0 ? randomizer.Choose(catalog.CalendarOutroReplies) : "And that's it."
+        });
+
+        var payload = BuildCalendarSkillPayload(null);
+        payload["calendar_sections"] = sections;
+        return new JiboInteractionDecision(
+            "calendar",
+            string.Join(" ", sections.Select(section => section["text"])),
+            "report-skill",
+            payload);
     }
 
     private async Task<JiboInteractionDecision> BuildNewsDecisionAsync(

@@ -1598,7 +1598,7 @@ public sealed partial class JiboInteractionService
             "surprise" => BuildSurpriseDecision(catalog, turn, referenceLocalTime),
             "personal_report" => new JiboInteractionDecision("personal_report",
                 randomizer.Choose(catalog.PersonalReportReplies)),
-            "calendar" => await BuildCalendarReportDecisionAsync(turn, cancellationToken),
+            "calendar" => await BuildCalendarDecisionAsync(turn, cancellationToken, standalone: true),
             "commute" => await BuildCommuteReportDecisionAsync(turn, cancellationToken),
             "news" => await BuildNewsDecisionAsync(turn, transcript, catalog, cancellationToken),
             _ => await BuildChatFallbackDecisionAsync(

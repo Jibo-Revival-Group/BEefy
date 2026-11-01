@@ -2690,6 +2690,34 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
+    public async Task StandaloneCalendar_ShowsEachOfTodaysEventsOnItsOwnCard()
+    {
+        var calendar = new Mock<ICalendarReportProvider>();
+        calendar.Setup(provider => provider.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarReportSnapshot(["Coffee with Sam", "Gym", "Pizza night"],
+                ["at 9 a.m.", "at 5:30 p.m.", "at 5:30 p.m."], []));
+        var turn = new TurnContext { RawTranscript = "what's on my calendar", NormalizedTranscript = "what's on my calendar" };
+        var plan = await new DemoConversationBroker(CreateService(calendarReportProvider: calendar.Object)).HandleTurnAsync(turn);
+        var skillAction = ResponsePlanToSocketMessagesMapper.MapProactive(plan, turn, new CloudSession())
+            .Select(m => JsonDocument.Parse(m.Text).RootElement.Clone())
+            .Single(m => m.GetProperty("type").GetString() == "SKILL_ACTION");
+        var children = skillAction.GetProperty("data").GetProperty("action").GetProperty("config").GetProperty("jcp")
+            .GetProperty("children").EnumerateArray().Select(c => c.GetProperty("config")).ToArray();
+
+        Assert.Equal(5, children.Length); // count, three events, outro
+        Assert.Contains("3 things", children[0].GetProperty("play").GetProperty("esml").GetString());
+        Assert.False(children[0].TryGetProperty("gui", out _));
+        var cards = children[1..4].Select(c => c.GetProperty("views").GetProperty("calendarEvents").GetRawText()).ToArray();
+        Assert.Contains("coffee_v01.crn", cards[0]);
+        Assert.Contains("eventMorning_v01.crn", cards[0]);
+        Assert.Contains("barbell_v01.crn", cards[1]);
+        Assert.Contains("\"5:30\"", cards[1]);
+        Assert.Contains("pizza_v01.crn", cards[2]);
+        Assert.Contains("Also at 5:30 p.m., is Pizza night.", children[3].GetProperty("play").GetProperty("esml").GetString());
+        Assert.False(children[4].TryGetProperty("gui", out _));
+    }
+
+    [Fact]
     public async Task PersonalReport_CalendarSection_ShowsTheEventCard()
     {
         var calendar = new Mock<ICalendarReportProvider>();
