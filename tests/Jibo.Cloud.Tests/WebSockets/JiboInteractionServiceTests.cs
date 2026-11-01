@@ -2694,7 +2694,7 @@ public sealed class JiboInteractionServiceTests
     {
         var calendar = new Mock<ICalendarReportProvider>();
         calendar.Setup(provider => provider.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CalendarReportSnapshot(["dentist"], ["at 6 p.m."], []));
+            .ReturnsAsync(new CalendarReportSnapshot(["Birthday party"], ["at 7 p.m."], []));
         var turn = new TurnContext
         {
             RawTranscript = "yes", NormalizedTranscript = "yes",
@@ -2711,9 +2711,10 @@ public sealed class JiboInteractionServiceTests
 
         Assert.Equal("personal_report_delivered", plan.IntentName);
         Assert.Contains("views.calendarEvents", json);
-        Assert.Contains("\"text\":\"dentist\"", json);
+        Assert.Contains("\"text\":\"Birthday party\"", json);
+        Assert.Contains("birthdaycake_v01.crn", json);
         Assert.Contains("eventNight_v01.crn", json);
-        Assert.Contains("\"text\":\"6\"", json);
+        Assert.Contains("\"text\":\"7\"", json);
         Assert.Contains("\"text\":\"PM\"", json);
     }
 

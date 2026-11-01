@@ -733,19 +733,86 @@ public sealed partial class JiboInteractionService
             ["skillId"] = "report-skill",
             ["cloudSkill"] = "calendar"
         };
-        // The next event's card (BEam ships the Pegasus card art under nimbus/assets/personal-report-skill).
-        if (snapshot is { EventSummaries.Count: > 0, EventTimesOnAt.Count: > 0 })
+        if (snapshot is not { EventSummaries.Count: > 0, EventTimesOnAt.Count: > 0 }) return payload;
+
+        // Original report-skill CalendarViews: card by start hour (<12 morning, <19 afternoon, else night),
+        // icon by keyword, "6" + "PM" (minutes only when non-zero), summary cut to 50 characters.
+        var summary = snapshot.EventSummaries[0];
+        var match = Regex.Match(snapshot.EventTimesOnAt[0], @"(\d{1,2})(?::(\d{2}))? ([ap])\.m\.", RegexOptions.IgnoreCase);
+        var hour = match.Success
+            ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) % 12 + (match.Groups[3].Value.ToLowerInvariant() == "p" ? 12 : 0)
+            : 0; // all-day events: no time, morning card (midnight start)
+        payload["calendar_event_summary"] = summary.Length > 50 ? summary[..47] + "..." : summary;
+        payload["calendar_card"] = hour < 12 ? "Morning" : hour < 19 ? "Afternoon" : "Night";
+        payload["calendar_icon"] = CalendarIconWords
+            .FirstOrDefault(entry => Regex.IsMatch(summary, entry.Pattern, RegexOptions.IgnoreCase)).Icon ?? "calendar";
+        if (match.Success)
         {
-            var time = snapshot.EventTimesOnAt[0].Trim();
-            if (time.StartsWith("at ", StringComparison.OrdinalIgnoreCase)) time = time[3..];
-            var match = Regex.Match(time, @"^(\d{1,2})(?::\d{2})? ([ap])\.m\.$", RegexOptions.IgnoreCase);
-            var hour = match.Success ? int.Parse(match.Groups[1].Value) % 12 + (match.Groups[2].Value.ToLowerInvariant() == "p" ? 12 : 0) : 12;
-            payload["calendar_event_summary"] = snapshot.EventSummaries[0];
-            payload["calendar_event_time"] = match.Success
-                ? Regex.Replace(time, @"(?::00)? ([ap])\.m\.$", m => m.Groups[1].Value.ToUpperInvariant() + "M")
-                : string.Equals(time, "all day", StringComparison.OrdinalIgnoreCase) ? "All day" : time;
-            payload["calendar_card"] = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Night";
+            var minutes = match.Groups[2].Success && match.Groups[2].Value != "00" ? ":" + match.Groups[2].Value : string.Empty;
+            payload["calendar_time"] = match.Groups[1].Value + minutes;
+            payload["calendar_ampm"] = match.Groups[3].Value.ToUpperInvariant() + "M";
         }
         return payload;
     }
+
+    // Original report-skill calendarIconWords, in its order (first match wins).
+    private static readonly (string Icon, string Pattern)[] CalendarIconWords =
+    [
+        ("apple", "apple|fruit"),
+        ("airplane", "airplane|flight|airport"),
+        ("ambulance", "hospital|ambulance"),
+        ("baby", "baby|infant|newborn"),
+        ("bandaid", "bandaid|band-aid|band aid"),
+        ("bank", "bank|money|currency|finance"),
+        ("barbell", "barbell|fitness|gym"),
+        ("baseball", "baseball"),
+        ("basketball", "basketball"),
+        ("bath", "bath|tub|bathtub"),
+        ("battery", "battery"),
+        ("beach", "beach|vacation"),
+        ("beer", "beer"),
+        ("bicycle", "bicycle|cycling|bicycling|bike"),
+        ("birthdaycake", "birthday|cake"),
+        ("book", "book|novel"),
+        ("breakfast", "breakfast|egg|eggs|brunch"),
+        ("calendar", "calendar|date"),
+        ("camera", "camera|photo"),
+        ("camping", "camp|camping|tent"),
+        ("car", "car|vehicle|auto|automobile"),
+        ("cat", "cat"),
+        ("chalkboard", "chalkboard|school|education|teaching|learning"),
+        ("christmas", "christmas"),
+        ("cincodemayo", "cincodemayo|cinco de mayo"),
+        ("city", "city|urban|building|skyscraper"),
+        ("clock", "clock|time"),
+        ("coffee", "coffee|tea|cafe|cocoa"),
+        ("computer", "computer|laptop|desktop"),
+        ("dinner", "dinner|meal"),
+        ("discoball", "party|dance|dancing"),
+        ("dog", "dog|animal"),
+        ("earth", "earth|world"),
+        ("easter", "easter"),
+        ("factory", "factory|industry|manufacturing"),
+        ("farm", "farm|agriculture"),
+        ("firstaid", "first aid|firstaid"),
+        ("football", "football"),
+        ("groceries", "groceries"),
+        ("hamburger", "burger"),
+        ("hanukkah", "hanukkah|chanukkah"),
+        ("heart", "heart|love|valentine"),
+        ("house", "house|home"),
+        ("icecream", "ice cream|icecream|cone|sundae"),
+        ("kwanzaa", "kwanzaa"),
+        ("laundry", "laundry"),
+        ("lightning", "lightning"),
+        ("mountains", "mountain"),
+        ("movie", "movie|film"),
+        ("pizza", "pizza"),
+        ("rainbow", "rainbow"),
+        ("school", "school|class"),
+        ("sun", "sun"),
+        ("sushi", "sushi"),
+        ("tree", "tree|park|nature"),
+        ("valentine", "valentine")
+    ];
 }
