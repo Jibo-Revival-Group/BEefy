@@ -1155,6 +1155,13 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 mimId,
                 mimType);
         }
+        else if (!isPersonalReport && BuildCalendarEventView(skillPayload) is { } calendarView)
+        {
+            AttachPausedGuiView(jcpConfig, "calendarEvents", calendarView);
+            jcpConfig["timeout"] = 6;
+            jcpConfig["no_matches_for_gui"] = 0;
+            jcpConfig["no_inputs_for_gui"] = 0;
+        }
         else if (useNewsSequence)
         {
             // Standalone news: Intro + one Headline SLIM per story (Pegasus NewsMimLogic order).
@@ -1584,6 +1591,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 continue;
             }
 
+            var calendarView = BuildCalendarEventView(section);
             var promptLabel = Regex.Replace(kind, "[^A-Za-z0-9]", string.Empty, RegexOptions.CultureInvariant);
             if (string.IsNullOrWhiteSpace(promptLabel)) promptLabel = $"Section{index + 1}";
 
@@ -1614,13 +1622,14 @@ public sealed class ResponsePlanToSocketMessagesMapper
 
             var isCommuteSection = string.Equals(kind, "commute", StringComparison.OrdinalIgnoreCase);
             var isNewsSection = kind.StartsWith("news", StringComparison.OrdinalIgnoreCase);
-            var shouldHoldSection = isWeatherSection ||
+            var shouldHoldSection = isWeatherSection || calendarView is not null ||
                                     isCommuteSection ||
                                     isNewsSection ||
                                     TryReadPayloadInt(section, "hold_timeout") is > 0;
 
             if (isWeatherSection && weatherHiLoView is not null)
                 AttachPausedGuiView(config, "weatherHiLo", weatherHiLoView);
+            if (calendarView is not null) AttachPausedGuiView(config, "calendarEvents", calendarView);
 
             if (shouldHoldSection)
             {
@@ -1896,6 +1905,48 @@ public sealed class ResponsePlanToSocketMessagesMapper
             };
 
         return dictionary;
+    }
+
+    // Pegasus-style event card: time-of-day card, calendar icon, event name and start time.
+    private static object? BuildCalendarEventView(IDictionary<string, object?>? payload)
+    {
+        var summary = ReadPayloadString(payload, "calendar_event_summary");
+        var time = ReadPayloadString(payload, "calendar_event_time");
+        var card = ReadPayloadString(payload, "calendar_card");
+        if (string.IsNullOrWhiteSpace(summary) || string.IsNullOrWhiteSpace(time) || string.IsNullOrWhiteSpace(card))
+            return null;
+        const string assets = "assets/personal-report-skill/calendar/";
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["viewConfig"] = new { type = "View", id = "calendarEventView", category = "gui" },
+            ["open"] = new { transitionOpen = "trans_in", removeAll = true },
+            ["defaultSelect"] = new { transitionClose = "trans_out", removeAll = true, leaveEmpty = false },
+            ["componentConfigs"] = new object[]
+            {
+                new
+                {
+                    id = "cardClip", type = "Clip", position = new { x = 140, y = 110 },
+                    assets = new object[] { new { id = "card", src = $"{assets}cards/event{card}_v01.crn", type = "texture" } }
+                },
+                new
+                {
+                    id = "iconClip", type = "Clip", position = new { x = 530, y = 150 },
+                    assets = new object[] { new { id = "icon", src = $"{assets}icons/calendar_v01.crn", type = "texture" } }
+                },
+                new
+                {
+                    id = "summaryLabel", type = "Label", text = summary,
+                    style = new { fontSize = "80", fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill = "#FFFFFF", align = "center", wordWrap = true, wordWrapWidth = 900 },
+                    position = new { x = 640, y = 490 }, targetAnchor = new { x = 0.5, y = 1 }
+                },
+                new
+                {
+                    id = "timeLabel", type = "Label", text = time,
+                    style = new { fontSize = "60", fontFamily = "Proxima Nova Light", fill = "#FFFFFF", align = "center" },
+                    position = new { x = 640, y = 580 }, targetAnchor = new { x = 0.5, y = 1 }
+                }
+            }
+        };
     }
 
     private static object? BuildWeatherHiLoView(IDictionary<string, object?>? payload)

@@ -2667,7 +2667,7 @@ public sealed class JiboInteractionServiceTests
     {
         var calendar = new Mock<ICalendarReportProvider>();
         calendar.Setup(provider => provider.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CalendarReportSnapshot(["test event"], ["today at 9:15 AM"], []));
+            .ReturnsAsync(new CalendarReportSnapshot(["test event"], ["at 9:15 a.m."], []));
         var service = CreateService(calendarReportProvider: calendar.Object);
 
         var decision = await service.BuildDecisionAsync(new TurnContext
@@ -2677,6 +2677,41 @@ public sealed class JiboInteractionServiceTests
 
         Assert.Equal("calendar", decision.IntentName);
         Assert.Contains("test event", decision.ReplyText);
+
+        // The robot shows the event card: name, start time, and the morning card for 9:15 a.m.
+        var turn = new TurnContext { RawTranscript = "what's on my calendar", NormalizedTranscript = "what's on my calendar" };
+        var plan = await new DemoConversationBroker(service).HandleTurnAsync(turn);
+        var json = string.Join("\n", ResponsePlanToSocketMessagesMapper.MapProactive(plan, turn, new CloudSession()).Select(m => m.Text));
+        Assert.Contains("views.calendarEvents", json);
+        Assert.Contains("\"text\":\"test event\"", json);
+        Assert.Contains("\"text\":\"9:15 a.m.\"", json);
+        Assert.Contains("eventMorning_v01.crn", json);
+    }
+
+    [Fact]
+    public async Task PersonalReport_CalendarSection_ShowsTheEventCard()
+    {
+        var calendar = new Mock<ICalendarReportProvider>();
+        calendar.Setup(provider => provider.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarReportSnapshot(["dentist"], ["at 6 p.m."], []));
+        var turn = new TurnContext
+        {
+            RawTranscript = "yes", NormalizedTranscript = "yes",
+            Attributes = new Dictionary<string, object?>
+            {
+                [PersonalReportStateKey] = "awaiting_identity_confirmation",
+                [PersonalReportUserNameKey] = "alex",
+                [PersonalReportCommuteEnabledKey] = false,
+                [PersonalReportNewsEnabledKey] = false
+            }
+        };
+        var plan = await new DemoConversationBroker(CreateService(calendarReportProvider: calendar.Object)).HandleTurnAsync(turn);
+        var json = string.Join("\n", ResponsePlanToSocketMessagesMapper.MapProactive(plan, turn, new CloudSession()).Select(m => m.Text));
+
+        Assert.Equal("personal_report_delivered", plan.IntentName);
+        Assert.Contains("views.calendarEvents", json);
+        Assert.Contains("\"text\":\"dentist\"", json);
+        Assert.Contains("eventNight_v01.crn", json);
     }
 
     [Fact]

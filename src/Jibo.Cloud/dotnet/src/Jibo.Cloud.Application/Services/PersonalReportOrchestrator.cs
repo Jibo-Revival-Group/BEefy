@@ -363,7 +363,8 @@ internal static partial class PersonalReportOrchestrator
                 // Full-report calendar never plays CalendarOutro (Pegasus single-skill only).
                 // Skip calendar GUI/hold for now — missing views.calendarEvents freezes the robot.
                 spokenSections.Add(calendarReply);
-                sequenceSections.Add(BuildReportSequenceSection("calendar", calendarReply));
+                sequenceSections.Add(BuildReportSequenceSection("calendar", calendarReply,
+                    extraPayload: calendarDecision.SkillPayload));
             }
         }
 
