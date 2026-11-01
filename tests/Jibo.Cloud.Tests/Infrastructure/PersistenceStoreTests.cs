@@ -106,6 +106,24 @@ public sealed class PersistenceStoreTests
     }
 
     [Fact]
+    public void CloudStateStore_UnidentifiedRobot_KeepsDialogAcrossListenSocketsOnItsHubToken()
+    {
+        // A robot whose CONTEXT has no loop.jibo never gets a DeviceId; its "yes" arrives on a new socket.
+        var store = new InMemoryCloudStateStore(new RecordingSnapshotStore()) { DefaultRobotStandsInForUnidentified = false };
+        var token = store.IssueHubToken();
+        var question = store.OpenSession("neo-hub-listen", null, token, "neohub", "/v1/listen");
+        Assert.Null(question.DeviceId);
+        question.Metadata["personalReportState"] = "awaiting_opt_in";
+        store.CloseSession(question.SessionId);
+
+        var answer = store.OpenSession("neo-hub-listen", null, token, "neohub", "/v1/listen");
+        var otherRobot = store.OpenSession("neo-hub-listen", null, store.IssueHubToken(), "neohub", "/v1/listen");
+
+        Assert.Equal("awaiting_opt_in", answer.Metadata["personalReportState"]);
+        Assert.False(otherRobot.Metadata.ContainsKey("personalReportState"));
+    }
+
+    [Fact]
     public void CloudStateStore_DoesNotPersistEphemeralDialogSessions()
     {
         var persistencePath = Path.Combine(Path.GetTempPath(), $"openjibo-session-split-{Guid.NewGuid():N}.json");

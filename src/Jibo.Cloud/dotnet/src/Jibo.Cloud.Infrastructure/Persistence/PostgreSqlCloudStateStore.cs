@@ -582,17 +582,18 @@ public sealed partial class PostgreSqlCloudStateStore : ICloudStateStore
     public void ReinheritDialogMetadata(CloudSession session)
     {
         ArgumentNullException.ThrowIfNull(session);
-        if (string.IsNullOrWhiteSpace(session.DeviceId)) return;
+        if (!string.IsNullOrWhiteSpace(session.DeviceId))
+        {
+            // The relational identity link is authoritative across replicas. Clear
+            // cached identity fields first so a revoked/reassigned link cannot be
+            // resurrected from token metadata or a stale in-process donor session.
+            session.Metadata.Remove("registeredDeviceId");
+            session.Metadata.Remove("registeredRobotId");
+            var registered = ResolveRegisteredDevice(session.DeviceId);
+            if (registered is not null) ApplyRegisteredDeviceMetadata(session, registered);
+        }
 
-        // The relational identity link is authoritative across replicas. Clear
-        // cached identity fields first so a revoked/reassigned link cannot be
-        // resurrected from token metadata or a stale in-process donor session.
-        session.Metadata.Remove("registeredDeviceId");
-        session.Metadata.Remove("registeredRobotId");
-        var registered = ResolveRegisteredDevice(session.DeviceId);
-        if (registered is not null) ApplyRegisteredDeviceMetadata(session, registered);
-
-        var donor = _sessions.FindDialogDonor(session.DeviceId, session.SessionId);
+        var donor = _sessions.FindDialogDonor(session);
         if (donor is null) return;
         foreach (var pair in donor.Metadata.Where(pair => ShouldInheritDialogMetadataKey(pair.Key)))
         {

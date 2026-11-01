@@ -152,11 +152,18 @@ internal sealed class BoundedCloudSessionRegistry(int maximumActiveSessions = 25
             var now = DateTimeOffset.UtcNow;
             foreach (var stale in _recentlyClosed.Where(pair => now - pair.Value.ClosedUtc > RecentlyClosedLifetime))
                 _recentlyClosed.TryRemove(stale.Key, out _);
-            if (!string.IsNullOrWhiteSpace(match.Value.DeviceId))
-                _recentlyClosed[match.Value.DeviceId.Trim()] = (match.Value, now);
+            var key = DialogKey(match.Value);
+            if (key is not null) _recentlyClosed[key] = (match.Value, now);
             return true;
         }
     }
+
+    // Robots whose CONTEXT carries no identity (no loop.jibo) still reuse one issued hub token
+    // across listen sockets, so that token keeps their dialog (e.g. personal report yes/no) going.
+    private static string? DialogKey(CloudSession session) =>
+        !string.IsNullOrWhiteSpace(session.DeviceId) ? session.DeviceId.Trim()
+        : session.Token?.Trim() is { } token && token.StartsWith("hub-", StringComparison.OrdinalIgnoreCase) ? "token:" + token
+        : null;
 
     public CloudSession? FindRecentlyClosed(string? deviceId)
     {
@@ -168,17 +175,18 @@ internal sealed class BoundedCloudSessionRegistry(int maximumActiveSessions = 25
     // The newest live or just-closed dialog session for a device. Durable token records are
     // auth-only and never carry dialog state, so they must not shadow a just-closed session
     // (a robot can hold hundreds of issued tokens).
-    public CloudSession? FindDialogDonor(string? deviceId, string excludeSessionId)
+    public CloudSession? FindDialogDonor(CloudSession session)
     {
-        if (string.IsNullOrWhiteSpace(deviceId)) return null;
+        var key = DialogKey(session);
+        if (key is null) return null;
         lock (_mutationGate)
         {
-            var closed = FindRecentlyClosed(deviceId);
+            var closed = FindRecentlyClosed(key);
             return _active.Values
                 .Concat(closed is null ? Array.Empty<CloudSession>() : new[] { closed })
                 .Where(candidate =>
-                    !string.Equals(candidate.SessionId, excludeSessionId, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(candidate.DeviceId, deviceId.Trim(), StringComparison.OrdinalIgnoreCase))
+                    !string.Equals(candidate.SessionId, session.SessionId, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(DialogKey(candidate), key, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(candidate => candidate.LastSeenUtc)
                 .ThenByDescending(candidate => candidate.CreatedUtc)
                 .FirstOrDefault();

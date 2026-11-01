@@ -1355,11 +1355,10 @@ public sealed class InMemoryCloudStateStore : ICloudStateStore
 
     private void InheritDialogMetadataFromDevice(CloudSession session)
     {
-        if (string.IsNullOrWhiteSpace(session.DeviceId)) return;
-
-        var donor = _sessions.FindDialogDonor(session.DeviceId, session.SessionId);
+        var donor = _sessions.FindDialogDonor(session);
         if (donor is null)
         {
+            if (string.IsNullOrWhiteSpace(session.DeviceId)) return;
             var observed = _devices.GetValueOrDefault(session.DeviceId.Trim());
             if (observed?.HostMappings.TryGetValue("openjibo.boundRegisteredDeviceId", out var boundId) == true &&
                 !string.IsNullOrWhiteSpace(boundId))
