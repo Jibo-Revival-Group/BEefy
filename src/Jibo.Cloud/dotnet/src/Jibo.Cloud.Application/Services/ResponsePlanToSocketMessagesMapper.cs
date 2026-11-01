@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Jibo.Cloud.Domain.Models;
@@ -1938,16 +1939,36 @@ public sealed class ResponsePlanToSocketMessagesMapper
                     id = "summaryLabel", type = "Label", text = summary,
                     style = new { fontSize = "75", fontFamily = "Proxima Nova Light", fill = "#FFFFFF", align = "center", wordWrap = true, wordWrapWidth = 800 },
                     position = new { x = 640, y = 330 }, targetAnchor = new { x = 0.5, y = 0.5 }
-                },
-                new
-                {
-                    id = "timeLabel", type = "Label", text = time,
-                    style = new { fontSize = "140", fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill = "#FFFFFF", align = "center" },
-                    position = new { x = 640, y = 690 }, targetAnchor = new { x = 0.5, y = 1 }
                 }
-            }
+            }.Concat(BuildCalendarTimeLabels(time)).ToArray()
         };
     }
+
+    // Big start time with a smaller AM/PM, like Pegasus' card ("6" + "PM"). Widths are the robot's
+    // Proxima Nova Soft bold glyphs (140px digits, 80px suffix) so the pair stays centered.
+    private static IEnumerable<object> BuildCalendarTimeLabels(string time)
+    {
+        var match = Regex.Match(time, "^(.+?)([AP]M)$");
+        if (!match.Success)
+            return [CalendarTimeLabel("timeLabel", time, 140, 640, 690, 0.5)];
+        var number = match.Groups[1].Value;
+        var suffix = match.Groups[2].Value;
+        var numberWidth = number.Sum(static c => c == '1' ? 57 : c == ':' ? 35 : 87);
+        var suffixWidth = suffix == "AM" ? 123 : 118;
+        var left = 640 - (numberWidth + 8 + suffixWidth) / 2;
+        return
+        [
+            CalendarTimeLabel("timeLabel", number, 140, left + numberWidth, 690, 1),
+            CalendarTimeLabel("timeSuffixLabel", suffix, 80, left + numberWidth + 8, 678, 0)
+        ];
+    }
+
+    private static object CalendarTimeLabel(string id, string text, int size, int x, int y, double anchorX) => new
+    {
+        id, type = "Label", text,
+        style = new { fontSize = size.ToString(CultureInfo.InvariantCulture), fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill = "#FFFFFF", align = "center" },
+        position = new { x, y }, targetAnchor = new { x = anchorX, y = 1 }
+    };
 
     private static object? BuildWeatherHiLoView(IDictionary<string, object?>? payload)
     {
