@@ -7549,6 +7549,72 @@ public sealed class JiboWebSocketServiceTests
         }
     }
 
+    private sealed class BlockingKnowledgeSearch : IKnowledgeSearchService
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool IsConfigured => true;
+        public async Task<KnowledgeSearchResult?> SearchAsync(string query, CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return new KnowledgeSearchResult("Mount Everest is 29,032 feet tall.", SearchBackendKind.Wolfram);
+        }
+    }
+
+    // The robot only shows the thinking eye if EOS + LISTEN(skillID "answer") arrive while the search runs.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task BufferedAudio_KnowledgeSearch_SendsThinkingPreludeBeforeSearchFinishes(bool hotphrase)
+    {
+        var store = new InMemoryCloudStateStore();
+        var stt = new BlockingBufferedAudioSttStrategy("how tall is mount everest");
+        var search = new BlockingKnowledgeSearch();
+        var contentCache = new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository());
+        var interaction = new JiboInteractionService(contentCache, new DefaultJiboRandomizer(), new InMemoryPersonalMemoryStore(),
+            knowledgeSearchService: search, turnProgressPublisher: new AmbientTurnProgressPublisher());
+        var service = new JiboWebSocketService(store, new NullWebSocketTelemetrySink(),
+            new WebSocketTurnFinalizationService(new DemoConversationBroker(interaction),
+                new DefaultSttStrategySelector([stt]), new NullTurnTelemetrySink(), NullLogger<WebSocketTurnFinalizationService>.Instance));
+        var sent = new System.Collections.Concurrent.ConcurrentQueue<WebSocketReply>();
+        var skillSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-search-prelude", Text = text, Binary = binary
+        };
+        var setup = Envelope("""{"type":"LISTEN","transID":"search-prelude","data":{"hotphrase":HOT,"rules":["launch","globals/global_commands_launch"]}}""".Replace("HOT", hotphrase ? "true" : "false"));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var scope = AmbientTurnProgressPublisher.Begin((reply, ct) =>
+        {
+            sent.Enqueue(reply);
+            if (ReadReplyType(reply) == "SKILL_ACTION") skillSent.TrySetResult();
+            return Task.CompletedTask;
+        });
+        await service.HandleMessageAsync(setup);
+        foreach (var frame in new[] { BuildOggFrame(0x02, "OpusHead"), BuildOggFrame(0x00, "OpusTags"),
+                     BuildOggFrame(0x00), BuildOggFrame(0x00), BuildOggFrame(0x00) })
+            await service.HandleMessageAsync(Envelope(binary: frame));
+        var session = store.FindSessionByToken(setup.Token!)!;
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-9);
+        session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+        try
+        {
+            await service.HandleIdleAsync(session, setup, timeout.Token);
+            stt.Release();
+            await search.Started.Task.WaitAsync(timeout.Token);
+            await Task.Delay(100, timeout.Token);
+            var beforeAnswer = sent.Select(ReadReplyType).ToArray();
+            search.Release.TrySetResult();
+            await skillSent.Task.WaitAsync(timeout.Token);
+            Assert.Equal(new[] { "EOS", "LISTEN" }, beforeAnswer);
+            using var listen = JsonDocument.Parse(sent.ElementAt(1).Text!);
+            Assert.Equal("answer", listen.RootElement.GetProperty("data").GetProperty("match").GetProperty("skillID").GetString());
+            Assert.Equal(new[] { "EOS", "LISTEN", "SKILL_ACTION" }, sent.Select(ReadReplyType));
+        }
+        finally { stt.Release(); search.Release.TrySetResult(); }
+    }
+
     [Fact]
     public async Task BufferedHotphraseOggAudio_BlankEarlyProbeStaysOpenBeforeHardTimeout()
     {
