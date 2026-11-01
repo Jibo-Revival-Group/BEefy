@@ -27,6 +27,30 @@ public sealed class IcalUrlValidatorTests
     }
 
     [Fact]
+    public async Task PhoneCalendar_IsAcceptedAndReadWithoutFetching()
+    {
+        const string ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Dentist\r\nDTSTART:20261102T140000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        var phone = IcalUrlValidator.PhoneCalendarPrefix + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(ics));
+
+        Assert.True(IcalUrlValidator.TryValidateHttpsPublicUrl(phone, out _, out _));
+        Assert.Equal("iPhone", IcalUrlValidator.TryGetSafeHost(phone));
+        // The HttpClient has no handler for any address, so a fetch attempt would throw.
+        var fetched = await new IcalFeedFetcher(new HttpClient(new ThrowingHandler()),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<IcalFeedFetcher>.Instance).FetchAsync(phone);
+        Assert.Equal(ics, fetched.Body);
+
+        Assert.False(IcalUrlValidator.TryValidateHttpsPublicUrl(IcalUrlValidator.PhoneCalendarPrefix + "bm90IGEgY2FsZW5kYXI=", out _, out var notCalendar));
+        Assert.Contains("isn't a calendar", notCalendar);
+        Assert.False(IcalUrlValidator.TryValidateHttpsPublicUrl(phone + new string('A', IcalUrlValidator.MaxPhoneCalendarLength), out _, out _));
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Phone calendars must not be fetched.");
+    }
+
+    [Fact]
     public void TryGetSafeHost_ReturnsHostOnly()
     {
         Assert.Equal(

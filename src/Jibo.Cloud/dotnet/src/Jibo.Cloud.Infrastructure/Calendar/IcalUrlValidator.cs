@@ -5,6 +5,30 @@ namespace Jibo.Cloud.Infrastructure.Calendar;
 
 public static class IcalUrlValidator
 {
+    /// <summary>
+    /// BEep (the iOS app) sends the phone's calendar as an inline calendar in place of a URL,
+    /// since a phone calendar has no address the server could fetch.
+    /// </summary>
+    public const string PhoneCalendarPrefix = "data:text/calendar;base64,";
+    public const int MaxPhoneCalendarLength = 60_000;
+
+    public static bool TryDecodePhoneCalendar(string? rawUrl, out string ics)
+    {
+        ics = string.Empty;
+        if (rawUrl is null || !rawUrl.StartsWith(PhoneCalendarPrefix, StringComparison.Ordinal) ||
+            rawUrl.Length > MaxPhoneCalendarLength)
+            return false;
+        try
+        {
+            ics = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(rawUrl[PhoneCalendarPrefix.Length..]));
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+        return ics.Contains("BEGIN:VCALENDAR", StringComparison.Ordinal);
+    }
+
     /// <param name="requireDnsResolution">
     /// When true (fetch/redirect path), resolve the host and reject private addresses.
     /// When false (portal save), only apply syntactic / literal-IP SSRF guards so configuration
@@ -22,6 +46,14 @@ public static class IcalUrlValidator
         if (string.IsNullOrWhiteSpace(rawUrl))
         {
             error = "iCal URL is required.";
+            return false;
+        }
+
+        if (rawUrl.StartsWith(PhoneCalendarPrefix, StringComparison.Ordinal))
+        {
+            // Nothing is fetched for a phone calendar, so there is no address to check.
+            if (TryDecodePhoneCalendar(rawUrl, out _)) return true;
+            error = "The phone calendar is too large or isn't a calendar.";
             return false;
         }
 
@@ -71,6 +103,7 @@ public static class IcalUrlValidator
 
     public static string? TryGetSafeHost(string? rawUrl)
     {
+        if (rawUrl?.StartsWith(PhoneCalendarPrefix, StringComparison.Ordinal) == true) return "iPhone";
         if (!Uri.TryCreate(rawUrl?.Trim() ?? string.Empty, UriKind.Absolute, out var parsed))
             return null;
         return string.IsNullOrWhiteSpace(parsed.Host) ? null : parsed.Host;

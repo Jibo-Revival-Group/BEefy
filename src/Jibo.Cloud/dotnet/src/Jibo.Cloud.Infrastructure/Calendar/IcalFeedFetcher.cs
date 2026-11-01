@@ -20,6 +20,9 @@ public sealed class IcalFeedFetcher(HttpClient httpClient, ILogger<IcalFeedFetch
 
     public async Task<IcalFeedFetchResult> FetchAsync(string icalUrl, CancellationToken cancellationToken = default)
     {
+        if (IcalUrlValidator.TryDecodePhoneCalendar(icalUrl, out var phoneCalendar))
+            return new IcalFeedFetchResult(true, phoneCalendar, null);
+
         if (!IcalUrlValidator.TryValidateHttpsPublicUrl(
                 icalUrl,
                 out var uri,
