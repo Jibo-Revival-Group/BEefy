@@ -1171,6 +1171,14 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 mimId,
                 mimType);
         }
+        else if (!isPersonalReport && TryReadPayloadBool(skillPayload, "commute_view_enabled") &&
+                 BuildCommuteTrafficView(ReadPayloadString(skillPayload, "commute_anim_meta")) is { } commuteView)
+        {
+            AttachPausedGuiView(jcpConfig, "commuteTraffic", commuteView);
+            jcpConfig["timeout"] = 6;
+            jcpConfig["no_matches_for_gui"] = 0;
+            jcpConfig["no_inputs_for_gui"] = 0;
+        }
         else if (!isPersonalReport && BuildCalendarEventView(skillPayload) is { } calendarView)
         {
             AttachPausedGuiView(jcpConfig, "calendarEvents", calendarView);
@@ -1646,6 +1654,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
             if (isWeatherSection && weatherHiLoView is not null)
                 AttachPausedGuiView(config, "weatherHiLo", weatherHiLoView);
             if (calendarView is not null) AttachPausedGuiView(config, "calendarEvents", calendarView);
+            if (isCommuteSection && BuildCommuteTrafficView(animMeta) is { } trafficView)
+                AttachPausedGuiView(config, "commuteTraffic", trafficView);
 
             if (shouldHoldSection)
             {
@@ -1924,6 +1934,34 @@ public sealed class ResponsePlanToSocketMessagesMapper
     }
 
     // The original report-skill calendarEvent view (Pegasus CalendarViews template and offsets).
+    // The commute anim turns the eye into a traffic ring and ends with no eye; this holds that ring
+    // on screen while he talks, as the original views.commuteTraffic did, so the eye doesn't blink it away.
+    private static object? BuildCommuteTrafficView(string? animMeta)
+    {
+        if (string.IsNullOrWhiteSpace(animMeta) || !animMeta.Contains("commute-", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var ring = animMeta.Contains("terrible", StringComparison.OrdinalIgnoreCase) ? "trafficTerrible"
+            : animMeta.Contains("poor", StringComparison.OrdinalIgnoreCase) ? "trafficBad"
+            : "trafficNormal";
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["viewConfig"] = new { type = "View", id = "commuteView", category = "gui" },
+            ["open"] = new { transitionOpen = "trans_none", removeAll = true },
+            ["defaultSelect"] = new { transitionClose = "trans_out", removeAll = true, leaveEmpty = false },
+            ["componentConfigs"] = new object[]
+            {
+                new
+                {
+                    id = "trafficClip", type = "Clip", position = new { x = 378, y = 98 },
+                    assets = new object[]
+                    {
+                        new { id = "trafficRing", src = $"assets/personal-report-skill/commute/{ring}_v01.crn", type = "texture" }
+                    }
+                }
+            }
+        };
+    }
+
     private static object? BuildCalendarEventView(IDictionary<string, object?>? payload)
     {
         var summary = ReadPayloadString(payload, "calendar_event_summary");

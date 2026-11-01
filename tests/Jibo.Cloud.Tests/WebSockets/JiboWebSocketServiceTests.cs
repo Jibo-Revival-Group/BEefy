@@ -10484,9 +10484,10 @@ public sealed class JiboWebSocketServiceTests
             {
                 Assert.DoesNotContain("news", stripped, StringComparison.OrdinalIgnoreCase);
             }
-            else if (childConfig.TryGetProperty("gui", out _))
+            else if (childConfig.TryGetProperty("gui", out var gui) &&
+                     gui.GetProperty("data").GetString() != "views.commuteTraffic")
             {
-                Assert.Fail("Only the weather section should attach a paused GUI view.");
+                Assert.Fail("Only the weather and commute sections should attach a paused GUI view.");
             }
 
             if (childEsml.Contains("news-stinger", StringComparison.OrdinalIgnoreCase) ||

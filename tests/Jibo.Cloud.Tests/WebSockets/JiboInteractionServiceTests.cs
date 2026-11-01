@@ -2747,6 +2747,39 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
+    public async Task Commute_HoldsTheTrafficRingSoTheEyeDoesNotBlinkItAway()
+    {
+        var commute = new Mock<ICommuteReportProvider>();
+        commute.Setup(provider => provider.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommuteReportSnapshot("Boston", "traffic", 33, "driving", ExtraMinutes: 7));
+        var service = CreateService(commuteReportProvider: commute.Object);
+
+        var standaloneTurn = new TurnContext { RawTranscript = "how's my commute", NormalizedTranscript = "how's my commute" };
+        var standalone = await new DemoConversationBroker(service).HandleTurnAsync(standaloneTurn);
+        var standaloneJson = string.Join("\n", ResponsePlanToSocketMessagesMapper.MapProactive(standalone, standaloneTurn, new CloudSession()).Select(m => m.Text));
+
+        var reportTurn = new TurnContext
+        {
+            RawTranscript = "yes", NormalizedTranscript = "yes",
+            Attributes = new Dictionary<string, object?>
+            {
+                [PersonalReportStateKey] = "awaiting_identity_confirmation",
+                [PersonalReportUserNameKey] = "alex",
+                [PersonalReportNewsEnabledKey] = false
+            }
+        };
+        var report = await new DemoConversationBroker(service).HandleTurnAsync(reportTurn);
+        var reportJson = string.Join("\n", ResponsePlanToSocketMessagesMapper.MapProactive(report, reportTurn, new CloudSession()).Select(m => m.Text));
+
+        foreach (var json in new[] { standaloneJson, reportJson })
+        {
+            Assert.Contains("commute-poor, no-eye-end", json);
+            Assert.Contains("views.commuteTraffic", json);
+            Assert.Contains("commute/trafficBad_v01.crn", json);
+        }
+    }
+
+    [Fact]
     public async Task BuildDecisionAsync_PersonalReport_SynchronouslyBlockingCalendarStillMeetsRobotDeadline()
     {
         // Store-backed providers (PostgreSQL Sync, holiday lookup) block before returning a Task.
