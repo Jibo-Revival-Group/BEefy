@@ -65,6 +65,20 @@ public sealed class SessionRobotIdentityBinderTests
     }
 
     [Fact]
+    public void TryBindFromContextPayload_UsesRobotMemberAccountId_When5x1LoopHasNoJibo()
+    {
+        // 5x1 loops store the robot as a named member, so the KB reports jibo:null and no loopId.
+        var session = new InMemoryCloudStateStore().OpenSession("neo-hub-listen", null, "conn:5x1", "host", "/v1/listen");
+        Assert.True(SessionRobotIdentityBinder.TryBindFromContextPayload(session,
+            """{"runtime":{"loop":{"users":[{"firstName":"Jibo","lastName":"Robot","id":"mbr-1","accountId":"Auburn-Motor-Salad-Angora"},{"firstName":"Zane","id":"u-2"}],"jibo":null,"owner":"u-2"}}}"""));
+        Assert.Equal("Auburn-Motor-Salad-Angora", session.DeviceId);
+
+        var ambiguous = new InMemoryCloudStateStore().OpenSession("neo-hub-listen", null, "conn:two", "host", "/v1/listen");
+        Assert.False(SessionRobotIdentityBinder.TryBindFromContextPayload(ambiguous,
+            """{"runtime":{"loop":{"users":[{"id":"a","accountId":"one"},{"id":"b","accountId":"two"}],"jibo":null}}}"""));
+    }
+
+    [Fact]
     public void TryBindFromContextPayload_UsesRuntimeLoopJiboId_WhenGeneralHasNoRobotId()
     {
         var store = new InMemoryCloudStateStore();

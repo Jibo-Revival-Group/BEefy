@@ -1130,7 +1130,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
                     weatherIcon,
                     promptSubCategory,
                     mimId,
-                    mimType);
+                    mimType,
+                    skillPayload);
             }
             else if (weeklyWeatherCards.Count > 1)
             {
@@ -1540,9 +1541,12 @@ public sealed class ResponsePlanToSocketMessagesMapper
         string weatherIcon,
         string promptSubCategory,
         string mimId,
-        string mimType)
+        string mimType,
+        IDictionary<string, object?>? weatherPayload = null)
     {
         var children = new List<object>(sections.Count);
+        var weatherCommentEsml = ReadPayloadString(weatherPayload, "weather_comment_esml");
+        var weatherHighLowEsml = ReadPayloadString(weatherPayload, "weather_high_low_esml");
         for (var index = 0; index < sections.Count; index += 1)
         {
             var section = sections[index];
@@ -1558,6 +1562,26 @@ public sealed class ResponsePlanToSocketMessagesMapper
             {
                 animCat = "weather";
                 animMeta = weatherIcon;
+            }
+
+            // Same two SLIMs as standalone weather (comment with its animation, then the high/low card).
+            if (isWeatherSection && !string.IsNullOrWhiteSpace(weatherCommentEsml) &&
+                !string.IsNullOrWhiteSpace(weatherHighLowEsml))
+            {
+                var kickoff = ReadPayloadString(section, "kickoff_text");
+                if (!string.IsNullOrWhiteSpace(kickoff))
+                    children.Add(ReportSlim(
+                        $"<speak><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeXml(kickoff)}</es></speak>",
+                        "PersonalReportKickoff_AN_01"));
+                children.Add(ReportSlim(weatherCommentEsml, "PersonalReportWeatherComment_AN_01"));
+                var highLow = ReportSlim(weatherHighLowEsml, "WeatherTodayHighLow_AN_01");
+                var highLowConfig = (IDictionary<string, object?>)highLow["config"]!;
+                if (weatherHiLoView is not null) AttachPausedGuiView(highLowConfig, "weatherHiLo", weatherHiLoView);
+                highLowConfig["timeout"] = 6;
+                highLowConfig["no_matches_for_gui"] = 0;
+                highLowConfig["no_inputs_for_gui"] = 0;
+                children.Add(highLow);
+                continue;
             }
 
             var promptLabel = Regex.Replace(kind, "[^A-Za-z0-9]", string.Empty, RegexOptions.CultureInvariant);
@@ -1613,6 +1637,20 @@ public sealed class ResponsePlanToSocketMessagesMapper
         }
 
         return children;
+
+        Dictionary<string, object?> ReportSlim(string esml, string promptId) => new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["type"] = "SLIM",
+            ["config"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["play"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["esml"] = esml,
+                    ["meta"] = new { prompt_id = promptId, prompt_sub_category = promptSubCategory, mim_id = mimId, mim_type = mimType }
+                },
+                ["barge_in"] = true
+            }
+        };
     }
 
     private static void AttachPausedGuiView(

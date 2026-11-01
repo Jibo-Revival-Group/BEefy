@@ -115,6 +115,21 @@ public static class SessionRobotIdentityBinder
                     TryReadString(jibo, "id", out robotId))
                     return true;
 
+                // 5x1 loops store the robot as a named member, so the KB never reports loop.jibo. It is
+                // the one context user carrying an accountId: the robot's friendly id (BEacon's deviceId).
+                if (loop.TryGetProperty("users", out var users) && users.ValueKind == JsonValueKind.Array)
+                {
+                    var accountIds = users.EnumerateArray()
+                        .Select(user => user.ValueKind == JsonValueKind.Object && TryReadString(user, "accountId", out var id) ? id : null)
+                        .Where(static id => !string.IsNullOrWhiteSpace(id))
+                        .ToArray();
+                    if (accountIds.Length == 1)
+                    {
+                        robotId = accountIds[0]!;
+                        return true;
+                    }
+                }
+
                 if (TryReadString(loop, "loopId", out robotId))
                     return true;
             }

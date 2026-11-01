@@ -351,7 +351,8 @@ internal static partial class PersonalReportOrchestrator
                 ? weatherSkillPayload.TryGetValue("weather_icon", out var weatherIcon)
                     ? weatherIcon?.ToString() ?? "cloudy"
                     : "cloudy"
-                : null));
+                : null,
+            new Dictionary<string, object?> { ["kickoff_text"] = kickOff }));
 
         if (toggles.CalendarEnabled)
         {

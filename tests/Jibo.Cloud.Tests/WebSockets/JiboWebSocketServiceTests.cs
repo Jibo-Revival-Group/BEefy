@@ -10459,10 +10459,14 @@ public sealed class JiboWebSocketServiceTests
         Assert.True(children.GetArrayLength() >= 4,
             $"Expected sectioned personal-report SEQUENCE, got {children.GetArrayLength()} children.");
 
-        var weatherEsml = children[0].GetProperty("config").GetProperty("play").GetProperty("esml").GetString();
-        Assert.NotNull(weatherEsml);
+        // Weather plays like standalone weather: kickoff, comment with its animation, then the high/low card.
+        Assert.False(children[0].GetProperty("config").TryGetProperty("gui", out _));
+        Assert.Contains("anim cat='weather'",
+            children[1].GetProperty("config").GetProperty("play").GetProperty("esml").GetString());
+        Assert.Equal("WeatherTodayHighLow_AN_01", children[2].GetProperty("config").GetProperty("play")
+            .GetProperty("meta").GetProperty("prompt_id").GetString());
         Assert.Equal("views.weatherHiLo",
-            children[0].GetProperty("config").GetProperty("gui").GetProperty("data").GetString());
+            children[2].GetProperty("config").GetProperty("gui").GetProperty("data").GetString());
 
         var totalLength = 0;
         var sawNews = false;
@@ -10476,9 +10480,8 @@ public sealed class JiboWebSocketServiceTests
             var stripped = StripMarkup(childEsml);
             totalLength += stripped.Length;
 
-            if (i == 0)
+            if (i <= 2)
             {
-                Assert.Contains("weather", stripped, StringComparison.OrdinalIgnoreCase);
                 Assert.DoesNotContain("news", stripped, StringComparison.OrdinalIgnoreCase);
             }
             else if (childConfig.TryGetProperty("gui", out _))

@@ -2663,6 +2663,23 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
+    public async Task BuildDecisionAsync_StandaloneCalendar_ReadsTheCalendarLikeThePersonalReport()
+    {
+        var calendar = new Mock<ICalendarReportProvider>();
+        calendar.Setup(provider => provider.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarReportSnapshot(["test event"], ["today at 9:15 AM"], []));
+        var service = CreateService(calendarReportProvider: calendar.Object);
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "what's on my calendar", NormalizedTranscript = "what's on my calendar"
+        });
+
+        Assert.Equal("calendar", decision.IntentName);
+        Assert.Contains("test event", decision.ReplyText);
+    }
+
+    [Fact]
     public async Task BuildDecisionAsync_PersonalReport_SynchronouslyBlockingCalendarStillMeetsRobotDeadline()
     {
         // Store-backed providers (PostgreSQL Sync, holiday lookup) block before returning a Task.
