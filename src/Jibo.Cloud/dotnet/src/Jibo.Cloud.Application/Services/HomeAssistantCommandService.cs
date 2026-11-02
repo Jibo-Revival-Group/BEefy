@@ -18,12 +18,22 @@ public sealed class HomeAssistantCommandService(
         return robotRelay.SendAsync("entity_control", command.Parameters(entityId), true, cancellationToken);
     }
 
-    /// <summary>Asks Home Assistant's built-in Assist to handle a sentence nothing else matched.</summary>
-    public Task<HomeAssistantCommandResult?> DispatchConversationAsync(
-        TurnContext turn, string text, CancellationToken cancellationToken)
+    // Robots don't reliably advertise HA pairing, so ask and remember the ones that can't answer.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _noAssistUntil = new();
+
+    /// <summary>Asks Home Assistant's built-in Assist to handle a sentence nothing else matched.
+    /// Null when this robot recently couldn't (unpaired, older relay or integration, unreachable).</summary>
+    public async Task<HomeAssistantCommandResult?> DispatchConversationAsync(
+        TurnContext turn, string text, CancellationToken cancellationToken, DateTimeOffset? now = null)
     {
+        var robot = turn.DeviceId ?? string.Empty;
+        var at = now ?? DateTimeOffset.UtcNow;
+        if (_noAssistUntil.TryGetValue(robot, out var until) && at < until) return null;
         LogDispatch(turn, "ha_conversation");
-        return robotRelay.SendAsync("conversation", new Dictionary<string, string> { ["text"] = text }, true, cancellationToken);
+        var result = await robotRelay.SendAsync("conversation", new Dictionary<string, string> { ["text"] = text }, true, cancellationToken);
+        if (result is not { IsOk: true } && result is not { IsNotFound: true }) _noAssistUntil[robot] = at.AddHours(1);
+        else _noAssistUntil.TryRemove(robot, out _);
+        return result;
     }
 
     public async Task<bool> TryDispatchLightCommandAsync(

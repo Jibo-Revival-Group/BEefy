@@ -22,8 +22,9 @@ public sealed partial class JiboInteractionService
             preferredName);
         if (emotionDecision is not null) return emotionDecision;
 
-        // Robots paired with Home Assistant let its Assist try first: locks, media, states, lists, custom sentences.
-        if (turn is not null && HomeAssistantRobotRelay.IsLocal(turn) && homeAssistantCommandService is not null &&
+        // Home Assistant's Assist tries first (locks, media, states, lists, custom sentences); robots that
+        // can't answer (unpaired, older relay or integration) are skipped for an hour.
+        if (turn is not null && homeAssistantCommandService is not null &&
             !string.IsNullOrWhiteSpace(transcript) &&
             await homeAssistantCommandService.DispatchConversationAsync(turn, transcript, cancellationToken) is
                 { IsOk: true, Speech: { Length: > 0 } haSpeech })

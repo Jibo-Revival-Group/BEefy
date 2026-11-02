@@ -325,26 +325,50 @@ public sealed class HomeAssistantEntityAwareTests
     }
 
     [Theory]
-    [InlineData(true, "ok", "The front door is locked.", "The front door is locked.")]
-    [InlineData(true, "not_found", null, null)]
-    [InlineData(false, "ok", "The front door is locked.", null)]
-    public async Task UnhandledSentence_AsksHomeAssistantAssistOnlyWhenPaired(bool paired, string status, string? speech, string? reply)
+    [InlineData("ok", null, "The front door is locked.", "The front door is locked.", 2)]
+    [InlineData("not_found", null, null, null, 2)]
+    [InlineData("error", "pairing_required", null, null, 1)]
+    [InlineData("error", "unknown command: conversation", null, null, 1)]
+    public async Task UnhandledSentence_AsksAssistAndSkipsRobotsThatCannotAnswer(
+        string status, string? message, string? speech, string? reply, int sendsForTwoSentences)
     {
         var sent = new List<string>();
-        var (service, _) = CreateServiceWithRespondingHa(status, speech: speech, onCommand: command =>
+        var (service, _) = CreateServiceWithRespondingHa(status, message: message, speech: speech, onCommand: command =>
         {
             Assert.Equal("conversation", command.GetProperty("command").GetString());
             sent.Add(command.GetProperty("text").GetString()!);
         });
-        var result = await service.BuildDecisionAsync(new TurnContext
+        JiboInteractionDecision? first = null;
+        foreach (var transcript in new[] { "is the front door locked", "is the garage open" })
         {
-            RawTranscript = "is the front door locked", NormalizedTranscript = "is the front door locked",
-            DeviceId = "Ghost-Instance-Onion-Silk",
-            Attributes = paired ? new Dictionary<string, object?> { ["haLocal"] = true } : new Dictionary<string, object?>()
-        });
-        Assert.Equal(paired ? new[] { "is the front door locked" } : [], sent);
-        if (reply is null) Assert.NotEqual("ha_conversation", result.IntentName);
-        else { Assert.Equal("ha_conversation", result.IntentName); Assert.Equal(reply, result.ReplyText); }
+            var result = await service.BuildDecisionAsync(new TurnContext
+            {
+                RawTranscript = transcript, NormalizedTranscript = transcript, DeviceId = "Ghost-Instance-Onion-Silk"
+            });
+            first ??= result;
+        }
+        Assert.Equal("is the front door locked", sent[0]);
+        Assert.Equal(sendsForTwoSentences, sent.Count);
+        if (reply is null) Assert.NotEqual("ha_conversation", first!.IntentName);
+        else { Assert.Equal("ha_conversation", first!.IntentName); Assert.Equal(reply, first.ReplyText); }
+    }
+
+    [Fact]
+    public async Task UnhandledSentence_RetriesAssistAfterAnHour()
+    {
+        var relay = new HomeAssistantRobotRelay();
+        var service = new HomeAssistantCommandService(new InMemoryCloudStateStore(), relay);
+        var turn = new TurnContext { RawTranscript = "x", DeviceId = "robot" };
+        var sends = 0;
+        using (AmbientTurnProgressPublisher.Begin((reply, _) => { sends++; return Task.CompletedTask; }))
+        {
+            var start = DateTimeOffset.UtcNow;
+            using var cancel = new CancellationTokenSource();
+            await service.DispatchConversationAsync(turn, "x", cancel.Token, start); // times out: no answer
+            Assert.Null(await service.DispatchConversationAsync(turn, "x", cancel.Token, start.AddMinutes(59)));
+            await service.DispatchConversationAsync(turn, "x", cancel.Token, start.AddMinutes(61));
+        }
+        Assert.Equal(2, sends);
     }
 
     [Theory]
