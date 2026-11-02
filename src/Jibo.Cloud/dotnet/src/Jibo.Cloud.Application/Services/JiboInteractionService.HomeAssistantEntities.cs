@@ -19,6 +19,11 @@ public sealed partial class JiboInteractionService
                     EntityCommand: command));
             return new("ha_entity_control", $"Which one: {HomeAssistantEntityNameMatcher.FormatCandidateList(result.Candidates)}?");
         }
+        // "the stair lights" is read as a room; Assist also matches device names and aliases.
+        if (result is { IsNotFound: true } &&
+            await homeAssistantCommandService.DispatchConversationAsync(turn, turn.NormalizedTranscript ?? turn.RawTranscript ?? "",
+                cancellationToken) is { IsOk: true, Speech: { Length: > 0 } speech })
+            return new("ha_entity_control", speech);
         return HaEntityResult(result);
     }
 

@@ -380,6 +380,18 @@ public sealed class HomeAssistantEntityAwareTests
     }
 
     [Fact]
+    public async Task PluralNamedDeviceThatIsNotARoom_AssistFindsItByName()
+    {
+        var commands = new List<string>();
+        var (service, _) = CreateServiceWithRespondingHa("not_found", message: "missing_area", speech: "Turned on the lights",
+            onCommand: command => commands.Add(command.GetProperty("command").GetString()!));
+        var result = await service.BuildDecisionAsync(new TurnContext
+            { RawTranscript = "turn on the stair lights", NormalizedTranscript = "turn on the stair lights", DeviceId = "Ghost-Instance-Onion-Silk" });
+        Assert.Equal(new[] { "entity_control", "conversation" }, commands);
+        Assert.Equal("Turned on the lights", result.ReplyText);
+    }
+
+    [Fact]
     public async Task NamedLampStillALight()
     {
         var commands = new List<string>();
@@ -669,7 +681,7 @@ public sealed class HomeAssistantEntityAwareTests
             {
                 ["type"] = "command_result",
                 ["requestId"] = requestId,
-                ["status"] = _status
+                ["status"] = command == "conversation" && _speech is not null ? "ok" : _status
             };
             if (_message is not null) payload["message"] = _message;
             if (_speech is not null) payload["speech"] = _speech;
