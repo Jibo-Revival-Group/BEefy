@@ -18,6 +18,14 @@ public sealed class HomeAssistantCommandService(
         return robotRelay.SendAsync("entity_control", command.Parameters(entityId), true, cancellationToken);
     }
 
+    /// <summary>Asks Home Assistant's built-in Assist to handle a sentence nothing else matched.</summary>
+    public Task<HomeAssistantCommandResult?> DispatchConversationAsync(
+        TurnContext turn, string text, CancellationToken cancellationToken)
+    {
+        LogDispatch(turn, "ha_conversation");
+        return robotRelay.SendAsync("conversation", new Dictionary<string, string> { ["text"] = text }, true, cancellationToken);
+    }
+
     public async Task<bool> TryDispatchLightCommandAsync(
         TurnContext turn,
         string intentName,

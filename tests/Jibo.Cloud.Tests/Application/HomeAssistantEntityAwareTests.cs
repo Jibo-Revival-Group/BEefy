@@ -325,6 +325,29 @@ public sealed class HomeAssistantEntityAwareTests
     }
 
     [Theory]
+    [InlineData(true, "ok", "The front door is locked.", "The front door is locked.")]
+    [InlineData(true, "not_found", null, null)]
+    [InlineData(false, "ok", "The front door is locked.", null)]
+    public async Task UnhandledSentence_AsksHomeAssistantAssistOnlyWhenPaired(bool paired, string status, string? speech, string? reply)
+    {
+        var sent = new List<string>();
+        var (service, _) = CreateServiceWithRespondingHa(status, speech: speech, onCommand: command =>
+        {
+            Assert.Equal("conversation", command.GetProperty("command").GetString());
+            sent.Add(command.GetProperty("text").GetString()!);
+        });
+        var result = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "is the front door locked", NormalizedTranscript = "is the front door locked",
+            DeviceId = "Ghost-Instance-Onion-Silk",
+            Attributes = paired ? new Dictionary<string, object?> { ["haLocal"] = true } : new Dictionary<string, object?>()
+        });
+        Assert.Equal(paired ? new[] { "is the front door locked" } : [], sent);
+        if (reply is null) Assert.NotEqual("ha_conversation", result.IntentName);
+        else { Assert.Equal("ha_conversation", result.IntentName); Assert.Equal(reply, result.ReplyText); }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task EverydayControls_ClarificationOrCancellation(bool cancel)
@@ -400,7 +423,8 @@ public sealed class HomeAssistantEntityAwareTests
             string? unit = null,
             string? message = null,
             Action<JsonElement>? onCommand = null,
-            Action<JiboInteractionService, HomeAssistantCommandService, InMemoryCloudStateStore>? inspect = null)
+            Action<JiboInteractionService, HomeAssistantCommandService, InMemoryCloudStateStore>? inspect = null,
+            string? speech = null)
     {
         var snapshotStore = new EncryptedUserDataSnapshotStore(
             Path.Combine(Path.GetTempPath(), $"openjibo-ha-aware-{Guid.NewGuid():N}.json"),
@@ -424,7 +448,7 @@ public sealed class HomeAssistantEntityAwareTests
             candidates,
             autoRespondAction,
             currentTemperature,
-            unit, message, onCommand);
+            unit, message, onCommand, speech);
         registry.RegisterPairedConnection("ha-instance-1", socket);
 
         var pendingStore = new HomeAssistantPendingClimateStore();
@@ -477,6 +501,7 @@ public sealed class HomeAssistantEntityAwareTests
         private readonly decimal? _currentTemperature;
         private readonly string? _unit;
         private readonly string? _message;
+        private readonly string? _speech;
         private readonly Action<JsonElement>? _onCommand;
 
         public CapturingWebSocket(
@@ -487,7 +512,7 @@ public sealed class HomeAssistantEntityAwareTests
             IReadOnlyList<HomeAssistantCommandCandidate>? candidates = null,
             string? autoRespondAction = null,
             decimal? currentTemperature = null,
-            string? unit = null, string? message = null, Action<JsonElement>? onCommand = null)
+            string? unit = null, string? message = null, Action<JsonElement>? onCommand = null, string? speech = null)
         {
             _registry = registry;
             _status = status;
@@ -498,6 +523,7 @@ public sealed class HomeAssistantEntityAwareTests
             _currentTemperature = currentTemperature;
             _unit = unit;
             _message = message;
+            _speech = speech;
             _onCommand = onCommand;
         }
 
@@ -563,6 +589,7 @@ public sealed class HomeAssistantEntityAwareTests
                 ["status"] = _status
             };
             if (_message is not null) payload["message"] = _message;
+            if (_speech is not null) payload["speech"] = _speech;
             if (!string.IsNullOrWhiteSpace(_matchedName))
                 payload["matchedName"] = _matchedName;
             if (!string.IsNullOrWhiteSpace(_heardName))
