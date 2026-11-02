@@ -91,11 +91,29 @@ public sealed partial class JiboInteractionService
             isAlarmValueTurn,
             isSkillOwnedListen);
 
-        // Unpaired robots retain their existing native Hue color/brightness phrases.
-        // Locally paired robots use HA for the new everyday controls.
+        // Phrases Hue also understands go to Home Assistant unless this robot recently answered that it
+        // isn't paired; then (or without HA on this server) they stay with the native Hue skill.
         if (semanticIntent == "ha_entity_control" && !HomeAssistantRobotRelay.IsLocal(turn) &&
             NativeGrammar.Instance.Parse(transcript)?.Skill == "@be/hue-control")
-            semanticIntent = "chat";
+        {
+            if (homeAssistantCommandService is null || homeAssistantCommandService.IsKnownUnpaired(turn) || RequiresLinkedUser(turn))
+                semanticIntent = "chat";
+            else
+            {
+                var haDecision = await BuildHaEntityDecisionAsync(turn, cancellationToken);
+                if (!homeAssistantCommandService.IsKnownUnpaired(turn)) return haDecision;
+                semanticIntent = "chat"; // it just said it isn't paired: Hue
+            }
+        }
+
+        // Any other "turn/switch X on/off" may be any HA device ("turn on the ac"): Assist gets it before
+        // Jibo's scripted answers (thermostat/IFTTT, "turn me off"), which still answer when HA doesn't.
+        if (semanticIntent == "chat" && !isYesNoTurn && !isSkillOwnedListen && homeAssistantCommandService is not null &&
+            !homeAssistantCommandService.IsKnownUnpaired(turn) && !RequiresLinkedUser(turn) &&
+            System.Text.RegularExpressions.Regex.IsMatch(lowered, @"\b(?:turn|switch)\s+(?:on|off)\s+\S|\b(?:turn|switch)\s+\S.*\s(?:on|off)$") &&
+            await homeAssistantCommandService.DispatchConversationAsync(turn, transcript, cancellationToken) is
+                { IsOk: true, Speech: { Length: > 0 } onOffSpeech })
+            return new JiboInteractionDecision("ha_conversation", onOffSpeech);
 
         var localNluRecognized = semanticIntent != "chat";
         if (SkillListenOwnership.ShouldStayInCloudConversation(turn, semanticIntent))

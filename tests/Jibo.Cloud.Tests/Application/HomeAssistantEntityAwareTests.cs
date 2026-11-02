@@ -353,6 +353,65 @@ public sealed class HomeAssistantEntityAwareTests
         else { Assert.Equal("ha_conversation", first!.IntentName); Assert.Equal(reply, first.ReplyText); }
     }
 
+    [Theory]
+    [InlineData("turn on the ac")]
+    [InlineData("turn on the sound machine")]
+    [InlineData("turn off the coffee maker")]
+    public async Task OnOffForNonLights_GoesToAssistNotLights(string transcript)
+    {
+        var commands = new List<string>();
+        var (service, _) = CreateServiceWithRespondingHa("ok", speech: "Turned on the device",
+            onCommand: command => commands.Add(command.GetProperty("command").GetString()!));
+        var result = await service.BuildDecisionAsync(new TurnContext
+            { RawTranscript = transcript, NormalizedTranscript = transcript, DeviceId = "Ghost-Instance-Onion-Silk" });
+        Assert.True(commands.SequenceEqual(new[] { "conversation" }), $"{transcript}: intent={result.IntentName} commands=[{string.Join(",", commands)}] reply={result.ReplyText}");
+        Assert.Equal("ha_conversation", result.IntentName);
+        Assert.Equal("Turned on the device", result.ReplyText);
+    }
+
+    [Fact]
+    public async Task OnOffHomeAssistantDoesNotKnow_KeepsJibosOwnAnswer()
+    {
+        var (service, _) = CreateServiceWithRespondingHa("not_found");
+        var result = await service.BuildDecisionAsync(new TurnContext
+            { RawTranscript = "turn off the coffee maker", NormalizedTranscript = "turn off the coffee maker", DeviceId = "Ghost-Instance-Onion-Silk" });
+        Assert.NotEqual("ha_conversation", result.IntentName);
+        Assert.False(string.IsNullOrWhiteSpace(result.ReplyText));
+    }
+
+    [Fact]
+    public async Task NamedLampStillALight()
+    {
+        var commands = new List<string>();
+        var (service, _) = CreateServiceWithRespondingHa("ok", matchedName: "Desk Lamp",
+            onCommand: command => commands.Add(command.GetProperty("command").GetString()!));
+        var result = await service.BuildDecisionAsync(new TurnContext
+            { RawTranscript = "turn on the desk lamp", NormalizedTranscript = "turn on the desk lamp", DeviceId = "Ghost-Instance-Onion-Silk" });
+        Assert.Equal(new[] { "lights_on_named" }, commands);
+        Assert.Equal("Okay, turning on Desk Lamp.", result.ReplyText);
+    }
+
+    [Theory]
+    [InlineData("ok", null, true)]
+    [InlineData("error", "pairing_required", false)]
+    public async Task HuePhrase_GoesToHomeAssistantUnlessRobotIsUnpaired(string status, string? message, bool homeAssistant)
+    {
+        var commands = new List<string>();
+        var (service, _) = CreateServiceWithRespondingHa(status, message: message,
+            onCommand: command => commands.Add(command.GetProperty("command").GetString()!));
+        JiboInteractionDecision Run() => service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "turn on the stair lights", NormalizedTranscript = "turn on the stair lights",
+            DeviceId = "Ghost-Instance-Onion-Silk"
+        }).GetAwaiter().GetResult();
+        var first = Run();
+        var second = Run();
+        Assert.Equal(homeAssistant, first.IntentName.StartsWith("ha_"));
+        Assert.Equal(homeAssistant, second.IntentName.StartsWith("ha_"));
+        if (!homeAssistant) Assert.Equal(new[] { "entity_control" }, commands); // asked once, then remembered
+        else Assert.Equal(2, commands.Count);
+    }
+
     [Fact]
     public async Task UnhandledSentence_RetriesAssistAfterAnHour()
     {

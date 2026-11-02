@@ -75,9 +75,9 @@ public static class HomeAssistantLightCommandParser
         "all light on"
     };
 
-    // turn/switch on|off [the] <target> [light(s)|lamp(s)]
+    // turn/switch on|off [the] <target> light(s)|lamp(s); without the word it may be any device (Assist decides)
     private static readonly Regex NamedLightActionFirstPattern = new(
-        @"^(?:turn|switch)\s+(?<action>on|off)\s+(?:the\s+)?(?<target>.+?)(?:\s+(?:light|lights|lamp|lamps))?\s*$",
+        @"^(?:turn|switch)\s+(?<action>on|off)\s+(?:the\s+)?(?<target>.+?)\s+(?:light|lights|lamp|lamps)\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // turn/switch [the] <target> light(s)|lamp(s) on|off

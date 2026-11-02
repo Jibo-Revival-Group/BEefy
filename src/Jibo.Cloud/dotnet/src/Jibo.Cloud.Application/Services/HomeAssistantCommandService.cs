@@ -10,12 +10,28 @@ public sealed class HomeAssistantCommandService(
     HomeAssistantRobotRelay robotRelay,
     ILogger<HomeAssistantCommandService>? logger = null)
 {
-    public Task<HomeAssistantCommandResult?> DispatchEntityCommandAsync(
+    public async Task<HomeAssistantCommandResult?> DispatchEntityCommandAsync(
         TurnContext turn, HomeAssistantEntityCommandParser.EntityCommand command,
         CancellationToken cancellationToken, string? entityId = null)
     {
         LogDispatch(turn, "ha_entity_control");
-        return robotRelay.SendAsync("entity_control", command.Parameters(entityId), true, cancellationToken);
+        return RememberPairing(turn, await robotRelay.SendAsync("entity_control", command.Parameters(entityId), true, cancellationToken));
+    }
+
+    // Robots on native Jetstream never advertise HA pairing, so learn it from their relay answers.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _unpairedUntil = new();
+
+    /// <summary>The robot recently answered that it has no HA pairing (or no relay at all).</summary>
+    public bool IsKnownUnpaired(TurnContext turn) =>
+        _unpairedUntil.TryGetValue(turn.DeviceId ?? string.Empty, out var until) && DateTimeOffset.UtcNow < until;
+
+    private HomeAssistantCommandResult? RememberPairing(TurnContext turn, HomeAssistantCommandResult? result)
+    {
+        if (result is null) return result; // no connection to the robot says nothing about its pairing
+        if (result.Message == "pairing_required")
+            _unpairedUntil[turn.DeviceId ?? string.Empty] = DateTimeOffset.UtcNow.AddHours(1);
+        else _unpairedUntil.TryRemove(turn.DeviceId ?? string.Empty, out _);
+        return result;
     }
 
     // Robots don't reliably advertise HA pairing, so ask and remember the ones that can't answer.
@@ -64,7 +80,7 @@ public sealed class HomeAssistantCommandService(
             };
 
         LogDispatch(turn, intentName);
-        return await robotRelay.SendAsync(command, parameters, waitForResult, cancellationToken);
+        return RememberPairing(turn, await robotRelay.SendAsync(command, parameters, waitForResult, cancellationToken));
     }
 
     public async Task<bool> TryDispatchClimateCommandAsync(
