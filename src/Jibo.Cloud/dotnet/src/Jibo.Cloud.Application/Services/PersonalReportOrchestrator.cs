@@ -391,6 +391,13 @@ internal static partial class PersonalReportOrchestrator
             }
         }
 
+        // Only when a phone paired through BEep reported in the last two hours.
+        if (PhoneBatteryReports.ReportLine(PhoneBatteryReports.RobotScopeFor(turn), userName, DateTimeOffset.UtcNow) is { } phoneLine)
+        {
+            spokenSections.Add(phoneLine);
+            sequenceSections.Add(BuildReportSequenceSection("phone", phoneLine));
+        }
+
         if (toggles.NewsEnabled)
         {
             var newsDecision = await newsTask;

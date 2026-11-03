@@ -33,6 +33,9 @@ public sealed class AgentModeTests
     [InlineData("hey jibo what's my phone battery at")]
     [InlineData("how much battery does my iPhone have")]
     [InlineData("is my phone charged")]
+    [InlineData("what's my phone at")]
+    [InlineData("hey jibo how's my phone doing")]
+    [InlineData("how is my phone")]
     public async Task PhoneBattery_RoutesToRobotSkill(string text)
     {
         var turn = Turn(text);
@@ -47,6 +50,8 @@ public sealed class AgentModeTests
     [InlineData("how is your battery")]
     [InlineData("call my phone")]
     [InlineData("what's the battery level")]
+    [InlineData("what's my phone number")]
+    [InlineData("how is my phone call going to work")]
     public void PhoneBattery_LeavesOtherQuestionsAlone(string text) => Assert.False(PhoneBatteryRouting.IsQuestion(text));
 
     [Theory]

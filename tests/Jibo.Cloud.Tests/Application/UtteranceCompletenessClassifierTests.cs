@@ -74,6 +74,7 @@ public sealed class UtteranceCompletenessClassifierTests
     [Theory]
     [InlineData("what's my phone's battery at")]
     [InlineData("hey jibo what's your battery at")]
+    [InlineData("what's my phone at")]
     public void BatteryAtQuestion_IsComplete(string transcript) =>
         Assert.True(UtteranceCompletenessClassifier.Classify(transcript, ["launch"]).IsComplete);
 }

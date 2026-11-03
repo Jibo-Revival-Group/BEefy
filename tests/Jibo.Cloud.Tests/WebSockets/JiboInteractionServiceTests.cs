@@ -2815,6 +2815,27 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
+    public async Task BuildDecisionAsync_PersonalReport_MentionsTheListenersRecentPhoneBattery()
+    {
+        var robot = "robot-" + Guid.NewGuid();
+        PhoneBatteryReports.Save(MemberCalendarFeedRecord.RobotScope(robot),
+            new PhoneBatteryReports.Reading("a1", "Alex", 15, false, DateTimeOffset.UtcNow.AddMinutes(-30)));
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "yes", NormalizedTranscript = "yes", DeviceId = robot,
+            Attributes = new Dictionary<string, object?>
+            {
+                [PersonalReportStateKey] = "awaiting_identity_confirmation",
+                [PersonalReportUserNameKey] = "alex",
+                [PersonalReportCommuteEnabledKey] = false,
+                [PersonalReportNewsEnabledKey] = false
+            }
+        });
+        Assert.Equal("personal_report_delivered", decision.IntentName);
+        Assert.Contains("As of 30 minutes ago, your phone was at 15 percent. You better charge it before you go!", decision.ReplyText);
+    }
+
+    [Fact]
     public async Task BuildDecisionAsync_PersonalReport_StartsOptInStateMachine()
     {
         var service = CreateService();

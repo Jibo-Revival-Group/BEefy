@@ -6,7 +6,7 @@ namespace Jibo.Cloud.Application.Services;
 public sealed partial class JiboCloudProtocolService
 {
     private static bool IsMemberCalendarOperation(string operation) =>
-        operation is "GetCalendarFeeds" or "SetCalendarFeed" or "ClearCalendarFeed" or "TestCalendarFeed";
+        operation is "GetCalendarFeeds" or "SetCalendarFeed" or "ClearCalendarFeed" or "TestCalendarFeed" or "SetPhoneBattery";
 
     private async Task<ProtocolDispatchResult> HandleMemberCalendarAsync(string operation, ProtocolEnvelope envelope)
     {
@@ -21,6 +21,17 @@ public sealed partial class JiboCloudProtocolService
 
         switch (operation)
         {
+            // Same robot credentials and scope as calendars: BEep's phone battery, for the personal report.
+            case "SetPhoneBattery":
+            {
+                var memberId = ReadString(body, "memberId");
+                var level = body?.TryGetProperty("level", out var levelValue) == true && levelValue.TryGetDouble(out var number) ? number : -1;
+                if (string.IsNullOrWhiteSpace(memberId) || level is < 0 or > 100)
+                    return CalendarError(400, "memberId and a level from 0 to 100 are required.");
+                PhoneBatteryReports.Save(loopId, new PhoneBatteryReports.Reading(
+                    memberId, ReadString(body, "memberName"), (int)Math.Round(level), ReadBool(body, "charging"), DateTimeOffset.UtcNow));
+                return ProtocolDispatchResult.Ok(new { saved = true });
+            }
             case "GetCalendarFeeds":
                 return ProtocolDispatchResult.Ok(new
                 {
