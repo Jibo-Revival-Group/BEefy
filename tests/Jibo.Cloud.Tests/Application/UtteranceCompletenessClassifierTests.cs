@@ -70,4 +70,10 @@ public sealed class UtteranceCompletenessClassifierTests
             ["shared/yes_no"]);
         Assert.True(result.IsComplete);
     }
+
+    [Theory]
+    [InlineData("what's my phone's battery at")]
+    [InlineData("hey jibo what's your battery at")]
+    public void BatteryAtQuestion_IsComplete(string transcript) =>
+        Assert.True(UtteranceCompletenessClassifier.Classify(transcript, ["launch"]).IsComplete);
 }

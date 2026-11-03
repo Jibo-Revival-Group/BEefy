@@ -53,7 +53,9 @@ public static class UtteranceCompletenessClassifier
         "can you recognize me",
         // server_info questions end in "on"/"to"; without these the turn waited ~17 s for more speech.
         "server are you on",
-        "server are you connected to"
+        "server are you connected to",
+        // "what's my phone's battery at" / "what's your battery at": same ~17 s wait otherwise.
+        "battery at"
     ];
 
     public static Result Classify(
