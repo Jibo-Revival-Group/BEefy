@@ -29,6 +29,27 @@ public sealed class AgentModeTests
     }
 
     [Theory]
+    [InlineData("How is my phone's battery?")]
+    [InlineData("hey jibo what's my phone battery at")]
+    [InlineData("how much battery does my iPhone have")]
+    [InlineData("is my phone charged")]
+    public async Task PhoneBattery_RoutesToRobotSkill(string text)
+    {
+        var turn = Turn(text);
+        var plan = await new DemoConversationBroker(Service()).HandleTurnAsync(turn);
+        Assert.Equal("phone_battery", plan.IntentName);
+        Assert.Equal("@be/phone-battery", Assert.Single(plan.Actions.OfType<InvokeNativeSkillAction>()).SkillName);
+        var listen = Assert.Single(Messages(plan, turn), message => message.GetProperty("type").GetString() == "LISTEN");
+        Assert.Equal("@be/phone-battery", listen.GetProperty("data").GetProperty("match").GetProperty("skillID").GetString());
+    }
+
+    [Theory]
+    [InlineData("how is your battery")]
+    [InlineData("call my phone")]
+    [InlineData("what's the battery level")]
+    public void PhoneBattery_LeavesOtherQuestionsAlone(string text) => Assert.False(PhoneBatteryRouting.IsQuestion(text));
+
+    [Theory]
     [InlineData("play Hello by Adele")]
     [InlineData("turn off the lights")]
     [InlineData("what time is it")]

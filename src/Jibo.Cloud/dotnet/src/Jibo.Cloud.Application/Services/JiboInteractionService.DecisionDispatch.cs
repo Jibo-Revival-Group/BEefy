@@ -19,6 +19,14 @@ public sealed partial class JiboInteractionService
                     ["skillId"] = "@be/agent", ["nativeLaunch"] = true, ["localIntent"] = "chat"
                 });
 
+        if (!SkillListenOwnership.IsSkillOwnedListen(turn) &&
+            PhoneBatteryRouting.IsQuestion(turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty))
+            return new JiboInteractionDecision("phone_battery", string.Empty, "@be/phone-battery",
+                new Dictionary<string, object?>
+                {
+                    ["skillId"] = "@be/phone-battery", ["nativeLaunch"] = true, ["localIntent"] = "phoneBattery"
+                });
+
         SyncLoopPeopleFromTurn(turn);
         var catalog = await contentCache.GetCatalogAsync(cancellationToken);
         var transcript = (turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty).Trim();
