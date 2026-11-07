@@ -85,6 +85,7 @@ public sealed class DemoConversationBroker(JiboInteractionService interactionSer
             "radio_genre" => false,
             "bad_apple" => false,
             "stop" => false,
+            "sleep" => false,
             "volume_up" => false,
             "volume_down" => false,
             "volume_to_value" => false,

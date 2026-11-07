@@ -31,6 +31,17 @@ public sealed class MusicInteractionServiceTests
     [InlineData("dance")]
     public void Parser_DoesNotCaptureExistingActivities(string text) => Assert.False(MusicCommandParser.TryParse(text, out _));
 
+    // A follow-up listen after sleep ends in silence and reopens idle without an intent, which wakes him (ALERT).
+    [Theory]
+    [InlineData("go to sleep")]
+    [InlineData("its time for bed go to sleep")]
+    public async Task Sleep_DoesNotKeepTheMicOpen(string text)
+    {
+        var plan = await new DemoConversationBroker(Service()).HandleTurnAsync(Turn(text));
+        Assert.Equal("sleep", plan.IntentName);
+        Assert.False(plan.FollowUp.KeepMicOpen);
+    }
+
     [Theory]
     [InlineData("Hey Jibo, play Yes I'm A Mess", "Yes I'm A Mess", "")]
     [InlineData("play Yes I’m A Mess by AJR", "Yes I’m A Mess", "AJR")]
