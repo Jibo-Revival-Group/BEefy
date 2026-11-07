@@ -87,6 +87,8 @@ public static class UtteranceCompletenessClassifier
             return new Result(false, "empty_partial");
 
         var last = tokens[^1];
+        if (IsFinishedDoQuestion(tokens))
+            return new Result(true, "finished_do_question");
         if (DanglingFunctionWords.Contains(last))
             return new Result(false, "dangling_function_word");
 
@@ -98,6 +100,22 @@ public static class UtteranceCompletenessClassifier
         }
 
         return new Result(true, "complete");
+    }
+
+    private static readonly HashSet<string> QuestionWords = new(StringComparer.Ordinal)
+        { "what", "whats", "how", "which", "where", "why", "who", "when" };
+
+    private static readonly HashSet<string> SubjectsBeforeDo = new(StringComparer.Ordinal)
+        { "you", "i", "we", "they", "it", "he", "she" };
+
+    // "do" as the main verb ends a question: "what can you do", "what should i do", "how do you do",
+    // "what's your favorite thing to do". Without a question word ("can you do") or a subject
+    // ("how do") it still looks unfinished. Prod: these waited ~20 s for more speech.
+    private static bool IsFinishedDoQuestion(string[] tokens)
+    {
+        if (tokens.Length < 3 || tokens[^1] is not ("do" or "does" or "did")) return false;
+        if (tokens[^2] == "to" && tokens[^3] is "thing" or "things") return true;
+        return SubjectsBeforeDo.Contains(tokens[^2]) && tokens[..^2].Any(QuestionWords.Contains);
     }
 
     private static bool IsKnownCompleteIdentityQuestion(string command) =>

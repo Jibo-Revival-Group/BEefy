@@ -19,6 +19,27 @@ public sealed class UtteranceCompletenessClassifierTests
         Assert.Equal("complete", result.Reason);
     }
 
+    // Prod: "what can you do" waited ~20 s for more speech because it ends in "do".
+    [Theory]
+    [InlineData("what can you do")]
+    [InlineData("hey jibo what can you do")]
+    [InlineData("what can you do what can you do")]
+    [InlineData("what are you do")]
+    [InlineData("what's your favorite thing to do")]
+    [InlineData("what should i do")]
+    [InlineData("how do you do")]
+    [InlineData("what does it do")]
+    public void Classify_QuestionEndingInDo_IsComplete(string transcript) =>
+        Assert.True(UtteranceCompletenessClassifier.Classify(transcript).IsComplete, transcript);
+
+    [Theory]
+    [InlineData("can you do")]
+    [InlineData("there you go how do")]
+    [InlineData("what do")]
+    [InlineData("i want to do")]
+    public void Classify_UnfinishedDo_KeepsWaiting(string transcript) =>
+        Assert.False(UtteranceCompletenessClassifier.Classify(transcript).IsComplete, transcript);
+
     [Theory]
     [InlineData("who am i")]
     [InlineData("hey jibo who am i")]
