@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Runtime.Abstractions;
 
@@ -250,6 +251,11 @@ public sealed partial class JiboInteractionService
                 "report-skill",
                 BuildCalendarSkillPayload(null));
 
+        // "Do I have anything on Tuesday" / "what's on my calendar tomorrow": that day instead of today.
+        var day = standalone ? ReadCalendarDay(turn.NormalizedTranscript ?? turn.RawTranscript) : null;
+        if (day is not null) turn.Attributes["calendarDay"] = day;
+        var dayLabel = day is null ? null : day == "tomorrow" ? "tomorrow" : "on " + char.ToUpperInvariant(day[0]) + day[1..];
+
         CalendarReportSnapshot? snapshot;
         try
         {
@@ -268,7 +274,11 @@ public sealed partial class JiboInteractionService
                 BuildCalendarSkillPayload(null));
 
         if (standalone && snapshot.EventSummaries.Count > 0 && snapshot.EventSummaries.Count == snapshot.EventTimesOnAt.Count)
-            return BuildCalendarEventsDecision(snapshot, catalog);
+            return BuildCalendarEventsDecision(snapshot, catalog, dayLabel);
+
+        if (dayLabel is not null && snapshot.EventSummaries.Count == 0)
+            return new JiboInteractionDecision("calendar", $"I don't see anything on your calendar {dayLabel}.", "report-skill",
+                BuildCalendarSkillPayload(null));
 
         var calendarReply = BuildCalendarSpokenReply(snapshot, catalog);
         return new JiboInteractionDecision(
@@ -280,17 +290,19 @@ public sealed partial class JiboInteractionService
 
     // Standalone calendar, like the original single-skill flow: a count line, then each of today's
     // events (up to five) on its own card, then an outro.
-    private JiboInteractionDecision BuildCalendarEventsDecision(CalendarReportSnapshot snapshot, JiboExperienceCatalog catalog)
+    private JiboInteractionDecision BuildCalendarEventsDecision(CalendarReportSnapshot snapshot, JiboExperienceCatalog catalog,
+        string? dayLabel = null)
     {
         var count = snapshot.EventSummaries.Count;
+        var when = dayLabel ?? "today";
         var sections = new List<IDictionary<string, object?>>
         {
             new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
                 ["kind"] = "calendar_count",
                 ["text"] = count == 1
-                    ? "Checking your calendar, I see just one thing scheduled today."
-                    : $"Checking your calendar today, I see you have {count} things coming."
+                    ? $"Checking your calendar, I see just one thing scheduled {when}."
+                    : $"Checking your calendar {when}, I see you have {count} things coming."
             }
         };
         for (var i = 0; i < Math.Min(count, 5); i += 1)
@@ -393,5 +405,15 @@ public sealed partial class JiboInteractionService
                 "provider_unavailable",
                 preferredCategories,
                 MaxNewsHeadlines));
+    }
+
+    private static readonly Regex CalendarDayPattern = new(
+        @"\b(?<day>tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50));
+
+    private static string? ReadCalendarDay(string? transcript)
+    {
+        var match = CalendarDayPattern.Match(transcript ?? string.Empty);
+        return match.Success ? match.Groups["day"].Value.ToLowerInvariant() : null;
     }
 }

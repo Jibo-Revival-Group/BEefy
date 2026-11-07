@@ -122,6 +122,13 @@ public sealed class WebSocketTurnFinalizationService(
         "hey",
         "twerk",
         "weather",
+        "battery",
+        "timer",
+        "cancel",
+        "menu",
+        "settings",
+        "storage",
+        "sneeze",
         "news",
         "radio",
         "stop",
@@ -1160,6 +1167,7 @@ public sealed class WebSocketTurnFinalizationService(
         session.TurnState.AudioTranscriptHint = null;
         session.TurnState.JevCheckedSingleTWord = null;
         session.TurnState.JevSingleTWordIsTwerk = false;
+        session.TurnState.JevSingleTWordRejected = false;
         session.TurnState.LastSttError = null;
         session.TurnState.LastSttErrorUtc = null;
         session.TurnState.FirstAudioReceivedUtc = null;
@@ -1196,6 +1204,7 @@ public sealed class WebSocketTurnFinalizationService(
         turnState.AudioTranscriptHint = null;
         turnState.JevCheckedSingleTWord = null;
         turnState.JevSingleTWordIsTwerk = false;
+        turnState.JevSingleTWordRejected = false;
         turnState.ListenOpenedUtc = null;
         turnState.LastSttError = null;
         turnState.LastSttErrorUtc = null;
@@ -1386,6 +1395,8 @@ public sealed class WebSocketTurnFinalizationService(
                     turnState.JevCheckedSingleTWord = singleWordTranscript;
                     turnState.JevSingleTWordIsTwerk = classification is { Intent: "twerk" } &&
                         double.IsFinite(classification.Probability) && classification.Probability is >= 0 and <= 1;
+                    // No answer (out of credits, offline) is not a "no": the word gets the normal single-word path.
+                    turnState.JevSingleTWordRejected = classification is not null && !turnState.JevSingleTWordIsTwerk;
                 }
 
                 finalizedTurn.Attributes["nlu:singleWordTwerk"] = turnState.JevSingleTWordIsTwerk;
@@ -1429,7 +1440,7 @@ public sealed class WebSocketTurnFinalizationService(
 
             var hasUsableTranscript = TryGetUsableTranscript(finalizedTurn, out var usableTranscript);
             // A negative Jev check must not fall through to a different model's twerk repair.
-            if (checkSingleTWord && !turnState.JevSingleTWordIsTwerk &&
+            if (checkSingleTWord && turnState.JevSingleTWordRejected && MisheardCommands.Repair(usableTranscript) is null &&
                 IsLowSignalSingleTokenTranscript(usableTranscript))
                 hasUsableTranscript = false;
             if (!hasUsableTranscript &&
@@ -3160,6 +3171,12 @@ public sealed class WebSocketTurnFinalizationService(
                 string.Equals(rule, "word-of-the-day/puzzle", StringComparison.OrdinalIgnoreCase))) return true;
 
         if (SkillListenOwnership.IsSkillOwnedListen(turn) && IsYesNoReplyTranscript(transcript)) return true;
+
+        // A skill's own listen gets its single words ("pause", "skip", a song name); the skill decides.
+        if (SkillListenOwnership.IsSkillOwnedListen(turn)) return true;
+
+        // Known mishearings ("twark", "work", "whether") are commands; routing repairs them.
+        if (MisheardCommands.Repair(transcript) is not null) return true;
 
         if (IsLowSignalSingleTokenTranscript(transcript))
             return turn.InputMode is not (TurnInputMode.DirectText or TurnInputMode.System) &&

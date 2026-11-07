@@ -237,6 +237,40 @@ public sealed class IcalCalendarReportProviderTests
         }
     }
 
+    [Fact]
+    public async Task GetReportAsync_ReadsTheAskedWeekdayInTheHomeTimeZone()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"openjibo-ical-provider-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new InMemoryUserIntegrationStore(new EncryptedUserDataSnapshotStore(path, new UserDataEncryptionService()));
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.Utc).DateTime);
+            var inThreeDays = today.AddDays(3);
+            store.UpsertMemberCalendarFeed(MemberCalendarFeedRecord.RobotScope("Robot-A"), "m-zane", "https://cal.example/zane.ics",
+                memberName: "Zane", timeZoneId: "UTC");
+            var cloud = new InMemoryCloudStateStore();
+            var provider = new IcalCalendarReportProvider(store, cloud, new StubIcalFeedFetcher(new Dictionary<string, string>
+            {
+                ["https://cal.example/zane.ics"] = $"BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART;VALUE=DATE:{inThreeDays:yyyyMMdd}\nSUMMARY:Dentist\nEND:VEVENT\nEND:VCALENDAR\n"
+            }), new CloudStateCalendarReportProvider(cloud), NullLogger<IcalCalendarReportProvider>.Instance);
+            TurnContext Turn(string? day) => new()
+            {
+                DeviceId = "Robot-A",
+                Attributes = new Dictionary<string, object?> { ["personalReportUserName"] = "Zane", ["calendarDay"] = day }
+            };
+
+            Assert.Empty((await provider.GetReportAsync(Turn(null)))!.EventSummaries);
+            Assert.Equal(["Dentist"], (await provider.GetReportAsync(Turn(inThreeDays.DayOfWeek.ToString().ToLowerInvariant())))!.EventSummaries);
+            Assert.Equal(1, IcalCalendarReportProvider.DaysUntil(today, "tomorrow"));
+            Assert.Equal(0, IcalCalendarReportProvider.DaysUntil(today, today.DayOfWeek.ToString()));
+            Assert.Equal(0, IcalCalendarReportProvider.DaysUntil(today, "someday"));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     private sealed class StubIcalFeedFetcher(IReadOnlyDictionary<string, string> bodies) : IIcalFeedFetcher
     {
         public Task<IcalFeedFetchResult> FetchAsync(string icalUrl, CancellationToken cancellationToken = default)

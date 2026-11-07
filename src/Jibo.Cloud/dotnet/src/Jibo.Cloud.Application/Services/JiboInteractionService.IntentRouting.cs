@@ -381,6 +381,12 @@ public sealed partial class JiboInteractionService
                 "do animals make you happy"))
             return "robot_likes_animals";
 
+        if (TryResolveSkillToOpen(loweredTranscript) is not null) return "open_skill";
+
+        if (MatchesAny(loweredTranscript, "software version", "what version are you", "which version are you",
+                "what's your version", "what is your version", "what version do you have", "what firmware"))
+            return "software_version";
+
         if (MatchesAny(
                 loweredTranscript,
                 "what server are you connected to",
@@ -2149,7 +2155,8 @@ public sealed partial class JiboInteractionService
 
         if (IsWeatherRequest(loweredTranscript)) return "weather";
 
-        if (MatchesAny(loweredTranscript, "calendar", "schedule", "what's on my calendar", "what is on my calendar"))
+        if (MatchesAny(loweredTranscript, "calendar", "schedule", "scheduled", "what's on my calendar", "what is on my calendar",
+                "do i have anything on", "what do i have on", "what have i got on"))
             return "calendar";
 
         if (MatchesAny(loweredTranscript, "commute", "traffic", "drive to work", "how long to work")) return "commute";

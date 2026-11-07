@@ -8,6 +8,7 @@ public sealed partial class JiboInteractionService
     public async Task<JiboInteractionDecision> BuildDecisionCoreAsync(TurnContext turn,
         CancellationToken cancellationToken = default)
     {
+        turn = MisheardCommands.Apply(turn);
         // Agent conversations belong to the robot; never classify or execute their contents.
         if (AgentModeRouting.IsConversation(turn))
             return new JiboInteractionDecision("skill_listen", string.Empty);
@@ -341,6 +342,9 @@ public sealed partial class JiboInteractionService
             "current_location" => BuildCurrentLocationDecision(turn),
             "cloud_version" => BuildCloudVersionDecision(),
             "server_info" => new JiboInteractionDecision("server_info", "I'm connected to five ex one."),
+            "software_version" => new JiboInteractionDecision("software_version",
+                "You can see my software version in beacon, on the Status tab, at portal dot five ex one dot com."),
+            "open_skill" => BuildOpenSkillDecision(lowered),
             "add_person_help" => new JiboInteractionDecision("add_person_help",
                 "You can manage Jibo on beacon, available at portal dot five ex one dot com."),
             "robot_flavor" => BuildRobotFlavorDecision(turn),

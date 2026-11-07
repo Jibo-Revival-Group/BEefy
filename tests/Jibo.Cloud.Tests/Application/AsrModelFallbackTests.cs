@@ -13,15 +13,12 @@ public sealed class AsrModelFallbackTests
     [InlineData("what's your paper color", "what is your favorite color", "robot_favorite_color")]
     [InlineData("my time is it", "what time is it", "time")]
     [InlineData("make a peter sir", "make a pizza", "pizza")]
-    [InlineData("make a peter", "make a pizza", "pizza")]
     [InlineData("make a pit sir", "make a pizza", "pizza")]
     [InlineData("make peter", "make pizza", "pizza")]
-    [InlineData("twic", "twerk", "twerk")]
-    [InlineData("twke", "twerk", "twerk")]
-    [InlineData("twick", "twerk", "twerk")]
     [InlineData("twelc", "twerk", "twerk")]
     [InlineData("do a dense", "do a dance", "dance")]
     [InlineData("tell me a storey", "tell me a story", "robot_story")]
+    // twic/twke/twick and "make a peter" are repaired before the model (MisheardCommands).
     public async Task ContextualCommandRecovery(string heard, string corrected, string intent)
     {
         var model = Model(corrected);

@@ -85,12 +85,9 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Theory]
-    [InlineData("twic", 0.85, true)]
-    [InlineData("twke", 0.85, true)]
-    [InlineData("twirk", 0.9, true)]
-    [InlineData("twick", 0.85, true)]
+    // twic, twke, twirk, twick are repaired without the model (MisheardCommands, from prod transcripts).
     [InlineData("twelc", 0.85, true)]
-    [InlineData("twick", 0.749, false)]
+    [InlineData("twelc", 0.749, false)]
     [InlineData("twelc", 0.75, true)]
     public async Task SpeechRecovery_SingleWordMishearingReachesModelAndPreservesHeardText(
         string heard, double confidence, bool accepted)
@@ -972,18 +969,17 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Theory]
-    [InlineData(null)]
     [InlineData("time")]
     [InlineData("dance")]
     public async Task BufferedHotphraseOggAudio_JevTwerkMissIsCachedAndTimesOut(string? intent)
     {
         var store = new InMemoryCloudStateStore();
         var classifier = new Mock<INluClassifier>();
-        classifier.Setup(c => c.ClassifyAsync("twke", It.IsAny<CancellationToken>()))
+        classifier.Setup(c => c.ClassifyAsync("twelc", It.IsAny<CancellationToken>()))
             .ReturnsAsync(intent is null ? null : new NluClassification(intent, 0.95, "jev", "test"));
         var correction = new Mock<IAsrCorrectionModel>(MockBehavior.Strict);
         var service = CreateService(store,
-            sttStrategies: [new QueuedBufferedAudioSttStrategy("twke", "twke", "twke")],
+            sttStrategies: [new QueuedBufferedAudioSttStrategy("twelc", "twelc", "twelc")],
             nluClassifier: classifier.Object, asrCorrectionModel: correction.Object);
         WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
         {
@@ -1007,7 +1003,7 @@ public sealed class JiboWebSocketServiceTests
         var replies = await service.HandleIdleAsync(session, setup);
         Assert.Equal(new[] { "LISTEN", "EOS" }, replies.Select(ReadReplyType));
         Assert.Equal("no-input", session.LastListenType);
-        classifier.Verify(c => c.ClassifyAsync("twke", It.IsAny<CancellationToken>()), Times.Once);
+        classifier.Verify(c => c.ClassifyAsync("twelc", It.IsAny<CancellationToken>()), Times.Once);
         correction.Verify(c => c.TryCorrectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Null(session.TurnState.JevCheckedSingleTWord);
     }
@@ -11204,5 +11200,68 @@ public sealed class JiboWebSocketServiceTests
         {
             _release.TrySetResult();
         }
+    }
+
+    // Prod: Jev answered 402 for days and every heard twerk ("twark", "work", "turk") was closed as no speech.
+    [Theory]
+    [InlineData("twark", "twerk")]
+    [InlineData("work", "twerk")]
+    [InlineData("turk", "twerk")]
+    [InlineData("tark", "twerk")]
+    [InlineData("whether", "weather")]
+    [InlineData("battery", "battery")]
+    [InlineData("timer", "start")]
+    [InlineData("storage", "storageStatus")]
+    public async Task BufferedHotphraseOggAudio_SingleWordCommandIsAnsweredWhileJevIsUnavailable(string heard, string intent)
+    {
+        var store = new InMemoryCloudStateStore();
+        var classifier = new Mock<INluClassifier>();
+        classifier.Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NluClassification?)null);
+        var service = CreateService(store, sttStrategies: [new QueuedBufferedAudioSttStrategy(heard, heard, heard)],
+            nluClassifier: classifier.Object);
+        var (session, replies) = await RunSingleWordTurn(service, store, "hub-single-word-" + heard,
+            """{"type":"LISTEN","transID":"single-word","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"],"asr":{"encoding":"OGG_OPUS","maxSpeechTimeout":20000}}}""");
+        Assert.Equal(intent, session.LastIntent);
+        Assert.NotEqual("no-input", session.LastListenType);
+        Assert.Contains(replies, reply => ReadReplyType(reply) == "LISTEN");
+    }
+
+    // Prod: "skip", "pause", a song name said inside Music's own listen were closed as no speech.
+    [Theory]
+    [InlineData("skip")]
+    [InlineData("pause")]
+    [InlineData("kokomo")]
+    public async Task BufferedSkillListenOggAudio_SingleWordReachesTheSkill(string heard)
+    {
+        var store = new InMemoryCloudStateStore();
+        var service = CreateService(store, sttStrategies: [new QueuedBufferedAudioSttStrategy(heard, heard, heard)]);
+        var (session, replies) = await RunSingleWordTurn(service, store, "hub-skill-word-" + heard,
+            """{"type":"LISTEN","transID":"skill-word","data":{"hotphrase":false,"rules":["music/controls"],"asr":{"encoding":"OGG_OPUS","maxSpeechTimeout":20000}}}""");
+        Assert.NotEqual("no-input", session.LastListenType);
+        var listen = Assert.Single(replies, reply => ReadReplyType(reply) == "LISTEN");
+        using var payload = JsonDocument.Parse(listen.Text!);
+        Assert.Equal(heard, payload.RootElement.GetProperty("data").GetProperty("asr").GetProperty("text").GetString());
+    }
+
+    private static async Task<(CloudSession Session, IReadOnlyList<WebSocketReply> Replies)> RunSingleWordTurn(
+        JiboWebSocketService service, InMemoryCloudStateStore store, string token, string listen)
+    {
+        WebSocketMessageEnvelope Envelope(string? text = null, byte[]? binary = null) => new()
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = token, Text = text, Binary = binary
+        };
+        var setup = Envelope(listen);
+        await service.HandleMessageAsync(setup);
+        foreach (var frame in new[] { BuildOggFrame(0x02, "OpusHead"), BuildOggFrame(0x00, "OpusTags"),
+                     BuildOggFrame(0x00), BuildOggFrame(0x00), BuildOggFrame(0x00) })
+            await service.HandleMessageAsync(Envelope(binary: frame));
+        var session = store.FindSessionByToken(setup.Token!)!;
+        var replies = new List<WebSocketReply>();
+        // Past the 5 s single-word wait, like prod's drops.
+        session.TurnState.FirstAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-6);
+        session.TurnState.LastAudioReceivedUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+        replies.AddRange(await service.HandleIdleAsync(session, setup));
+        return (session, replies);
     }
 }

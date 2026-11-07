@@ -31,6 +31,7 @@ public sealed class WebSocketTurnState
     public string? AudioTranscriptHint { get; set; }
     public string? JevCheckedSingleTWord { get; set; }
     public bool JevSingleTWordIsTwerk { get; set; }
+    public bool JevSingleTWordRejected { get; set; }
     public string? LastSttError { get; set; }
     public DateTimeOffset? LastSttErrorUtc { get; set; }
     public DateTimeOffset? FirstAudioReceivedUtc { get; set; }

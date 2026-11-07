@@ -43,7 +43,8 @@ public sealed class IcalCalendarReportProvider(
             return await fallbackProvider.GetReportAsync(turn, cancellationToken);
         var memberIdForStatus = feed.MemberId;
 
-        var cacheKey = BuildCacheKey(feed.FeedId, feed.UpdatedUtc);
+        var day = ReadAttribute(turn, "calendarDay");
+        var cacheKey = BuildCacheKey(feed.FeedId, feed.UpdatedUtc) + "|" + day;
         if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresUtc > DateTimeOffset.UtcNow)
             return cached.Snapshot;
 
@@ -68,6 +69,8 @@ public sealed class IcalCalendarReportProvider(
 
             var localZone = ZoneFor(feed);
             var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, localZone).DateTime);
+            // "What's on my calendar on Tuesday": that day stands in for today (and the day after for tomorrow).
+            today = today.AddDays(DaysUntil(today, day));
             var tomorrow = today.AddDays(1);
             var events = IcalCalendarParser.ParseEventsForWindow(fetch.Body, today, tomorrow, localZone);
 
@@ -146,6 +149,14 @@ public sealed class IcalCalendarReportProvider(
         {
             return null;
         }
+    }
+
+    internal static int DaysUntil(DateOnly today, string? day)
+    {
+        if (string.Equals(day, "tomorrow", StringComparison.OrdinalIgnoreCase)) return 1;
+        return Enum.TryParse<DayOfWeek>(day, true, out var weekday) && Enum.IsDefined(weekday)
+            ? ((int)weekday - (int)today.DayOfWeek + 7) % 7
+            : 0;
     }
 
     private static TimeZoneInfo ZoneFor(MemberCalendarFeedRecord feed)

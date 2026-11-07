@@ -338,6 +338,11 @@ public sealed partial class JiboInteractionService
             "does it seem like snow",
             "is it going to rain",
             "is it going to snow",
+            "is it gonna rain",
+            "is it gonna snow",
+            "is it going to be rainy",
+            "chance of rain",
+            "temperature outside",
             "do you think it will rain",
             "do you think it will snow") || WeatherConditionForecastPattern.IsMatch(loweredTranscript);
     }
@@ -1849,4 +1854,47 @@ public sealed partial class JiboInteractionService
         string Unit,
         string Theme,
         string SpokenLine);
+
+    // Store skills by the name people say ("open pomodoro", "start the metronome", "run hidden skills").
+    // BEacon-only places (themes, the Store) get a pointer to BEacon instead.
+    private static readonly (string[] Names, string Target)[] OpenableSkills =
+    [
+        (["pomodoro", "pomodoro timer", "focus timer"], "@be/pomodoro"),
+        (["metronome"], "@be/metronome"),
+        (["sound machine", "soundmachine", "white noise", "sleep sounds"], "@be/soundmachine"),
+        (["tamagotchi", "my pet", "virtual pet"], "@be/tamagotchi"),
+        (["jibotube", "jibo tube", "jebo tube", "jivo tube", "jibu tube", "jibo tv"], "@be/jibotube"),
+        // Jukebox was folded into the Music player.
+        (["jukebox", "jute parts", "juke box", "music player"], "@be/music"),
+        (["hidden skills", "hidden skills skill"], "@be/hiddenskills"),
+        (["still alive"], "@be/stillalive"),
+        (["themes", "the themes", "theme store", "the theme store", "store", "the store", "skill store", "the skill store"], "beacon")
+    ];
+
+    private static readonly Regex OpenSkillPattern = new(
+        @"^(?:hey jibo |jibo )?(?:can you |could you |please )?(?:open|launch|start|run|go to|play|use)(?: up)?(?: the| my| your)? (?<name>.+?)(?: skill| app)?(?: please)?$",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50));
+
+    internal static string? TryResolveSkillToOpen(string loweredTranscript)
+    {
+        var match = OpenSkillPattern.Match(TranscriptTextNormalizer.NormalizeLooseText(loweredTranscript));
+        if (!match.Success) return null;
+        var name = match.Groups["name"].Value;
+        foreach (var (names, target) in OpenableSkills)
+            if (names.Contains(name, StringComparer.Ordinal)) return target;
+        return null;
+    }
+
+    private static JiboInteractionDecision BuildOpenSkillDecision(string loweredTranscript)
+    {
+        var target = TryResolveSkillToOpen(loweredTranscript);
+        if (target is null or "beacon")
+            return new JiboInteractionDecision("open_skill",
+                "Themes and the Store are in beacon, at portal dot five ex one dot com.");
+        return new JiboInteractionDecision("open_skill", string.Empty, target,
+            new Dictionary<string, object?>
+            {
+                ["skillId"] = target, ["nativeLaunch"] = true, ["localIntent"] = "menu"
+            });
+    }
 }

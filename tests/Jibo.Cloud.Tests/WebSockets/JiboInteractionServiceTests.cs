@@ -6659,4 +6659,110 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal(minutes, decision.SkillPayload["minutes"]);
         Assert.Equal(seconds, decision.SkillPayload["seconds"]);
     }
+
+    // Real prod mishearings and phrasings, each followed in the log by the person saying the command again.
+    [Theory]
+    [InlineData("twark", "twerk")]
+    [InlineData("to work", "twerk")]
+    [InlineData("can you to work", "twerk")]
+    [InlineData("can you turk", "twerk")]
+    [InlineData("let's check", "agent_mode")]
+    [InlineData("that's yet", "agent_mode")]
+    [InlineData("let's ye", "agent_mode")]
+    [InlineData("now let's chuck", "agent_mode")]
+    [InlineData("open agent mode", "agent_mode")]
+    [InlineData("turn on agent mode", "agent_mode")]
+    [InlineData("enable agent mode", "agent_mode")]
+    [InlineData("agent mood", "agent_mode")]
+    [InlineData("agent mo", "agent_mode")]
+    [InlineData("aji and mode", "agent_mode")]
+    [InlineData("place no halation", "music_play")]
+    [InlineData("place that fire to the rain", "music_play")]
+    [InlineData("blay sky fought by a de", "music_play")]
+    [InlineData("pleadel sky fall", "music_play")]
+    [InlineData("lay a song", "play")]
+    [InlineData("the time is it", "time")]
+    [InlineData("but time is it", "time")]
+    [InlineData("where time is it", "time")]
+    [InlineData("why is the time", "time")]
+    [InlineData("make a peter", "pizza")]
+    [InlineData("eat a peter", "pizza")]
+    [InlineData("b a snow globe", "requestShowImage")]
+    [InlineData("be a snow gulb", "requestShowImage")]
+    [InlineData("flipper coin", "requestFlipCoin")]
+    [InlineData("answer tales", "requestFlipCoin")]
+    [InlineData("talk to goog", "requestTellGoogle")]
+    [InlineData("talk to googall assist", "requestTellGoogle")]
+    [InlineData("yes we'll talk to alexe", "requestTellAlexa")]
+    [InlineData("happy hollowayne", "seasonal_holiday_greeting")]
+    [InlineData("happy hollo wean", "seasonal_holiday_greeting")]
+    [InlineData("go to sle", "sleep")]
+    [InlineData("personal rep", "personal_report_opt_in")]
+    [InlineData("what's on my calend", "calendar")]
+    [InlineData("whether", "weather")]
+    [InlineData("is it gonna rain today", "weather")]
+    [InlineData("is it gonna rain tonight", "weather")]
+    [InlineData("open pomodoro", "open_skill")]
+    [InlineData("open the metronome", "open_skill")]
+    [InlineData("run the hidden skills skill", "open_skill")]
+    [InlineData("open jebo tube", "open_skill")]
+    [InlineData("open jukebox", "open_skill")]
+    [InlineData("open themes", "open_skill")]
+    [InlineData("open the store", "open_skill")]
+    [InlineData("show me your skills", "launchMainMenu")]
+    [InlineData("what's your software version", "software_version")]
+    [InlineData("was your software version", "software_version")]
+    [InlineData("do i have anything scheduled on tuesday", "calendar")]
+    public async Task BuildDecisionAsync_ProdMishearingsReachTheirCommand(string heard, string intent)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = heard, NormalizedTranscript = heard });
+
+        Assert.Equal(intent, decision.IntentName);
+    }
+
+    [Theory]
+    [InlineData("let's check the weather", "agent_mode")]
+    [InlineData("work is hard today", "twerk")]
+    [InlineData("can you work", "twerk")]
+    [InlineData("lay down", "play")]
+    [InlineData("open the door", "open_skill")]
+    [InlineData("the time machine", "time")]
+    [InlineData("stop agent mode", "agent_mode")]
+    public async Task BuildDecisionAsync_LookAlikesAreNotRepaired(string heard, string notIntent)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = heard, NormalizedTranscript = heard });
+
+        Assert.NotEqual(notIntent, decision.IntentName);
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_OpenStoreSkill_LaunchesItOnTheRobotLikeTheMenu()
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = "open the pomodoro skill", NormalizedTranscript = "open the pomodoro skill" });
+
+        Assert.Equal("@be/pomodoro", decision.SkillName);
+        Assert.Equal(true, decision.SkillPayload!["nativeLaunch"]);
+        Assert.Equal("menu", decision.SkillPayload["localIntent"]);
+        var themes = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = "open themes", NormalizedTranscript = "open themes" });
+        Assert.Contains("beacon", themes.ReplyText);
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_CalendarForADay_AsksTheProviderForThatDayAndSaysIt()
+    {
+        var provider = new Mock<ICalendarReportProvider>();
+        string? askedDay = null;
+        provider.Setup(p => p.GetReportAsync(It.IsAny<TurnContext>(), It.IsAny<CancellationToken>()))
+            .Callback<TurnContext, CancellationToken>((turn, _) => askedDay = turn.Attributes.TryGetValue("calendarDay", out var day) ? day as string : null)
+            .ReturnsAsync(new CalendarReportSnapshot([], [], []));
+        var service = CreateService(calendarReportProvider: provider.Object);
+
+        var decision = await service.BuildDecisionAsync(new TurnContext { RawTranscript = "do i have anything scheduled on tuesday", NormalizedTranscript = "do i have anything scheduled on tuesday" });
+
+        Assert.Equal("tuesday", askedDay);
+        Assert.Equal("I don't see anything on your calendar on Tuesday.", decision.ReplyText);
+        var tomorrow = await service.BuildDecisionAsync(new TurnContext { RawTranscript = "what's on my calendar tomorrow", NormalizedTranscript = "what's on my calendar tomorrow" });
+        Assert.Equal("tomorrow", askedDay);
+        Assert.Equal("I don't see anything on your calendar tomorrow.", tomorrow.ReplyText);
+    }
 }
