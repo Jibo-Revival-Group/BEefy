@@ -6626,4 +6626,37 @@ public sealed class JiboInteractionServiceTests
             return Task.FromResult(result);
         }
     }
+
+    [Theory]
+    [InlineData("set an alarm for 7 a.m.", "7:00", "am")]
+    [InlineData("set an alarm for 7 am", "7:00", "am")]
+    [InlineData("set an alarm for 6 pm", "6:00", "pm")]
+    [InlineData("set an alarm for seven a m", "7:00", "am")]
+    [InlineData("set an alarm for seven thirty pm", "7:30", "pm")]
+    [InlineData("set an alarm for 7:30 am", "7:30", "am")]
+    public async Task BuildDecisionAsync_AlarmWithAmPm_KeepsTheMinute(string transcript, string time, string ampm)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
+
+        Assert.Equal("alarm_value", decision.IntentName);
+        Assert.Equal(time, decision.SkillPayload!["time"]);
+        Assert.Equal(ampm, decision.SkillPayload["ampm"]);
+    }
+
+    [Theory]
+    [InlineData("set a timer for half an hour", "0", "30", "null")]
+    [InlineData("set a timer for an hour and a half", "1", "30", "null")]
+    [InlineData("set a timer for one and a half hours", "1", "30", "null")]
+    [InlineData("set a timer for two and a half minutes", "0", "2", "30")]
+    [InlineData("set a timer for half a minute", "0", "0", "30")]
+    [InlineData("set a timer for five minutes", "0", "5", "null")]
+    public async Task BuildDecisionAsync_TimerWithHalves(string transcript, string hours, string minutes, string seconds)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
+
+        Assert.Equal("timer_value", decision.IntentName);
+        Assert.Equal(hours, decision.SkillPayload!["hours"]);
+        Assert.Equal(minutes, decision.SkillPayload["minutes"]);
+        Assert.Equal(seconds, decision.SkillPayload["seconds"]);
+    }
 }

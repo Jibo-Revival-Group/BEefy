@@ -1287,6 +1287,7 @@ public sealed partial class JiboInteractionService
     {
         if (!allowImplicit && !loweredTranscript.Contains("timer", StringComparison.Ordinal)) return null;
 
+        loweredTranscript = SpellOutHalves(loweredTranscript);
         var hours = ExtractDurationValue(loweredTranscript, "hour");
         var minutes = ExtractDurationValue(loweredTranscript, "minute");
         var seconds = ExtractDurationValue(loweredTranscript, "second");
@@ -1662,6 +1663,16 @@ public sealed partial class JiboInteractionService
             rule.Contains("clock/", StringComparison.OrdinalIgnoreCase) &&
             rule.Contains("alarm", StringComparison.OrdinalIgnoreCase) &&
             rule.Contains("value", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>"half an hour", "an hour and a half", "two and a half minutes" as whole units the extractor reads.</summary>
+    private static string SpellOutHalves(string text)
+    {
+        text = Regex.Replace(text, @"\b(\w+) (hour|minute)s? and a half\b", "$1 and a half $2s");
+        text = Regex.Replace(text, @"\b(\w+) and a half (hour|minute)s?\b",
+            match => $"{match.Groups[1].Value} {match.Groups[2].Value}s 30 {(match.Groups[2].Value == "hour" ? "minutes" : "seconds")}");
+        text = Regex.Replace(text, @"\bhalf (?:an? )?hour\b", "30 minutes");
+        return Regex.Replace(text, @"\bhalf (?:a )?minute\b", "30 seconds");
     }
 
     private static int? ExtractDurationValue(string loweredTranscript, string unitStem)

@@ -45,7 +45,7 @@ public sealed partial class JiboInteractionService(
     private const int MaxPreferredNewsCategories = 2;
 
     private static readonly Regex SplitAlarmPattern = new(
-        @"\b(?<hour>\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:[:\s,-]+(?<minute>\d{2}|[a-z\-]+(?:\s+[a-z\-]+)?))?\s*(?<ampm>a[\s\.]*m\.?|p[\s\.]*m\.?)?\b",
+        @"\b(?<hour>\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:[:\s,-]+(?<minute>\d{2}|(?![ap][\s\.]*m\b)[a-z\-]+(?:\s+(?![ap][\s\.]*m\b)[a-z\-]+)?))?\s*(?<ampm>a[\s\.]*m\.?|p[\s\.]*m\.?)?\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex CompactAlarmPattern = new(
