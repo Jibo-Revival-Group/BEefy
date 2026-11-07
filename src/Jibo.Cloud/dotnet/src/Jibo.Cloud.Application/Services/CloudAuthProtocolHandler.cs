@@ -407,14 +407,10 @@ public sealed class CloudAuthProtocolHandler(
         if (string.IsNullOrWhiteSpace(accessKeyId))
             return true;
 
+        // 5x1 has no account system: a key that isn't a household user's (e.g. the random "local-" key BEnch
+        // writes when credentials.json is lost) is the owner, like a request with no key.
         user = stateStore.FindUserByAccessKeyId(accessKeyId);
-        if (user is not null)
-            return true;
-        if (accessKeyId.Equals(owner.AccessKeyId, StringComparison.Ordinal))
-            return true;
-
-        denied = ProtocolDispatchResult.Raw(401, "{\"message\":\"Invalid access key\"}", "application/json");
-        return false;
+        return true;
     }
 
     private static ProtocolDispatchResult UnsupportedAccountOperation() =>

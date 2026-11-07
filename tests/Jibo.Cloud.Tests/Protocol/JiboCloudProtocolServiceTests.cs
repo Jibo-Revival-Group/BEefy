@@ -556,6 +556,32 @@ public sealed class JiboCloudProtocolServiceTests
         Assert.Equal(createdId, loginPayload.RootElement.GetProperty("id").GetString());
     }
 
+    // A robot whose credentials.json was lost signs with the random key BEnch made for it ("local-..."); 5x1 has no
+    // account system, so any key is the household owner (prod: Account.Get 401 "Invalid access key" every minute).
+    [Theory]
+    [InlineData("local-5f0c1d2e3a4b5c6d7e8f9a0b1c2d3e4f")]
+    [InlineData("some-other-robot-key")]
+    public async Task AccountGet_AnyAccessKey_IsTheOwner(string accessKeyId)
+    {
+        var get = await _service.DispatchAsync(new ProtocolEnvelope
+        {
+            HostName = "api.5x1.com",
+            Method = "POST",
+            ServicePrefix = "Account_20151111",
+            Operation = "Get",
+            Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Authorization"] = "AWS4-HMAC-SHA256 Credential=" + accessKeyId +
+                                    "/20261107/api/account/aws4_request, SignedHeaders=host;x-amz-date, Signature=abc"
+            },
+            BodyText = "{}"
+        });
+
+        Assert.Equal(200, get.StatusCode);
+        using var payload = JsonDocument.Parse(get.BodyText);
+        Assert.Equal("usr_openjibo_owner", payload.RootElement[0].GetProperty("id").GetString());
+    }
+
     [Fact]
     public async Task GetRobot_UsesConfiguredRobotId_WhenPresent()
     {
@@ -3856,7 +3882,7 @@ public sealed class JiboCloudProtocolServiceTests
     }
 
     [Fact]
-    public void ResetKeys_StopsThePreviousAccessKeyFromAuthenticating()
+    public void ResetKeys_ThePreviousAccessKeyNoLongerActsAsThatUser()
     {
         var store = new InMemoryCloudStateStore();
         var handler = new CloudAuthProtocolHandler(store);
@@ -3872,14 +3898,16 @@ public sealed class JiboCloudProtocolServiceTests
         var newAccessKeyId = rotatedPayload.RootElement.GetProperty("accessKeyId").GetString()!;
         Assert.NotEqual(accessKeyId, newAccessKeyId);
 
-        var denied = handler.HandleAccount("Update", AccountEnvelope(accessKeyId,
+        // 5x1 accepts any key as the owner, so the old key still answers, but no longer as Grace.
+        var oldKey = handler.HandleAccount("Update", AccountEnvelope(accessKeyId,
             """{"firstName":"Old"}"""));
-        var allowed = handler.HandleAccount("Update", AccountEnvelope(newAccessKeyId,
-            """{"firstName":"Grace"}"""));
-        Assert.Equal(401, denied.StatusCode);
+        using var oldKeyPayload = JsonDocument.Parse(oldKey.BodyText);
+        Assert.NotEqual(createdPayload.RootElement.GetProperty("id").GetString(),
+            oldKeyPayload.RootElement.GetProperty("id").GetString());
+        var allowed = handler.HandleAccount("Get", AccountEnvelope(newAccessKeyId, "{}"));
         Assert.Equal(200, allowed.StatusCode);
         using var allowedPayload = JsonDocument.Parse(allowed.BodyText);
-        Assert.Equal("Grace", allowedPayload.RootElement.GetProperty("firstName").GetString());
+        Assert.Equal("Grace", allowedPayload.RootElement[0].GetProperty("firstName").GetString());
     }
 
     [Fact]
