@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Runtime.Abstractions;
 
@@ -5,6 +6,11 @@ namespace Jibo.Cloud.Application.Services;
 
 public sealed partial class JiboInteractionService
 {
+    // A team question needs a game word; "play ..." stays music ("play kings of leon").
+    private static readonly Regex SportsQuestion = new(
+        @"^(?!(?:please )?(?:play|put on|shuffle|open|launch|start)\b).*\b(?:play|plays|playing|played|game|games|score|scores|win|wins|won|winning|lose|lost|losing|beat|beating|how (?:did|are|is) .+ do(?:ing)?)\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     public async Task<JiboInteractionDecision> BuildDecisionCoreAsync(TurnContext turn,
         CancellationToken cancellationToken = default)
     {
@@ -33,6 +39,9 @@ public sealed partial class JiboInteractionService
         var transcript = (turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty).Trim();
         var lowered = transcript.ToLowerInvariant();
         var referenceLocalTime = TryResolveReferenceLocalTime(turn);
+        if (sportsScoreProvider is not null && !SkillListenOwnership.IsSkillOwnedListen(turn) && SportsQuestion.IsMatch(lowered) &&
+            await sportsScoreProvider.AnswerAsync(lowered, referenceLocalTime ?? DateTimeOffset.Now, cancellationToken) is { } sportsAnswer)
+            return new JiboInteractionDecision("sports_score", sportsAnswer);
         var messageType = turn.Attributes.TryGetValue("messageType", out var rawMessageType)
             ? rawMessageType?.ToString()
             : null;

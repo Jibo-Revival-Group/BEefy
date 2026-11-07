@@ -7,6 +7,7 @@ using Jibo.Cloud.Infrastructure.Conversions;
 using Jibo.Cloud.Infrastructure.Content;
 using Jibo.Cloud.Infrastructure.Dictionary;
 using Jibo.Cloud.Infrastructure.FunFacts;
+using Jibo.Cloud.Infrastructure.Sports;
 using Jibo.Cloud.Infrastructure.Holidays;
 using Jibo.Cloud.Infrastructure.Media;
 using Jibo.Cloud.Infrastructure.News;
@@ -132,6 +133,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IWeatherReportProvider, OpenWeatherReportProvider>();
         services.AddHttpClient<INewsBriefingProvider, NewsApiBriefingProvider>();
         services.AddHttpClient<IFunFactProvider, UselessFactsFunFactProvider>();
+        services.AddHttpClient<ISportsScoreProvider, EspnSportsScoreProvider>();
         services.AddHttpClient<IWordDefinitionProvider, FreeDictionaryApiDefinitionProvider>();
         services.AddHttpClient<IWikipediaSummaryProvider, WikipediaSummaryProvider>();
         services.AddHttpClient<WolframAlphaSearchProvider>();

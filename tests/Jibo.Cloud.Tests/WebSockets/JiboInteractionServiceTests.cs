@@ -6513,6 +6513,50 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("expunge", decision.SkillPayload!["guess"]);
     }
 
+    private sealed class RecordingSportsProvider : ISportsScoreProvider
+    {
+        public List<string> Asked { get; } = [];
+
+        public Task<string?> AnswerAsync(string transcript, DateTimeOffset localNow, CancellationToken cancellationToken = default)
+        {
+            Asked.Add(transcript);
+            return Task.FromResult<string?>(transcript.Contains("sox") || transcript.Contains("penguins") ? "Sports answer." : null);
+        }
+    }
+
+    [Theory]
+    [InlineData("are the red sox's playing tonight", true)]
+    [InlineData("did the penguins win", true)]
+    [InlineData("how did the penguins do", true)]
+    [InlineData("play kings of leon", false)]
+    [InlineData("play the red sox song", false)]
+    [InlineData("what do penguins eat", false)]
+    public async Task BuildDecisionAsync_SportsQuestion_AsksTheSportsProvider(string transcript, bool asked)
+    {
+        var sports = new RecordingSportsProvider();
+        var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), sportsScoreProvider: sports);
+
+        var decision = await service.BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
+
+        Assert.Equal(asked, sports.Asked.Count == 1);
+        if (asked) Assert.Equal(("sports_score", "Sports answer."), (decision.IntentName, decision.ReplyText));
+        else Assert.NotEqual("sports_score", decision.IntentName);
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_GameWordWithoutATeam_FallsThroughToNormalRouting()
+    {
+        var sports = new RecordingSportsProvider();
+        var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), sportsScoreProvider: sports);
+
+        var decision = await service.BuildDecisionAsync(new TurnContext { RawTranscript = "can we play a game", NormalizedTranscript = "can we play a game" });
+
+        Assert.Single(sports.Asked);
+        Assert.NotEqual("sports_score", decision.IntentName);
+    }
+
     private static JiboInteractionService CreateService(
         IPersonalMemoryStore? personalMemoryStore = null,
         ICloudStateStore? cloudStateStore = null,
