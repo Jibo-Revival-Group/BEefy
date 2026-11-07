@@ -99,34 +99,29 @@ public static class IcalCalendarParser
         if (!TryParseRrule(rruleRaw, out var freq, out var interval, out var until, out var count, out var byDays))
             yield break;
 
+        // Daily and weekly rules walk one day at a time from DTSTART (COUNT counts from there), so every BYDAY
+        // day is seen and old series still reach today; weeks count from DTSTART's Monday (RFC 5545's WKST).
         var emitted = 0;
-        var cursor = startLocal;
         var hardStop = windowEnd.AddDays(1);
-        var maxIterations = 366;
-        for (var i = 0; i < maxIterations; i++)
+        var step = Math.Max(1, interval);
+        var weekStart = startLocal.Date.AddDays(-(((int)startLocal.DayOfWeek + 6) % 7));
+        for (var cursor = startLocal; cursor <= hardStop; cursor = freq == "MONTHLY" ? cursor.AddMonths(step) : cursor.AddDays(1))
         {
             if (until is not null && cursor > until.Value) break;
             if (count is not null && emitted >= count.Value) break;
-            if (cursor > hardStop) break;
 
-            var include = byDays.Count == 0 || byDays.Contains(cursor.DayOfWeek);
-            if (include && cursor >= windowStart && cursor <= windowEnd)
+            var include = freq switch
             {
-                yield return cursor;
-                emitted++;
-            }
-            else if (include)
-            {
-                emitted++;
-            }
-
-            cursor = freq switch
-            {
-                "DAILY" => cursor.AddDays(Math.Max(1, interval)),
-                "WEEKLY" => cursor.AddDays(7 * Math.Max(1, interval)),
-                "MONTHLY" => cursor.AddMonths(Math.Max(1, interval)),
-                _ => cursor.AddDays(Math.Max(1, interval))
+                "DAILY" => (cursor.Date - startLocal.Date).Days % step == 0 &&
+                           (byDays.Count == 0 || byDays.Contains(cursor.DayOfWeek)),
+                "WEEKLY" => (cursor.Date - weekStart).Days / 7 % step == 0 &&
+                            (byDays.Count == 0 ? cursor.DayOfWeek == startLocal.DayOfWeek : byDays.Contains(cursor.DayOfWeek)),
+                _ => byDays.Count == 0 || byDays.Contains(cursor.DayOfWeek)
             };
+            if (!include) continue;
+
+            emitted++;
+            if (cursor >= windowStart && cursor <= windowEnd) yield return cursor;
         }
     }
 
