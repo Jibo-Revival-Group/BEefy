@@ -188,6 +188,55 @@ public sealed class IcalCalendarReportProviderTests
         }
     }
 
+    [Fact]
+    public async Task GetReportAsync_OnlyReadsTheCallingRobotsFeedForTheSpeakingLoopMember()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"openjibo-ical-provider-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new InMemoryUserIntegrationStore(new EncryptedUserDataSnapshotStore(path, new UserDataEncryptionService()));
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.Local).DateTime);
+            string Ics(string summary) => $"BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART;VALUE=DATE:{today:yyyyMMdd}\nSUMMARY:{summary}\nEND:VEVENT\nEND:VCALENDAR\n";
+            var robot = MemberCalendarFeedRecord.RobotScope("Auburn-Motor-Salad-Angora");
+            store.UpsertMemberCalendarFeed(robot, "m-zane", "https://cal.example/zane.ics", memberName: "Zane Vincent");
+            store.UpsertMemberCalendarFeed(robot, "m-zoe", "https://cal.example/zoe.ics", memberName: "Zoe");
+            // A feed saved in the account loop (self-hosted tools) under a person named Zane Vincent.
+            var cloud = new InMemoryCloudStateStore();
+            var loopId = cloud.GetLoops().First().LoopId;
+            cloud.SyncPeopleFromLoopUsers(loopId, "robot-x", [new LoopUserSnapshot("looper-zane", "Zane", "Vincent", Type: "member")]);
+            store.UpsertMemberCalendarFeed(loopId, "looper-zane", "https://cal.example/account.ics");
+            var provider = new IcalCalendarReportProvider(store, cloud, new StubIcalFeedFetcher(new Dictionary<string, string>
+            {
+                ["https://cal.example/zane.ics"] = Ics("Zane dentist"),
+                ["https://cal.example/zoe.ics"] = Ics("Zoe recital"),
+                ["https://cal.example/account.ics"] = Ics("Account calendar")
+            }), new CloudStateCalendarReportProvider(cloud), NullLogger<IcalCalendarReportProvider>.Instance);
+            TurnContext Turn(string device, string? name, string? speaker) => new()
+            {
+                DeviceId = device,
+                Attributes = new Dictionary<string, object?>
+                {
+                    ["personalReportUserName"] = name,
+                    ["context"] = speaker is null ? null : "{\"runtime\":{\"perception\":{\"speaker\":\"" + speaker + "\",\"peoplePresent\":[]}}}"
+                }
+            };
+
+            // Someone on another robot calling themselves Zane Vincent gets nothing of Zane's.
+            Assert.Empty((await provider.GetReportAsync(Turn("Other-Robot", "Zane Vincent", null)))!.EventSummaries);
+            Assert.Empty((await provider.GetReportAsync(Turn("Other-Robot", "Zane", "looper-zane")))!.EventSummaries);
+            // On Zane's robot the voice-identified loop member decides, whatever name is in the turn.
+            Assert.Equal(["Zane dentist"], (await provider.GetReportAsync(Turn("Auburn-Motor-Salad-Angora", null, "m-zane")))!.EventSummaries);
+            Assert.Equal(["Zoe recital"], (await provider.GetReportAsync(Turn("Auburn-Motor-Salad-Angora", "Zane", "m-zoe")))!.EventSummaries);
+            Assert.Empty((await provider.GetReportAsync(Turn("Auburn-Motor-Salad-Angora", "Zane", "m-guest")))!.EventSummaries);
+            // Not voice-identified: the name said on this robot still works.
+            Assert.Equal(["Zane dentist"], (await provider.GetReportAsync(Turn("Auburn-Motor-Salad-Angora", "Zane", null)))!.EventSummaries);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     private sealed class StubIcalFeedFetcher(IReadOnlyDictionary<string, string> bodies) : IIcalFeedFetcher
     {
         public Task<IcalFeedFetchResult> FetchAsync(string icalUrl, CancellationToken cancellationToken = default)

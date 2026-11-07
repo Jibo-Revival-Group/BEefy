@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
@@ -25,9 +26,12 @@ public sealed class IcalCalendarReportProvider(
         TurnContext turn,
         CancellationToken cancellationToken = default)
     {
-        var feed = FindRobotFeed(turn);
+        var robot = (string.IsNullOrWhiteSpace(turn.DeviceId) ? null : turn.DeviceId.Trim()) ??
+                    ReadAttribute(turn, "deviceId") ?? ReadAttribute(turn, "robotId");
+        var feed = robot is null ? null : FindRobotFeed(turn, robot);
         var loopId = feed?.LoopId ?? ResolveLoopId(turn);
-        if (feed is null)
+        // A robot only reads its own feeds; the account loop's (matched by name) are for robot-less self-hosted tools.
+        if (feed is null && robot is null)
         {
             var memberId = ResolveMemberId(turn, loopId);
             if (string.IsNullOrWhiteSpace(memberId))
@@ -97,15 +101,16 @@ public sealed class IcalCalendarReportProvider(
     /// name BEacon saved with it). Without a name, a robot with just one calendar uses it; a name that
     /// matches no saved calendar never reads someone else's.
     /// </summary>
-    private MemberCalendarFeedRecord? FindRobotFeed(TurnContext turn)
+    private MemberCalendarFeedRecord? FindRobotFeed(TurnContext turn, string robot)
     {
-        var robot = (string.IsNullOrWhiteSpace(turn.DeviceId) ? null : turn.DeviceId.Trim()) ??
-                    ReadAttribute(turn, "deviceId") ?? ReadAttribute(turn, "robotId");
-        if (robot is null) return null;
         var feeds = integrationStore.GetMemberCalendarFeeds(MemberCalendarFeedRecord.RobotScope(robot))
             .Where(static feed => feed.IsEnabled && !string.IsNullOrWhiteSpace(feed.IcalUrl))
             .ToArray();
         if (feeds.Length == 0) return null;
+
+        // Voice ID names the loop member speaking: only that member's own calendar, never a name match.
+        if (ReadSpeakerId(turn) is { } speaker)
+            return feeds.FirstOrDefault(feed => string.Equals(feed.MemberId, speaker, StringComparison.OrdinalIgnoreCase));
 
         var name = ReadAttribute(turn, "personalReportUserName") ?? ReadAttribute(turn, "userName");
         if (name is null) return feeds.Length == 1 ? feeds[0] : null;
@@ -114,6 +119,33 @@ public sealed class IcalCalendarReportProvider(
         return feeds.FirstOrDefault(feed => feed.MemberName is { } saved &&
                    (NormalizeName(saved) == spoken || NormalizeName(saved).Split(' ')[0] == spoken.Split(' ')[0])) ??
                (feeds.Length == 1 && feeds[0].MemberName is null ? feeds[0] : null);
+    }
+
+    /// <summary>The loop member id in CONTEXT's runtime.perception.speaker (a string or an object with an id).</summary>
+    private static string? ReadSpeakerId(TurnContext turn)
+    {
+        if (!turn.Attributes.TryGetValue("context", out var raw) || raw is null) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(raw is JsonElement element ? element.GetRawText() : raw.ToString() ?? "{}");
+            if (!document.RootElement.TryGetProperty("runtime", out var runtime) || runtime.ValueKind != JsonValueKind.Object ||
+                !runtime.TryGetProperty("perception", out var perception) || perception.ValueKind != JsonValueKind.Object ||
+                !perception.TryGetProperty("speaker", out var speaker))
+                return null;
+            var id = speaker.ValueKind switch
+            {
+                JsonValueKind.String => speaker.GetString(),
+                JsonValueKind.Object => new[] { "id", "looperID", "looperId" }
+                    .Select(key => speaker.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null)
+                    .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)),
+                _ => null
+            };
+            return string.IsNullOrWhiteSpace(id) ? null : id.Trim();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static TimeZoneInfo ZoneFor(MemberCalendarFeedRecord feed)
