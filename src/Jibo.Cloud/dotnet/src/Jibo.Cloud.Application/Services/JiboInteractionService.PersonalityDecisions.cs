@@ -196,13 +196,35 @@ public sealed partial class JiboInteractionService
             referenceLocalTime);
         const string route = "ReactiveGreeting";
         RecordGreetingPresence(turn, presence, route, greetingIntent, displayName, false);
-        return new JiboInteractionDecision(
+        var decision = new JiboInteractionDecision(
             greetingIntent,
             selection.ReplyText,
             SkillPayload: LegacyMimDecisionMetadata.BuildSkillPayload(selection, "ReactiveGreeting"),
             ContextUpdates: LegacyMimDecisionMetadata.ApplyEmotion(
                 BuildGreetingContextUpdates(route, presence.PrimaryPersonId, false),
                 selection.Emotion));
+        return greetingIntent == "good_night" ? decision : WithBirthdayLine(turn, decision, referenceLocalTime);
+    }
+
+    /// <summary>
+    /// Like the stock greetings skill (ShouldDoBirthday → HappyBirthdayToYou): after a hello, the birthday line
+    /// when it's the greeted person's birthday.
+    /// </summary>
+    internal JiboInteractionDecision WithBirthdayLine(TurnContext turn, JiboInteractionDecision decision,
+        DateTimeOffset? referenceLocalTime)
+    {
+        var presence = ResolveGreetingPresenceProfile(turn);
+        var displayName = ResolvePreferredGreetingName(turn, presence);
+        if (TryClaimBirthdayLine(turn, presence, displayName, referenceLocalTime) is not { } birthdayLine) return decision;
+
+        var payload = new Dictionary<string, object?>(decision.SkillPayload ?? new Dictionary<string, object?>(),
+            StringComparer.OrdinalIgnoreCase);
+        var hello = payload.TryGetValue("esml", out var esml) && esml is string existing
+            ? existing.Replace("<speak>", string.Empty, StringComparison.Ordinal).Replace("</speak>", string.Empty, StringComparison.Ordinal)
+            : "<es cat='happy' filter='!ssa-only, !sfx-only' endNeutral='true'>" +
+              LegacyMimPromptNormalizer.ToEsmlBody(decision.ReplyText) + "</es>";
+        payload["esml"] = "<speak>" + hello + " " + birthdayLine + "</speak>";
+        return decision with { ReplyText = $"{decision.ReplyText} Happy birthday {displayName}!", SkillPayload = payload };
     }
 
     private JiboInteractionDecision BuildWhatsUpDecision(
@@ -255,6 +277,15 @@ public sealed partial class JiboInteractionService
         DateTimeOffset? referenceLocalTime)
     {
         var displayName = ResolvePreferredGreetingName(turn, presence);
+        if (TryClaimBirthdayLine(turn, presence, displayName, referenceLocalTime) is { } birthdayLine)
+        {
+            RecordGreetingPresence(turn, presence, "ProactiveBirthdayGreeting", "proactive_birthday_greeting", displayName, true);
+            return new JiboInteractionDecision(
+                "proactive_birthday_greeting",
+                $"Happy birthday {displayName}!",
+                SkillPayload: new Dictionary<string, object?> { ["mim_id"] = "HappyBirthdayToYou", ["esml"] = "<speak>" + birthdayLine + "</speak>" },
+                ContextUpdates: BuildGreetingContextUpdates("ProactiveBirthdayGreeting", presence.PrimaryPersonId, true));
+        }
         var specialGreeting = ResolveSpecialGreetingPrefix(turn, presence, referenceLocalTime);
         var route = specialGreeting?.Route ?? "ProactiveGreeting";
         var intentName = specialGreeting?.IntentName ?? "proactive_greeting";
@@ -521,6 +552,45 @@ public sealed partial class JiboInteractionService
 
         return isMorning ? "Good morning" : ResolveTimeOfDayGreetingPrefix(referenceLocalTime);
     }
+
+    // Person (robot|loop member) → the day Jibo last wished them happy birthday, so it happens once a day
+    // like the stock skill's 24 h check. Lost on restart: at worst one more wish that day.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateOnly> _birthdayWished =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The stock HappyBirthdayToYou line when the person Jibo is greeting has their birthday today (loop
+    /// birthday from BEacon People, compared in UTC as the stock skill does), once per person per day.
+    /// </summary>
+    private string? TryClaimBirthdayLine(TurnContext turn, GreetingPresenceProfile presence, string? displayName,
+        DateTimeOffset? referenceLocalTime)
+    {
+        var id = presence.PrimaryPersonId;
+        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(displayName) || presence.PeoplePresentIds.Count > 1 ||
+            presence.LoopUserBirthdays is null || !presence.LoopUserBirthdays.TryGetValue(id, out var birthdayMs))
+            return null;
+
+        var birthday = DateTimeOffset.FromUnixTimeMilliseconds(birthdayMs).UtcDateTime;
+        var today = DateOnly.FromDateTime((referenceLocalTime ?? DateTimeOffset.UtcNow).DateTime);
+        if (birthday.Month != today.Month || birthday.Day != today.Day) return null;
+
+        var key = (turn.DeviceId ?? ReadTenantAttribute(turn, "loopId") ?? string.Empty) + "|" + id;
+        if (_birthdayWished.TryGetValue(key, out var wished) && wished == today) return null;
+        _birthdayWished[key] = today;
+        var prompt = randomizer.Choose(HappyBirthdayToYouPrompts);
+        return prompt.Replace("${loopMember}", System.Net.WebUtility.HtmlEncode(displayName), StringComparison.Ordinal);
+    }
+
+    // The stock greetings skill's HappyBirthdayToYou.mim prompts, as written.
+    private static readonly string[] HappyBirthdayToYouPrompts =
+    [
+        "<anim name='Excited_01' nonBlocking='true' /><anim name='Emoji_Cake' nonBlocking='true' /><style set='enthusiastic'>Happy birthday ${loopMember}!</style>",
+        "<style set='enthusiastic'>It's your <pitch mult='1.2'>birthday</pitch>.</style> <anim name='Happy_03' nonBlocking='true'/> Happy happy happy happy happy happy happy happy happy happy happy happy birthday. <break size='0.1'/><anim name='Curious_01'><break size='0.2'/> I bet you thought I was stuck.</anim>",
+        "It's your <pitch mult='1.2'>big</pitch> day ${loopMember}. <anim cat='emoji' filter='birthday' nonBlocking='true' /><style set='enthusiastic'><pitch mult='1.1'>Happy</pitch> birthday!</style>",
+        "<anim name='Happy_05' nonBlocking='true' /><style set='enthusiastic'>It's your birthday!</style> <anim name='Greetings_01' nonBlocking='true'/> <pitch mult='1.2'>Happy</pitch> birthday ${loopMember}! <ssa cat='happy'/>",
+        "<anim name='Surprised_02' nonBlocking='true' /><style set='enthusiastic'>You were born</style> today ${loopMember}! <anim name='Emoji_PartyBlue' nonBlocking='true' /> <pitch mult='1.2'>Happy</pitch> happy birthday!",
+        "<pitch mult='1.2'>${loopMember}.</pitch> <break size='0.5'/> <anim cat='emoji' filter='cake, !hf' layers='!audio'><duration stretch='1.4'><pitch mult='0.9'>Happy</pitch> <pitch mult='1.2'>birth</pitch><pitch mult='1.1'>day </pitch></duration><duration stretch='1.6'> <pitch mult='2.0'>to </pitch> </duration><duration stretch='2.0'><pitch mult='1.1'><pitch band='0.5'>you.</pitch></pitch></duration><duration stretch='1.4'><break size='0.3'/> Happy <pitch mult='1.1'>birthday</pitch> <pitch mult='1.5'>to</pitch> <pitch mult='1.3'>you.</pitch><break size='0.3'/> Happy <pitch mult='1.6'>birthday </pitch> <pitch mult='1.3'>dear</pitch> <pitch mult='1.1'>${loopMember}.</pitch> <pitch mult='1.2'>Happy</pitch> <pitch mult='1.1'>birthday</pitch> <pitch mult='1.2'>to </pitch></duration><duration stretch='2.0'><pitch mult='1.1'><pitch band='0.5'>you</pitch></pitch>.</duration></anim>"
+    ];
 
     private SpecialGreetingPrefix? ResolveSpecialGreetingPrefix(
         TurnContext turn,

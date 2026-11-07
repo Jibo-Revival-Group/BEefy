@@ -615,6 +615,7 @@ public sealed partial class JiboInteractionService
                 return GreetingPresenceProfile.Empty;
 
             var loopUsers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var loopBirthdays = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             if (runtime.TryGetProperty("loop", out var loop) &&
                 loop.ValueKind == JsonValueKind.Object &&
                 loop.TryGetProperty("users", out var users) &&
@@ -625,6 +626,11 @@ public sealed partial class JiboInteractionService
                     var firstName = TryReadStringProperty(user, "firstName");
                     if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(firstName))
                         loopUsers[id] = firstName;
+                    // The robot sends loop data.birthday (set in BEacon People) as birthdate, epoch ms.
+                    if (!string.IsNullOrWhiteSpace(id) && user.TryGetProperty("birthdate", out var birthdate) &&
+                        birthdate.ValueKind == JsonValueKind.Number && birthdate.TryGetDouble(out var birthdateMs) &&
+                        double.IsFinite(birthdateMs) && Math.Abs(birthdateMs) < 8.64e15)
+                        loopBirthdays[id] = (long)birthdateMs;
                 }
 
             var speakerId = string.Empty;
@@ -672,7 +678,8 @@ public sealed partial class JiboInteractionService
                 primaryPersonId,
                 string.IsNullOrWhiteSpace(speakerId) ? null : speakerId,
                 peoplePresentIds,
-                loopUsers);
+                loopUsers,
+                loopBirthdays);
         }
         catch
         {
@@ -1821,7 +1828,8 @@ public sealed partial class JiboInteractionService
         string? PrimaryPersonId,
         string? SpeakerId,
         IReadOnlyList<string> PeoplePresentIds,
-        IReadOnlyDictionary<string, string> LoopUserFirstNames)
+        IReadOnlyDictionary<string, string> LoopUserFirstNames,
+        IReadOnlyDictionary<string, long>? LoopUserBirthdays = null)
     {
         public static GreetingPresenceProfile Empty { get; } = new(
             null,

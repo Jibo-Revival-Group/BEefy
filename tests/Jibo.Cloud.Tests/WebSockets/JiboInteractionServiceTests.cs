@@ -655,6 +655,66 @@ public sealed class JiboInteractionServiceTests
                         });
     }
 
+    // BEacon People saves the birthday as loop data.birthday (noon UTC); the robot sends it as birthdate.
+    private static TurnContext BirthdayTurn(string transcript, long birthdate, bool twoPeople = false) => new()
+    {
+        RawTranscript = transcript,
+        NormalizedTranscript = transcript,
+        DeviceId = "birthday-robot",
+        Attributes = new Dictionary<string, object?>
+        {
+            ["messageType"] = transcript.Length == 0 ? "TRIGGER" : "LISTEN",
+            ["triggerSource"] = "PRESENCE",
+            ["context"] = "{\"runtime\":{\"location\":{\"iso\":\"2026-05-21T15:00:00-05:00\"},\"perception\":{\"speaker\":\"person-1\",\"peoplePresent\":[{\"id\":\"person-1\"}" +
+                          (twoPeople ? ",{\"id\":\"person-2\"}" : "") +
+                          "]},\"loop\":{\"users\":[{\"id\":\"person-1\",\"firstName\":\"jake\",\"birthdate\":" + birthdate +
+                          "},{\"id\":\"person-2\",\"firstName\":\"sam\"}]}}}"
+        }
+    };
+
+    [Fact]
+    public async Task BuildDecisionAsync_OnTheirBirthday_JiboWishesThemHappyBirthdayOncePerDay()
+    {
+        var service = CreateService(cloudStateStore: new InMemoryCloudStateStore());
+
+        var first = await service.BuildDecisionAsync(BirthdayTurn(string.Empty, 643291200000));
+        Assert.Equal("proactive_birthday_greeting", first.IntentName);
+        Assert.Equal("Happy birthday Jake!", first.ReplyText);
+        var esml = Assert.IsType<string>(first.SkillPayload!["esml"]);
+        Assert.Contains("Jake", esml, StringComparison.Ordinal);
+        Assert.Contains("birth", esml, StringComparison.Ordinal);
+
+        var again = await service.BuildDecisionAsync(BirthdayTurn(string.Empty, 643291200000));
+        Assert.NotEqual("proactive_birthday_greeting", again.IntentName);
+        var hello = await service.BuildDecisionAsync(BirthdayTurn("hello", 643291200000));
+        Assert.DoesNotContain("birthday", hello.ReplyText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_HelloOnTheirBirthday_AddsTheBirthdayLine()
+    {
+        var decision = await CreateService(cloudStateStore: new InMemoryCloudStateStore())
+            .BuildDecisionAsync(BirthdayTurn("hello", 643291200000));
+
+        Assert.EndsWith("Happy birthday Jake!", decision.ReplyText, StringComparison.Ordinal);
+        Assert.Contains("Jake", Assert.IsType<string>(decision.SkillPayload!["esml"]), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(643377600000, false)]
+    [InlineData(643291200000, true)]
+    public async Task BuildDecisionAsync_NotTheirBirthdayOrNotAlone_NoBirthdayGreeting(long birthdate, bool twoPeople)
+    {
+        var service = CreateService(cloudStateStore: new InMemoryCloudStateStore());
+
+        var greeting = await service.BuildDecisionAsync(BirthdayTurn(string.Empty, birthdate, twoPeople));
+        var hello = await service.BuildDecisionAsync(BirthdayTurn("hello", birthdate, twoPeople));
+
+        Assert.Equal("proactive_greeting", greeting.IntentName);
+        Assert.DoesNotContain("birthday", greeting.ReplyText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("birthday", hello.ReplyText, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_TriggerWithMultiplePeople_DoesNotBorrowLoopFirstName()
     {

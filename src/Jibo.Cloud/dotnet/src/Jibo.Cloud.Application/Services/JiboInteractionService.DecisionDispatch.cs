@@ -265,7 +265,10 @@ public sealed partial class JiboInteractionService
             randomizer,
             chitchatEmotion,
             preferredName);
-        if (chitchatDecision is not null) return chitchatDecision;
+        if (chitchatDecision is not null)
+            return chitchatDecision.IntentName == "hello"
+                ? WithBirthdayLine(turn, chitchatDecision, TryResolveReferenceLocalTime(turn))
+                : chitchatDecision;
 
         if (SeasonalHolidayRouteBuilder.TryBuildDecision(
                 semanticIntent,
