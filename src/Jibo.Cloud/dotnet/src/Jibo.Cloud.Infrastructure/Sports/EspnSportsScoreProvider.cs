@@ -101,14 +101,15 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
     }
 
     // 1280x720 (Jibo's screen): each half fades strongly from a tint of the team color (50% toward white) at the top to
-    // the plain color across the middle band (the score), then down to a deep shade (20%) at the bottom.
+    // the plain color across the middle band (the score), then down to a deep shade (20%) at the bottom; across, it
+    // darkens from full at the center line to 35% at its outer edge.
     private static string Background(string awayHex, string homeHex)
     {
         var away = Rgba32.ParseHex(awayHex);
         var home = Rgba32.ParseHex(homeHex);
-        static byte Channel(byte c, float t) => (byte)MathF.Round(
-            t < 0.4f ? c + (255 - c) * 0.5f * (1 - t / 0.4f) : t <= 0.6f ? c : c * (1 - 0.8f * (t - 0.6f) / 0.4f));
-        static Rgb24 Shade(Rgba32 c, float t) => new(Channel(c.R, t), Channel(c.G, t), Channel(c.B, t));
+        static byte Channel(byte c, float t, float h) => (byte)MathF.Round(h *
+            (t < 0.4f ? c + (255 - c) * 0.5f * (1 - t / 0.4f) : t <= 0.6f ? c : c * (1 - 0.8f * (t - 0.6f) / 0.4f)));
+        static Rgb24 Shade(Rgba32 c, float t, float h) => new(Channel(c.R, t, h), Channel(c.G, t, h), Channel(c.B, t, h));
         using var image = new Image<Rgb24>(1280, 720);
         image.ProcessPixelRows(rows =>
         {
@@ -116,8 +117,12 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             {
                 var t = (float)y / (rows.Height - 1);
                 var row = rows.GetRowSpan(y);
-                row[..640].Fill(Shade(away, t));
-                row[640..].Fill(Shade(home, t));
+                for (var x = 0; x < 640; x++)
+                {
+                    var h = 1 - 0.65f * (639 - x) / 639f;   // x=639 / x=640 are the center line
+                    row[x] = Shade(away, t, h);
+                    row[1279 - x] = Shade(home, t, h);
+                }
             }
         });
         return image.ToBase64String(SixLabors.ImageSharp.Formats.Png.PngFormat.Instance);
