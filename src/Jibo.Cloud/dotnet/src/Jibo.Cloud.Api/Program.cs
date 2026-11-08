@@ -213,6 +213,7 @@ app.MapAdminPanelStaticFiles();
 app.MapPortalEndpoints();
 app.MapHomeAssistantRobotEndpoints();
 app.MapFreeAgentEndpoints();
+app.MapJiboListingsEndpoints();
 
 app.MapMethods("/{**path}", ["GET", "POST", "PUT"], async (HttpContext context, JiboCloudProtocolService service,
     JoapUpdateProxy joapUpdateProxy,
