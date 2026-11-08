@@ -63,7 +63,7 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             if (today is not null && (today.Game.State != "pre" || !past))
             {
                 var described = Describe(today.Team, today.Game, localNow);
-                return today.Game.State == "pre" ? new SportsAnswer("Yes, t" + described[1..]) : Answer(described, today, teams);
+                return today.Game.State == "pre" ? new SportsAnswer("Yes, t" + described[1..]) : Answer(described, today, teams, localNow);
             }
 
             var (last, next) = await GetScheduleAsync(today is null ? matches : [today.Team], localNow, cancellationToken);
@@ -71,7 +71,7 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
                 return Answer(Describe(last.Team, last.Game, localNow) +
                        (today is null ? string.Empty
                            : $" They play the {Title(today.Game.Opponent)} {Day(today.Game.Start, localNow)} at {Clock(today.Game.Start.ToOffset(localNow.Offset))}."),
-                    last, teams);
+                    last, teams, localNow);
             if (today is not null) return new SportsAnswer(Describe(today.Team, today.Game, localNow));
             var team = last?.Team ?? next?.Team ?? matches[0];
             var answer = $"The {Title(team.Name)} don't play today.";
@@ -79,7 +79,7 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
                 answer += $" Their next game is {next.Game.Start.ToOffset(localNow.Offset):dddd, MMMM d} " +
                           $"against the {Title(next.Game.Opponent)}.";
             else if (last is not null)
-                return Answer(answer + " " + Describe(last.Team, last.Game, localNow), last, teams);
+                return Answer(answer + " " + Describe(last.Team, last.Game, localNow), last, teams, localNow);
             return new SportsAnswer(answer);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -90,14 +90,24 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
     }
 
     // The card shows a game with a score: away on the left, home on the right.
-    private static SportsAnswer Answer(string spoken, TeamGame played, Team[] teams)
+    private static SportsAnswer Answer(string spoken, TeamGame played, Team[] teams, DateTimeOffset localNow)
     {
         if (played.Game is not { Us: { } us, Them: { } them } game) return new SportsAnswer(spoken);
         var opponent = teams.FirstOrDefault(t => t.League == played.Team.League && t.Id == game.OpponentId);
         var mine = new SportsCardSide(Title(played.Team.Name), us, played.Team.Color, played.Team.Logo);
         var theirs = new SportsCardSide(Title(game.Opponent), them, opponent?.Color ?? "555555", opponent?.Logo);
         var (away, home) = game.Home ? (theirs, mine) : (mine, theirs);
-        return new SportsAnswer(spoken, new SportsScoreCard(away, home, Background(away.Color, home.Color), Shade.Value));
+        return new SportsAnswer(spoken, new SportsScoreCard(away, home, Background(away.Color, home.Color), Shade.Value,
+            (game.Detail ?? (game.State == "in" ? $"{Ordinal(game.Period)} {Leagues[played.Team.League].Period}" : "Final")).ToUpperInvariant(),
+            CardDay(game.Start, localNow)));
+    }
+
+    private static string CardDay(DateTimeOffset when, DateTimeOffset localNow)
+    {
+        var day = Day(when, localNow);
+        return day.StartsWith("on ", StringComparison.Ordinal)
+            ? when.ToOffset(localNow.Offset).ToString("ddd, MMM d", CultureInfo.InvariantCulture)
+            : Capitalize(day);
     }
 
     // 1280x720 (Jibo's screen): each half fades strongly from a tint of the team color (50% toward white) at the top to
@@ -114,17 +124,26 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
         {
             for (var y = 0; y < rows.Height; y++)
             {
-                var t = (float)y / (rows.Height - 1);
+                var t = (float)(y / 4 * 4) / (rows.Height - 4);   // 4-row steps keep the PNG small (the soft center line breaks the compression)
                 var row = rows.GetRowSpan(y);
-                row[..640].Fill(Shade(away, t));
-                row[640..].Fill(Shade(home, t));
+                Rgb24 a = Shade(away, t), b = Shade(home, t);
+                row[..640].Fill(a);
+                row[640..].Fill(b);
+                // Soft center line: the two colors blend over 96 px.
+                for (var x = 592; x < 688; x++)
+                {
+                    var k = (x - 591.5f) / 96f;
+                    k = k * k * (3 - 2 * k);
+                    row[x] = new Rgb24((byte)MathF.Round(a.R + (b.R - a.R) * k), (byte)MathF.Round(a.G + (b.G - a.G) * k),
+                        (byte)MathF.Round(a.B + (b.B - a.B) * k));
+                }
             }
         });
         return image.ToBase64String(SixLabors.ImageSharp.Formats.Png.PngFormat.Instance);
     }
 
-    // Laid over the background: black, clear at the center line and 65% at each outer edge, so each half darkens to
-    // 35% of its color toward the sides. The same for every game.
+    // Laid over the background: black, clear at the center line and getting steeply darker toward each outer edge
+    // (curve d^1.5, 97% at the edge, ~53% a third of the way in), so the sides fade almost to black. Same for every game.
     private static readonly Lazy<string> Shade = new(() =>
     {
         using var image = new Image<Rgba32>(1280, 720);
@@ -133,7 +152,7 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             var first = rows.GetRowSpan(0);
             for (var x = 0; x < 640; x++)
             {
-                first[x] = first[1279 - x] = new Rgba32(0, 0, 0, (byte)MathF.Round(255 * 0.65f * (639 - x) / 639f));
+                first[x] = first[1279 - x] = new Rgba32(0, 0, 0, (byte)MathF.Round(255 * 0.97f * MathF.Pow((639 - x) / 639f, 1.5f)));
             }
             for (var y = 1; y < rows.Height; y++) first.CopyTo(rows.GetRowSpan(y));
         });
@@ -159,7 +178,7 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             : null;
 
     private sealed record Game(DateTimeOffset Start, string State, string Opponent, int? Us, int? Them, bool? Won, int Period,
-        string OpponentId = "", bool Home = false);
+        string OpponentId = "", bool Home = false, string? Detail = null);
 
     private sealed record TeamGame(Team Team, Game Game);
 
@@ -268,7 +287,8 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             us.TryGetProperty("winner", out var w) && w.ValueKind is JsonValueKind.True or JsonValueKind.False ? w.GetBoolean() : null,
             status.TryGetProperty("period", out var p) && p.TryGetInt32(out var period) ? period : 0,
             them.GetProperty("id").GetString()!,
-            us.TryGetProperty("homeAway", out var side) && side.GetString() == "home");
+            us.TryGetProperty("homeAway", out var side) && side.GetString() == "home",
+            status.GetProperty("type").TryGetProperty("shortDetail", out var detail) ? detail.GetString() : null);
     }
 
     // The scoreboard has "score": "4"; a team schedule has "score": { "value": 4.0, "displayValue": "4" }.

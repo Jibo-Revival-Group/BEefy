@@ -109,6 +109,7 @@ public sealed class EspnSportsScoreProviderTests
 
         Assert.Equal(new SportsCardSide("Capitals", 1, "c8102e", "http://a.espncdn.com/combiner/i?img=/i/teamlogos/nhl/500/wsh.png&h=200&w=200"), card.Away);
         Assert.Equal(new SportsCardSide("Panthers", 2, "041e42", "http://a.espncdn.com/combiner/i?img=/i/teamlogos/nhl/500/fla.png&h=200&w=200"), card.Home);
+        Assert.Equal(("2ND PERIOD", "Today"), (card.Status, card.When));
         Assert.StartsWith("data:image/png;base64,", card.Background);
         using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgb24>(
             Convert.FromBase64String(card.Background["data:image/png;base64,".Length..]));
@@ -118,15 +119,21 @@ public sealed class EspnSportsScoreProviderTests
         Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(130, 142, 160), image[1279, 0]);
         Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0xc8, 0x10, 0x2e), image[0, 360]);
         Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0x04, 0x1e, 0x42), image[1279, 360]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(40, 3, 9), image[639, 719]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(1, 6, 13), image[640, 719]);
-        // The shade darkens each half toward its outer edge: clear at the center line, 65% black at the edges.
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(40, 3, 9), image[0, 719]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(1, 6, 13), image[1279, 719]);
+        // The center line is soft: the colors blend across it.
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0xc8, 0x10, 0x2e), image[591, 360]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0x04, 0x1e, 0x42), image[688, 360]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(104, 23, 56), image[639, 360]);
+        // The shade darkens each half steeply toward its outer edge: clear at the center line, nearly black at the edge,
+        // and already about half dark a third of the way in.
         using var shade = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(
             Convert.FromBase64String(card.Shade!["data:image/png;base64,".Length..]));
         Assert.Equal((1280, 720), (shade.Width, shade.Height));
         Assert.Equal((0, 0), (shade[639, 0].A, shade[640, 719].A));
-        Assert.Equal((166, 166), (shade[0, 360].A, shade[1279, 360].A));
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 0, 0, 166), shade[0, 0]);
+        Assert.Equal((247, 247), (shade[0, 360].A, shade[1279, 360].A));
+        Assert.InRange(shade[213, 360].A, 120, 150);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 0, 0, 247), shade[0, 0]);
         // Both stay small: the robot drops a SKILL_ACTION that's too big (the background is in it 4 times).
         Assert.True(card.Background.Length + card.Shade.Length < 30_000, $"{card.Background.Length} + {card.Shade.Length}");
     }

@@ -18,7 +18,10 @@ public sealed record SportsAnswer(string Spoken, SportsScoreCard? Card = null);
 /// half toward its outer edge. (Two images because each compresses to ~5 KB; combined it was ~200 KB, sent 4 times
 /// in the view, and the robot dropped the message.)
 /// </summary>
-public sealed record SportsScoreCard(SportsCardSide Away, SportsCardSide Home, string Background, string? Shade = null);
+/// <see cref="Status"/> is the game state ("FINAL", "FINAL/OT", "7:12 - 3RD"); <see cref="When"/> the day ("Yesterday",
+/// "Tonight", "Sat, Nov 7").
+public sealed record SportsScoreCard(SportsCardSide Away, SportsCardSide Home, string Background, string? Shade = null,
+    string Status = "", string When = "");
 
 /// <summary><see cref="Logo"/> is a plain-http URL: the robot's browser can't open https on today's servers.</summary>
 public sealed record SportsCardSide(string Name, int Score, string Color, string? Logo);

@@ -2039,15 +2039,21 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 assets = new object[] { new { id = "sportsShade-1", src = card.Shade, type = "texture" } }
             });
         }
-        foreach (var (side, center) in new[] { (card.Away, 320), (card.Home, 960) })
+        static object Text(string id, string text, int size, string fill, int x, int y) => new
         {
-            components.Add(new
-            {
-                id = $"sportsScore{center}", type = "Label", text = side.Score.ToString(CultureInfo.InvariantCulture),
-                style = new { fontSize = "220", fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill = "#FFFFFF", align = "center" },
-                position = new { x = center, y = 300 },
-                targetAnchor = new { x = 0.5, y = 0.5 }
-            });
+            id, type = "Label", text,
+            style = new { fontSize = size.ToString(CultureInfo.InvariantCulture), fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill, align = "center" },
+            position = new { x, y }, targetAnchor = new { x = 0.5, y = 0.5 }
+        };
+        components.Add(Text("sportsStatus", string.Join("  ·  ", new[] { card.Status, card.When.ToUpperInvariant() }.Where(t => t.Length > 0)),
+            40, "#FFFFFF", 640, 50));
+        foreach (var (side, other, center, label) in new[] { (card.Away, card.Home, 320, "AWAY"), (card.Home, card.Away, 960, "HOME") })
+        {
+            components.Add(Text($"sportsSide{center}", label, 44, "#FFFFFF", center, 135));
+            // The losing score is smaller and dimmer (a tie shows both full).
+            var losing = side.Score < other.Score;
+            components.Add(Text($"sportsScore{center}", side.Score.ToString(CultureInfo.InvariantCulture), losing ? 150 : 220,
+                losing ? "#B3B3B3" : "#FFFFFF", center, 300));
             if (side.Logo is not null)
                 components.Add(new
                 {

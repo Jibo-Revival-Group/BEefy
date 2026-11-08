@@ -6558,7 +6558,7 @@ public sealed class JiboInteractionServiceTests
     public async Task BuildDecisionAsync_SportsCard_OnlyForBetaRobotsUntilTheNextOta(string? context, string? release, bool card)
     {
         var scoreCard = new SportsScoreCard(new SportsCardSide("Capitals", 1, "c8102e", "http://logo/wsh.png"),
-            new SportsCardSide("Panthers", 2, "041e42", null), "data:image/png;base64,AA==", "data:image/png;base64,BB==");
+            new SportsCardSide("Panthers", 2, "041e42", null), "data:image/png;base64,AA==", "data:image/png;base64,BB==", "FINAL/OT", "Last night");
         var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
             new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), sportsScoreProvider: new RecordingSportsProvider { Card = scoreCard });
         var turn = new TurnContext { RawTranscript = "did the penguins win", NormalizedTranscript = "did the penguins win", FirmwareVersion = release };
@@ -6579,7 +6579,14 @@ public sealed class JiboInteractionServiceTests
         var parts = view.GetProperty("componentConfigs").EnumerateArray().ToArray();
         Assert.Equal("data:image/png;base64,AA==", parts[0].GetProperty("assets")[0].GetProperty("src").GetString());
         Assert.Equal("data:image/png;base64,BB==", parts[1].GetProperty("assets")[0].GetProperty("src").GetString());
-        Assert.Equal(["1", "2"], parts.Where(p => p.GetProperty("type").GetString() == "Label").Select(p => p.GetProperty("text").GetString()));
+        var labels = parts.Where(p => p.GetProperty("type").GetString() == "Label").ToDictionary(p => p.GetProperty("id").GetString()!);
+        Assert.Equal("FINAL/OT  ·  LAST NIGHT", labels["sportsStatus"].GetProperty("text").GetString());
+        Assert.Equal(("AWAY", "HOME"), (labels["sportsSide320"].GetProperty("text").GetString(), labels["sportsSide960"].GetProperty("text").GetString()));
+        // Loser (away, 1) smaller and dimmer than the winner (home, 2).
+        (string?, string?, string?) Score(string id) => (labels[id].GetProperty("text").GetString(),
+            labels[id].GetProperty("style").GetProperty("fontSize").GetString(), labels[id].GetProperty("style").GetProperty("fill").GetString());
+        Assert.Equal(("1", "150", "#B3B3B3"), Score("sportsScore320"));
+        Assert.Equal(("2", "220", "#FFFFFF"), Score("sportsScore960"));
         var logo = Assert.Single(parts, p => p.GetProperty("id").GetString()!.StartsWith("sportsLogo"));
         Assert.Equal(220, logo.GetProperty("position").GetProperty("x").GetInt32());
         Assert.Equal("http://logo/wsh.png", logo.GetProperty("assets")[0].GetProperty("src").GetString());
