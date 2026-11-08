@@ -113,11 +113,13 @@ public sealed class EspnSportsScoreProviderTests
         using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgb24>(
             Convert.FromBase64String(card.Background["data:image/png;base64,".Length..]));
         Assert.Equal((1280, 720), (image.Width, image.Height));
-        // Top: 30% toward white; bottom: 55% of the color (c8102e / 041e42).
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(216, 88, 109), image[0, 0]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(79, 98, 123), image[1279, 0]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(110, 9, 25), image[639, 719]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(2, 16, 36), image[640, 719]);
+        // Top: 50% toward white; middle band: the plain color; bottom: 20% of the color (c8102e / 041e42).
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(228, 136, 150), image[0, 0]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(130, 142, 160), image[1279, 0]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0xc8, 0x10, 0x2e), image[0, 360]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0x04, 0x1e, 0x42), image[1279, 360]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(40, 3, 9), image[639, 719]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(1, 6, 13), image[640, 719]);
     }
 
     [Theory]

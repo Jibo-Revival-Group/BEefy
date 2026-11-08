@@ -100,13 +100,14 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
         return new SportsAnswer(spoken, new SportsScoreCard(away, home, Background(away.Color, home.Color)));
     }
 
-    // 1280x720 (Jibo's screen): each half fades from a tint of the team color (30% toward white) at the top to a shade
-    // (55%) at the bottom, so even black teams (Bruins, Penguins) show the gradient.
+    // 1280x720 (Jibo's screen): each half fades strongly from a tint of the team color (50% toward white) at the top to
+    // the plain color across the middle band (the score), then down to a deep shade (20%) at the bottom.
     private static string Background(string awayHex, string homeHex)
     {
         var away = Rgba32.ParseHex(awayHex);
         var home = Rgba32.ParseHex(homeHex);
-        static byte Channel(byte c, float t) => (byte)MathF.Round((c + (255 - c) * 0.3f) * (1 - t) + c * 0.55f * t);
+        static byte Channel(byte c, float t) => (byte)MathF.Round(
+            t < 0.4f ? c + (255 - c) * 0.5f * (1 - t / 0.4f) : t <= 0.6f ? c : c * (1 - 0.8f * (t - 0.6f) / 0.4f));
         static Rgb24 Shade(Rgba32 c, float t) => new(Channel(c.R, t), Channel(c.G, t), Channel(c.B, t));
         using var image = new Image<Rgb24>(1280, 720);
         image.ProcessPixelRows(rows =>
