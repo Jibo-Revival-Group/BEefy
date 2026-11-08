@@ -97,19 +97,18 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
         var mine = new SportsCardSide(Title(played.Team.Name), us, played.Team.Color, played.Team.Logo);
         var theirs = new SportsCardSide(Title(game.Opponent), them, opponent?.Color ?? "555555", opponent?.Logo);
         var (away, home) = game.Home ? (theirs, mine) : (mine, theirs);
-        return new SportsAnswer(spoken, new SportsScoreCard(away, home, Background(away.Color, home.Color)));
+        return new SportsAnswer(spoken, new SportsScoreCard(away, home, Background(away.Color, home.Color), Shade.Value));
     }
 
     // 1280x720 (Jibo's screen): each half fades strongly from a tint of the team color (50% toward white) at the top to
-    // the plain color across the middle band (the score), then down to a deep shade (20%) at the bottom; across, it
-    // darkens from full at the center line to 35% at its outer edge.
+    // the plain color across the middle band (the score), then down to a deep shade (20%) at the bottom.
     private static string Background(string awayHex, string homeHex)
     {
         var away = Rgba32.ParseHex(awayHex);
         var home = Rgba32.ParseHex(homeHex);
-        static byte Channel(byte c, float t, float h) => (byte)MathF.Round(h *
-            (t < 0.4f ? c + (255 - c) * 0.5f * (1 - t / 0.4f) : t <= 0.6f ? c : c * (1 - 0.8f * (t - 0.6f) / 0.4f)));
-        static Rgb24 Shade(Rgba32 c, float t, float h) => new(Channel(c.R, t, h), Channel(c.G, t, h), Channel(c.B, t, h));
+        static byte Channel(byte c, float t) => (byte)MathF.Round(
+            t < 0.4f ? c + (255 - c) * 0.5f * (1 - t / 0.4f) : t <= 0.6f ? c : c * (1 - 0.8f * (t - 0.6f) / 0.4f));
+        static Rgb24 Shade(Rgba32 c, float t) => new(Channel(c.R, t), Channel(c.G, t), Channel(c.B, t));
         using var image = new Image<Rgb24>(1280, 720);
         image.ProcessPixelRows(rows =>
         {
@@ -117,16 +116,29 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             {
                 var t = (float)y / (rows.Height - 1);
                 var row = rows.GetRowSpan(y);
-                for (var x = 0; x < 640; x++)
-                {
-                    var h = 1 - 0.65f * (639 - x) / 639f;   // x=639 / x=640 are the center line
-                    row[x] = Shade(away, t, h);
-                    row[1279 - x] = Shade(home, t, h);
-                }
+                row[..640].Fill(Shade(away, t));
+                row[640..].Fill(Shade(home, t));
             }
         });
         return image.ToBase64String(SixLabors.ImageSharp.Formats.Png.PngFormat.Instance);
     }
+
+    // Laid over the background: black, clear at the center line and 65% at each outer edge, so each half darkens to
+    // 35% of its color toward the sides. The same for every game.
+    private static readonly Lazy<string> Shade = new(() =>
+    {
+        using var image = new Image<Rgba32>(1280, 720);
+        image.ProcessPixelRows(rows =>
+        {
+            var first = rows.GetRowSpan(0);
+            for (var x = 0; x < 640; x++)
+            {
+                first[x] = first[1279 - x] = new Rgba32(0, 0, 0, (byte)MathF.Round(255 * 0.65f * (639 - x) / 639f));
+            }
+            for (var y = 1; y < rows.Height; y++) first.CopyTo(rows.GetRowSpan(y));
+        });
+        return image.ToBase64String(SixLabors.ImageSharp.Formats.Png.PngFormat.Instance);
+    });
 
     // White scores need a dark enough side: a near-white team color (e.g. some road colors) uses the alternate one.
     private static string CardColor(JsonElement team)

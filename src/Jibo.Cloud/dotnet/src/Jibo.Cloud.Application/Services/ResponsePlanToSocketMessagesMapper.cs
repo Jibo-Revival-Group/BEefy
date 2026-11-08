@@ -2031,6 +2031,14 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 assets = new object[] { new { id = $"sportsBg-{card.Away.Color}-{card.Home.Color}", src = card.Background, type = "texture" } }
             }
         };
+        if (card.Shade is not null)
+        {
+            components.Add(new
+            {
+                id = "sportsShadeClip", type = "Clip", position = new { x = 0, y = 0 },
+                assets = new object[] { new { id = "sportsShade-1", src = card.Shade, type = "texture" } }
+            });
+        }
         foreach (var (side, center) in new[] { (card.Away, 320), (card.Home, 960) })
         {
             components.Add(new

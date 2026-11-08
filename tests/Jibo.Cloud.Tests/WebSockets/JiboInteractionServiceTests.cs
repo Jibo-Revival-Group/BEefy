@@ -6558,7 +6558,7 @@ public sealed class JiboInteractionServiceTests
     public async Task BuildDecisionAsync_SportsCard_OnlyForBetaRobotsUntilTheNextOta(string? context, string? release, bool card)
     {
         var scoreCard = new SportsScoreCard(new SportsCardSide("Capitals", 1, "c8102e", "http://logo/wsh.png"),
-            new SportsCardSide("Panthers", 2, "041e42", null), "data:image/png;base64,AA==");
+            new SportsCardSide("Panthers", 2, "041e42", null), "data:image/png;base64,AA==", "data:image/png;base64,BB==");
         var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
             new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), sportsScoreProvider: new RecordingSportsProvider { Card = scoreCard });
         var turn = new TurnContext { RawTranscript = "did the penguins win", NormalizedTranscript = "did the penguins win", FirmwareVersion = release };
@@ -6578,6 +6578,7 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("sportsScoreView", view.GetProperty("viewConfig").GetProperty("id").GetString());
         var parts = view.GetProperty("componentConfigs").EnumerateArray().ToArray();
         Assert.Equal("data:image/png;base64,AA==", parts[0].GetProperty("assets")[0].GetProperty("src").GetString());
+        Assert.Equal("data:image/png;base64,BB==", parts[1].GetProperty("assets")[0].GetProperty("src").GetString());
         Assert.Equal(["1", "2"], parts.Where(p => p.GetProperty("type").GetString() == "Label").Select(p => p.GetProperty("text").GetString()));
         var logo = Assert.Single(parts, p => p.GetProperty("id").GetString()!.StartsWith("sportsLogo"));
         Assert.Equal(220, logo.GetProperty("position").GetProperty("x").GetInt32());

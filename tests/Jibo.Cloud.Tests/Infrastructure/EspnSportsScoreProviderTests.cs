@@ -113,16 +113,22 @@ public sealed class EspnSportsScoreProviderTests
         using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgb24>(
             Convert.FromBase64String(card.Background["data:image/png;base64,".Length..]));
         Assert.Equal((1280, 720), (image.Width, image.Height));
-        // At the center line: top 50% toward white, the plain color across the middle band, bottom 20% (c8102e / 041e42).
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(228, 136, 150), image[639, 0]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(130, 142, 160), image[640, 0]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0xc8, 0x10, 0x2e), image[639, 360]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0x04, 0x1e, 0x42), image[640, 360]);
+        // Top 50% toward white, the plain color across the middle band, bottom 20% (c8102e / 041e42).
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(228, 136, 150), image[0, 0]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(130, 142, 160), image[1279, 0]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0xc8, 0x10, 0x2e), image[0, 360]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(0x04, 0x1e, 0x42), image[1279, 360]);
         Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(40, 3, 9), image[639, 719]);
         Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(1, 6, 13), image[640, 719]);
-        // Outer edges: 35% of that.
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(70, 6, 16), image[0, 360]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(1, 11, 23), image[1279, 360]);
+        // The shade darkens each half toward its outer edge: clear at the center line, 65% black at the edges.
+        using var shade = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(
+            Convert.FromBase64String(card.Shade!["data:image/png;base64,".Length..]));
+        Assert.Equal((1280, 720), (shade.Width, shade.Height));
+        Assert.Equal((0, 0), (shade[639, 0].A, shade[640, 719].A));
+        Assert.Equal((166, 166), (shade[0, 360].A, shade[1279, 360].A));
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 0, 0, 166), shade[0, 0]);
+        // Both stay small: the robot drops a SKILL_ACTION that's too big (the background is in it 4 times).
+        Assert.True(card.Background.Length + card.Shade.Length < 30_000, $"{card.Background.Length} + {card.Shade.Length}");
     }
 
     [Theory]
