@@ -6546,11 +6546,11 @@ public sealed class JiboInteractionServiceTests
         else Assert.NotEqual("sports_score", decision.IntentName);
     }
 
-    // The card needs BEam beta (data: images); .165 tags its CONTEXT, and after the next OTA every robot gets it.
+    // The card needs BEam beta (data: images); .165 tags its CONTEXT (runtime.beta), and after the next OTA every robot gets it.
     [Theory]
-    [InlineData("""{"general":{"release":"3.1.8","beta":true}}""", "3.1.8", true)]
-    [InlineData("""{"general":{"release":"3.1.8"}}""", "3.1.8", false)]
-    [InlineData("""{"general":{"release":"3.1.8","beta":"yes"}}""", "3.1.8", false)]
+    [InlineData("""{"runtime":{"beta":true},"general":{"release":"3.1.8"}}""", "3.1.8", true)]
+    [InlineData("""{"runtime":{},"general":{"release":"3.1.8","beta":true}}""", "3.1.8", false)]
+    [InlineData("""{"runtime":{"beta":"yes"},"general":{"release":"3.1.8"}}""", "3.1.8", false)]
     [InlineData(null, "3.1.9", true)]
     [InlineData(null, "3.2.0", true)]
     [InlineData(null, "BEam.1.0.0", false)]

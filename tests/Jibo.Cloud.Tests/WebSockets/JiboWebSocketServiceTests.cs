@@ -4312,6 +4312,41 @@ public sealed class JiboWebSocketServiceTests
         Assert.Contains("weather service is offline", esml, StringComparison.OrdinalIgnoreCase);
     }
 
+    // .165 tags its CONTEXT (runtime.beta); that turn's sports answer carries the score card.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ClientAsr_SportsWithScore_ShowsTheCardOnlyWhenContextHasTheBetaTag(bool beta)
+    {
+        var card = new SportsScoreCard(new SportsCardSide("Celtics", 119, "007a33", null), new SportsCardSide("Hornets", 80, "00788c", null),
+            "data:image/png;base64,AA==");
+        var interactionService = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new DefaultJiboRandomizer(), new InMemoryPersonalMemoryStore(), sportsScoreProvider: new FixedSportsProvider(card));
+        var service = new JiboWebSocketService(new InMemoryCloudStateStore(), new NullWebSocketTelemetrySink(),
+            new WebSocketTurnFinalizationService(new DemoConversationBroker(interactionService),
+                new DefaultSttStrategySelector([new SyntheticBufferedAudioSttStrategy()]), new NullTurnTelemetrySink(),
+                NullLogger<WebSocketTurnFinalizationService>.Instance));
+        Task<IReadOnlyList<WebSocketReply>> Send(string text) => service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-sports-card-token", Text = text
+        });
+
+        await Send("""{"type":"LISTEN","transID":"trans-sports","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}""");
+        await Send("""{"type":"CONTEXT","transID":"trans-sports","data":{"runtime":{"loop":nullBETA},"general":{"release":"3.1.8","robotID":"Auburn"}}}"""
+            .Replace("BETA", beta ? ",\"beta\":true" : ""));
+        var replies = await Send("""{"type":"CLIENT_ASR","transID":"trans-sports","data":{"text":"did the celtics win"}}""");
+
+        var all = string.Join("\n", replies.Select(r => r.Text));
+        Assert.Contains("SKILL_ACTION", all);
+        Assert.Equal(beta, all.Contains("sportsScoreView", StringComparison.Ordinal));
+    }
+
+    private sealed class FixedSportsProvider(SportsScoreCard card) : ISportsScoreProvider
+    {
+        public Task<SportsAnswer?> AnswerAsync(string transcript, DateTimeOffset localNow, CancellationToken cancellationToken = default) =>
+            Task.FromResult<SportsAnswer?>(new SportsAnswer("The Celtics beat the Hornets 119 to 80 yesterday.", card));
+    }
+
     [Fact]
     public async Task ClientAsr_HowIsTheWeather_WithProvider_EmitsWeatherHiLoGuiCard()
     {
