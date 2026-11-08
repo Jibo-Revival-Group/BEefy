@@ -372,7 +372,8 @@ internal static partial class PersonalReportOrchestrator
         {
             var commuteDecision = await commuteTask;
             var commuteReply = commuteDecision.ReplyText;
-            if (!string.IsNullOrWhiteSpace(commuteReply))
+            // No commute set up: the report says nothing about it (the standalone question still explains).
+            if (!string.IsNullOrWhiteSpace(commuteReply) && commuteDecision.IntentName != "commute_setup")
             {
                 spokenSections.Add(commuteReply.Trim());
                 var animMeta = commuteDecision.SkillPayload is not null &&

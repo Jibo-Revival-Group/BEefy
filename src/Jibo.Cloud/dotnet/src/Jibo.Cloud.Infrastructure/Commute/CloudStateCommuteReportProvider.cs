@@ -17,7 +17,9 @@ public sealed class CloudStateCommuteReportProvider(ICloudStateStore cloudStateS
     {
         var loopId = ResolveLoopId(turn);
         var memberId = ResolveMemberId(turn);
-        var commuteProfiles = cloudStateStore.GetCommuteProfiles(loopId);
+        // The store seeds a placeholder profile (driving home to work, 8:30, 25 minutes) for the default loop; it
+        // isn't anyone's commute, so it counts as not set up rather than reporting a made-up 25 minutes.
+        var commuteProfiles = cloudStateStore.GetCommuteProfiles(loopId).Where(profile => !IsSeededPlaceholder(profile)).ToList();
         var commute = !string.IsNullOrWhiteSpace(memberId)
             ? commuteProfiles.FirstOrDefault(profile =>
                 profile.IsEnabled &&
@@ -57,6 +59,10 @@ public sealed class CloudStateCommuteReportProvider(ICloudStateStore cloudStateS
                 minutesUntilWork,
                 extraMinutes));
     }
+
+    private static bool IsSeededPlaceholder(CommuteProfileRecord profile) =>
+        profile.MemberId is null && profile.Mode == "driving" && profile.WorkHour == 8 && profile.WorkMinute == 30 &&
+        profile.OriginName == "home" && profile.DestinationName == "work" && profile.TypicalDurationMinutes == 25;
 
     private static DateTimeOffset ResolveWorkTarget(DateTimeOffset now, CommuteProfileRecord commute)
     {

@@ -3082,6 +3082,49 @@ public sealed class JiboInteractionServiceTests
                 StringComparison.OrdinalIgnoreCase) == true);
     }
 
+    // No commute set up (only the store's seeded placeholder): the report skips commute instead of a made-up
+    // "25 minutes"; asking about the commute directly says it needs setting up.
+    [Fact]
+    public async Task BuildDecisionAsync_CommuteNotSetUp_ReportSaysNothingAboutCommute()
+    {
+        var cloudStateStore = new InMemoryCloudStateStore();
+        Assert.Contains(cloudStateStore.GetCommuteProfiles("openjibo-default-loop"), p => p.TypicalDurationMinutes == 25);
+        var service = CreateService(
+            weatherReportProvider: new CapturingWeatherReportProvider
+            {
+                Snapshot = new WeatherReportSnapshot("Boston, U.S.", "light rain", 61, 65, 54, "rain", false)
+            },
+            calendarReportProvider: new CloudStateCalendarReportProvider(cloudStateStore),
+            commuteReportProvider: new CloudStateCommuteReportProvider(cloudStateStore));
+
+        var report = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "yes",
+            NormalizedTranscript = "yes",
+            Attributes = new Dictionary<string, object?>
+            {
+                [PersonalReportStateKey] = "awaiting_identity_confirmation",
+                [PersonalReportUserNameKey] = "alex",
+                [PersonalReportCommuteEnabledKey] = true
+            }
+        });
+
+        Assert.Equal("personal_report_delivered", report.IntentName);
+        Assert.DoesNotContain("commute", report.ReplyText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("25", report.ReplyText, StringComparison.Ordinal);
+        Assert.DoesNotContain("drive", report.ReplyText, StringComparison.OrdinalIgnoreCase);
+        var sections = Assert.IsAssignableFrom<IReadOnlyList<IDictionary<string, object?>>>(report.SkillPayload!["personal_report_sections"]);
+        Assert.DoesNotContain(sections, section => string.Equals(section["kind"]?.ToString(), "commute", StringComparison.OrdinalIgnoreCase));
+
+        var asked = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "what does my commute look like",
+            NormalizedTranscript = "what does my commute look like"
+        });
+        Assert.Equal("commute_setup", asked.IntentName);
+        Assert.DoesNotContain("25", asked.ReplyText, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_PersonalReport_UsesCommuteProviderAndNormalTraffic()
     {
