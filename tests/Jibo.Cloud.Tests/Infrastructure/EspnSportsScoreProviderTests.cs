@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Infrastructure.Sports;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -75,7 +76,7 @@ public sealed class EspnSportsScoreProviderTests
     [InlineData("did the giants win in baseball", "The Giants lost to the Dodgers 4 to 1 on Monday, September 28.")]
     public async Task AnswerAsync_ProdQuestions(string question, string expected)
     {
-        Assert.Equal(expected, await Create(Espn).AnswerAsync(question, Now));
+        Assert.Equal(expected, (await Create(Espn).AnswerAsync(question, Now))?.Spoken);
     }
 
     [Theory]
@@ -92,8 +93,38 @@ public sealed class EspnSportsScoreProviderTests
     public async Task AnswerAsync_EspnDown_SaysSoInsteadOfGuessing()
     {
         var answer = await Create(url => url.EndsWith("/teams") ? Espn(url) : null).AnswerAsync("did the lions win", Now);
-        Assert.Equal("I couldn't get the Lions score right now. Try again in a bit.", answer);
+        Assert.Equal("I couldn't get the Lions score right now. Try again in a bit.", answer?.Spoken);
+        Assert.Null(answer?.Card);
     }
+
+    [Fact]
+    public async Task AnswerAsync_GameWithAScore_HasACard_AwayLeftHomeRight()
+    {
+        const string teams = """{"sports":[{"leagues":[{"teams":[{"team":{"id":"23","name":"Capitals","location":"Washington","color":"c8102e","alternateColor":"041e42","logos":[{"href":"https://a.espncdn.com/i/teamlogos/nhl/500/wsh.png"}]}},{"team":{"id":"26","name":"Panthers","location":"Florida","color":"ffffff","alternateColor":"041e42","logos":[{"href":"https://a.espncdn.com/i/teamlogos/nhl/500/fla.png"}]}}]}]}]}""";
+        var scoreboard = "{\"events\":[" + Event("2026-11-07T17:30Z", "in", 2, ("23", "Capitals", "1", null), ("26", "Panthers", "2", null))
+            .Replace("{\"id\":\"26\"", "{\"homeAway\":\"home\",\"id\":\"26\"") + "]}";
+        var provider = Create(url => url.EndsWith("hockey/nhl/teams") ? teams : url.Contains("hockey/nhl/scoreboard") ? scoreboard : Espn(url));
+
+        var card = (await provider.AnswerAsync("what's the capitals score", Now))!.Card!;
+
+        Assert.Equal(new SportsCardSide("Capitals", 1, "c8102e", "http://a.espncdn.com/combiner/i?img=/i/teamlogos/nhl/500/wsh.png&h=200&w=200"), card.Away);
+        Assert.Equal(new SportsCardSide("Panthers", 2, "041e42", "http://a.espncdn.com/combiner/i?img=/i/teamlogos/nhl/500/fla.png&h=200&w=200"), card.Home);
+        Assert.StartsWith("data:image/png;base64,", card.Background);
+        using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgb24>(
+            Convert.FromBase64String(card.Background["data:image/png;base64,".Length..]));
+        Assert.Equal((1280, 720), (image.Width, image.Height));
+        // Top: 30% toward white; bottom: 55% of the color (c8102e / 041e42).
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(216, 88, 109), image[0, 0]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(79, 98, 123), image[1279, 0]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(110, 9, 25), image[639, 719]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgb24(2, 16, 36), image[640, 719]);
+    }
+
+    [Theory]
+    [InlineData("did the penguins play tonight")]   // not started: no score to show
+    [InlineData("are the red sox's playing tonight")]
+    public async Task AnswerAsync_NoScoreYet_NoCard(string question) =>
+        Assert.Null((await Create(Espn).AnswerAsync(question, Now))!.Card);
 
     private sealed class Handler(Func<string, string?> body) : HttpMessageHandler
     {

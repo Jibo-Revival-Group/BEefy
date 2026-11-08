@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Runtime.Abstractions;
 
@@ -1018,7 +1020,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
         if (string.Equals(plan.IntentName, "add_person_help", StringComparison.OrdinalIgnoreCase))
             AttachHeardTranscriptDisplay(jcpConfig, "portal.5x1.com");
 
-        var weatherHiLoView = BuildWeatherHiLoView(skillPayload);
+        // The sports card rides the weather card's display path.
+        var weatherHiLoView = BuildWeatherHiLoView(skillPayload) ?? BuildSportsScoreView(skillPayload);
         var weeklyWeatherCards = BuildWeatherHiLoSequenceCards(skillPayload);
         if (weatherHiLoView is null && weeklyWeatherCards.Count > 0) weatherHiLoView = weeklyWeatherCards[0].View;
 
@@ -2012,6 +2015,45 @@ public sealed class ResponsePlanToSocketMessagesMapper
                     position = new { x = 640, y = 330 }, targetAnchor = new { x = 0.5, y = 0.5 }
                 }
             }
+        };
+    }
+
+    // Away on the left, home on the right: team-color gradients (one PNG), the score in the middle of each half and
+    // the logo at the bottom. Asset ids follow the source so the robot's texture cache never shows an old team.
+    private static object? BuildSportsScoreView(IDictionary<string, object?>? payload)
+    {
+        if (payload is null || !payload.TryGetValue("sports_card", out var raw) || raw is not SportsScoreCard card) return null;
+        var components = new List<object>
+        {
+            new
+            {
+                id = "sportsBgClip", type = "Clip", position = new { x = 0, y = 0 },
+                assets = new object[] { new { id = $"sportsBg-{card.Away.Color}-{card.Home.Color}", src = card.Background, type = "texture" } }
+            }
+        };
+        foreach (var (side, center) in new[] { (card.Away, 320), (card.Home, 960) })
+        {
+            components.Add(new
+            {
+                id = $"sportsScore{center}", type = "Label", text = side.Score.ToString(CultureInfo.InvariantCulture),
+                style = new { fontSize = "220", fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill = "#FFFFFF", align = "center" },
+                position = new { x = center, y = 300 },
+                targetAnchor = new { x = 0.5, y = 0.5 }
+            });
+            if (side.Logo is not null)
+                components.Add(new
+                {
+                    id = $"sportsLogo{center}", type = "Clip", position = new { x = center - 100, y = 500 },
+                    assets = new object[] { new { id = "sportsLogo-" + side.Logo, src = side.Logo, type = "texture" } }
+                });
+        }
+
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["viewConfig"] = new { type = "View", id = "sportsScoreView", category = "gui" },
+            ["open"] = new { transitionOpen = "trans_in", removeAll = true },
+            ["defaultSelect"] = new { transitionClose = "trans_out", removeAll = true, leaveEmpty = false },
+            ["componentConfigs"] = components.ToArray()
         };
     }
 

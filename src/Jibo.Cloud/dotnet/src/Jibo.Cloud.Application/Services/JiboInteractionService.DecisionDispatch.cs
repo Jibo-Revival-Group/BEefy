@@ -41,7 +41,19 @@ public sealed partial class JiboInteractionService
         var referenceLocalTime = TryResolveReferenceLocalTime(turn);
         if (sportsScoreProvider is not null && !SkillListenOwnership.IsSkillOwnedListen(turn) && SportsQuestion.IsMatch(lowered) &&
             await sportsScoreProvider.AnswerAsync(lowered, referenceLocalTime ?? DateTimeOffset.Now, cancellationToken) is { } sportsAnswer)
-            return new JiboInteractionDecision("sports_score", sportsAnswer);
+            return sportsAnswer.Card is { } card && BetaFeatures.IsEnabled(turn)
+                ? new JiboInteractionDecision("sports_score", sportsAnswer.Spoken, "chitchat-skill",
+                    new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        // Spoken like the weather report, with the score card on screen.
+                        ["skillId"] = "report-skill",
+                        ["cloudSkill"] = "sports",
+                        ["esml"] = $"<speak><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeForEsml(sportsAnswer.Spoken)}</es></speak>",
+                        ["mim_id"] = "SportsScore",
+                        ["prompt_id"] = "SportsScore_AN_01",
+                        ["sports_card"] = card
+                    })
+                : new JiboInteractionDecision("sports_score", sportsAnswer.Spoken);
         var messageType = turn.Attributes.TryGetValue("messageType", out var rawMessageType)
             ? rawMessageType?.ToString()
             : null;

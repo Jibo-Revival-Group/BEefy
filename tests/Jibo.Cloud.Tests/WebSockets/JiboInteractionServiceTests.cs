@@ -6517,10 +6517,12 @@ public sealed class JiboInteractionServiceTests
     {
         public List<string> Asked { get; } = [];
 
-        public Task<string?> AnswerAsync(string transcript, DateTimeOffset localNow, CancellationToken cancellationToken = default)
+        public SportsScoreCard? Card { get; init; }
+
+        public Task<SportsAnswer?> AnswerAsync(string transcript, DateTimeOffset localNow, CancellationToken cancellationToken = default)
         {
             Asked.Add(transcript);
-            return Task.FromResult<string?>(transcript.Contains("sox") || transcript.Contains("penguins") ? "Sports answer." : null);
+            return Task.FromResult(transcript.Contains("sox") || transcript.Contains("penguins") ? new SportsAnswer("Sports answer.", Card) : null);
         }
     }
 
@@ -6542,6 +6544,44 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal(asked, sports.Asked.Count == 1);
         if (asked) Assert.Equal(("sports_score", "Sports answer."), (decision.IntentName, decision.ReplyText));
         else Assert.NotEqual("sports_score", decision.IntentName);
+    }
+
+    // The card needs BEam beta (data: images); .165 tags its CONTEXT, and after the next OTA every robot gets it.
+    [Theory]
+    [InlineData("""{"general":{"release":"3.1.8","beta":true}}""", "3.1.8", true)]
+    [InlineData("""{"general":{"release":"3.1.8"}}""", "3.1.8", false)]
+    [InlineData("""{"general":{"release":"3.1.8","beta":"yes"}}""", "3.1.8", false)]
+    [InlineData(null, "3.1.9", true)]
+    [InlineData(null, "3.2.0", true)]
+    [InlineData(null, "BEam.1.0.0", false)]
+    [InlineData(null, null, false)]
+    public async Task BuildDecisionAsync_SportsCard_OnlyForBetaRobotsUntilTheNextOta(string? context, string? release, bool card)
+    {
+        var scoreCard = new SportsScoreCard(new SportsCardSide("Capitals", 1, "c8102e", "http://logo/wsh.png"),
+            new SportsCardSide("Panthers", 2, "041e42", null), "data:image/png;base64,AA==");
+        var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), sportsScoreProvider: new RecordingSportsProvider { Card = scoreCard });
+        var turn = new TurnContext { RawTranscript = "did the penguins win", NormalizedTranscript = "did the penguins win", FirmwareVersion = release };
+        if (context is not null) turn.Attributes["context"] = context;
+
+        var decision = await service.BuildDecisionAsync(turn);
+
+        Assert.Equal(("sports_score", "Sports answer."), (decision.IntentName, decision.ReplyText));
+        Assert.Equal(card, decision.SkillPayload?.ContainsKey("sports_card") == true);
+        if (!card) return;
+        var plan = await new DemoConversationBroker(service).HandleTurnAsync(turn);
+        var skillAction = ResponsePlanToSocketMessagesMapper.Map(plan, turn, new CloudSession(), emitSkillActions: true)
+            .Select(m => JsonDocument.Parse(m.Text).RootElement.Clone())
+            .Single(m => m.GetProperty("type").GetString() == "SKILL_ACTION");
+        var view = skillAction.GetProperty("data").GetProperty("action").GetProperty("config").GetProperty("jcp")
+            .GetProperty("config").GetProperty("display").GetProperty("view").GetProperty("context").GetProperty("data");
+        Assert.Equal("sportsScoreView", view.GetProperty("viewConfig").GetProperty("id").GetString());
+        var parts = view.GetProperty("componentConfigs").EnumerateArray().ToArray();
+        Assert.Equal("data:image/png;base64,AA==", parts[0].GetProperty("assets")[0].GetProperty("src").GetString());
+        Assert.Equal(["1", "2"], parts.Where(p => p.GetProperty("type").GetString() == "Label").Select(p => p.GetProperty("text").GetString()));
+        var logo = Assert.Single(parts, p => p.GetProperty("id").GetString()!.StartsWith("sportsLogo"));
+        Assert.Equal(220, logo.GetProperty("position").GetProperty("x").GetInt32());
+        Assert.Equal("http://logo/wsh.png", logo.GetProperty("assets")[0].GetProperty("src").GetString());
     }
 
     [Fact]

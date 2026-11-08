@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Jibo.Cloud.Application.Abstractions;
 using Microsoft.Extensions.Logging;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace Jibo.Cloud.Infrastructure.Sports;
 
@@ -23,11 +25,11 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
         ("hockey/nhl", "hockey", "period")
     ];
 
-    private sealed record Team(string Id, string Name, string Location, int League);
+    private sealed record Team(string Id, string Name, string Location, int League, string Color = "555555", string? Logo = null);
 
     private (DateTimeOffset At, Team[] Teams)? _teams;
 
-    public async Task<string?> AnswerAsync(string transcript, DateTimeOffset localNow, CancellationToken cancellationToken = default)
+    public async Task<SportsAnswer?> AnswerAsync(string transcript, DateTimeOffset localNow, CancellationToken cancellationToken = default)
     {
         var text = " " + Regex.Replace(transcript.ToLowerInvariant().Replace("'s", string.Empty), "[^a-z0-9 ]", " ") + " ";
         var teams = await GetTeamsAsync(cancellationToken);
@@ -61,32 +63,85 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             if (today is not null && (today.Game.State != "pre" || !past))
             {
                 var described = Describe(today.Team, today.Game, localNow);
-                return today.Game.State == "pre" ? "Yes, t" + described[1..] : described;
+                return today.Game.State == "pre" ? new SportsAnswer("Yes, t" + described[1..]) : Answer(described, today, teams);
             }
 
             var (last, next) = await GetScheduleAsync(today is null ? matches : [today.Team], localNow, cancellationToken);
             if (past && last is not null)
-                return Describe(last.Team, last.Game, localNow) +
+                return Answer(Describe(last.Team, last.Game, localNow) +
                        (today is null ? string.Empty
-                           : $" They play the {Title(today.Game.Opponent)} {Day(today.Game.Start, localNow)} at {Clock(today.Game.Start.ToOffset(localNow.Offset))}.");
-            if (today is not null) return Describe(today.Team, today.Game, localNow);
+                           : $" They play the {Title(today.Game.Opponent)} {Day(today.Game.Start, localNow)} at {Clock(today.Game.Start.ToOffset(localNow.Offset))}."),
+                    last, teams);
+            if (today is not null) return new SportsAnswer(Describe(today.Team, today.Game, localNow));
             var team = last?.Team ?? next?.Team ?? matches[0];
             var answer = $"The {Title(team.Name)} don't play today.";
             if (next is not null)
                 answer += $" Their next game is {next.Game.Start.ToOffset(localNow.Offset):dddd, MMMM d} " +
                           $"against the {Title(next.Game.Opponent)}.";
             else if (last is not null)
-                answer += " " + Describe(last.Team, last.Game, localNow);
-            return answer;
+                return Answer(answer + " " + Describe(last.Team, last.Game, localNow), last, teams);
+            return new SportsAnswer(answer);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogWarning(exception, "ESPN lookup failed for {Team}.", matches[0].Name);
-            return $"I couldn't get the {Title(matches[0].Name)} score right now. Try again in a bit.";
+            return new SportsAnswer($"I couldn't get the {Title(matches[0].Name)} score right now. Try again in a bit.");
         }
     }
 
-    private sealed record Game(DateTimeOffset Start, string State, string Opponent, int? Us, int? Them, bool? Won, int Period);
+    // The card shows a game with a score: away on the left, home on the right.
+    private static SportsAnswer Answer(string spoken, TeamGame played, Team[] teams)
+    {
+        if (played.Game is not { Us: { } us, Them: { } them } game) return new SportsAnswer(spoken);
+        var opponent = teams.FirstOrDefault(t => t.League == played.Team.League && t.Id == game.OpponentId);
+        var mine = new SportsCardSide(Title(played.Team.Name), us, played.Team.Color, played.Team.Logo);
+        var theirs = new SportsCardSide(Title(game.Opponent), them, opponent?.Color ?? "555555", opponent?.Logo);
+        var (away, home) = game.Home ? (theirs, mine) : (mine, theirs);
+        return new SportsAnswer(spoken, new SportsScoreCard(away, home, Background(away.Color, home.Color)));
+    }
+
+    // 1280x720 (Jibo's screen): each half fades from a tint of the team color (30% toward white) at the top to a shade
+    // (55%) at the bottom, so even black teams (Bruins, Penguins) show the gradient.
+    private static string Background(string awayHex, string homeHex)
+    {
+        var away = Rgba32.ParseHex(awayHex);
+        var home = Rgba32.ParseHex(homeHex);
+        static byte Channel(byte c, float t) => (byte)MathF.Round((c + (255 - c) * 0.3f) * (1 - t) + c * 0.55f * t);
+        static Rgb24 Shade(Rgba32 c, float t) => new(Channel(c.R, t), Channel(c.G, t), Channel(c.B, t));
+        using var image = new Image<Rgb24>(1280, 720);
+        image.ProcessPixelRows(rows =>
+        {
+            for (var y = 0; y < rows.Height; y++)
+            {
+                var t = (float)y / (rows.Height - 1);
+                var row = rows.GetRowSpan(y);
+                row[..640].Fill(Shade(away, t));
+                row[640..].Fill(Shade(home, t));
+            }
+        });
+        return image.ToBase64String(SixLabors.ImageSharp.Formats.Png.PngFormat.Instance);
+    }
+
+    // White scores need a dark enough side: a near-white team color (e.g. some road colors) uses the alternate one.
+    private static string CardColor(JsonElement team)
+    {
+        var color = team.TryGetProperty("color", out var c) ? c.GetString() : null;
+        var alternate = team.TryGetProperty("alternateColor", out var a) ? a.GetString() : null;
+        if (color is null || !Rgba32.TryParseHex(color, out var rgb)) return "555555";
+        var light = 0.299 * rgb.R + 0.587 * rgb.G + 0.114 * rgb.B > 200;
+        return light && alternate is not null && Rgba32.TryParseHex(alternate, out _) ? alternate : color;
+    }
+
+    // ESPN's resized logo over plain http (the robot's browser fails on https).
+    private static string? CardLogo(JsonElement team) =>
+        team.TryGetProperty("logos", out var logos) && logos.GetArrayLength() > 0 &&
+        Uri.TryCreate(logos[0].GetProperty("href").GetString(), UriKind.Absolute, out var logo)
+            ? logo.Host == "a.espncdn.com" ? $"http://a.espncdn.com/combiner/i?img={logo.AbsolutePath}&h=200&w=200"
+            : "http://" + logo.Host + logo.PathAndQuery
+            : null;
+
+    private sealed record Game(DateTimeOffset Start, string State, string Opponent, int? Us, int? Them, bool? Won, int Period,
+        string OpponentId = "", bool Home = false);
 
     private sealed record TeamGame(Team Team, Game Game);
 
@@ -134,7 +189,7 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             {
                 var t = entry.GetProperty("team");
                 teams.Add(new Team(t.GetProperty("id").GetString()!, t.GetProperty("name").GetString()!.ToLowerInvariant(),
-                    t.GetProperty("location").GetString()!.ToLowerInvariant(), i));
+                    t.GetProperty("location").GetString()!.ToLowerInvariant(), i, CardColor(t), CardLogo(t)));
             }
         }
 
@@ -193,7 +248,9 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
             them.GetProperty("team").GetProperty("shortDisplayName").GetString()!,
             Score(us), Score(them),
             us.TryGetProperty("winner", out var w) && w.ValueKind is JsonValueKind.True or JsonValueKind.False ? w.GetBoolean() : null,
-            status.TryGetProperty("period", out var p) && p.TryGetInt32(out var period) ? period : 0);
+            status.TryGetProperty("period", out var p) && p.TryGetInt32(out var period) ? period : 0,
+            them.GetProperty("id").GetString()!,
+            us.TryGetProperty("homeAway", out var side) && side.GetString() == "home");
     }
 
     // The scoreboard has "score": "4"; a team schedule has "score": { "value": 4.0, "displayValue": "4" }.
