@@ -134,6 +134,7 @@ public sealed class EspnSportsScoreProviderTests
         Assert.Equal((247, 247), (shade[0, 360].A, shade[1279, 360].A));
         Assert.InRange(shade[213, 360].A, 120, 150);
         Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 0, 0, 247), shade[0, 0]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 0, 0, 115), shade[640, 50]);   // status pill
         // Both stay small: the robot drops a SKILL_ACTION that's too big (the background is in it 4 times).
         Assert.True(card.Background.Length + card.Shade.Length < 30_000, $"{card.Background.Length} + {card.Shade.Length}");
     }

@@ -6581,11 +6581,12 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("data:image/png;base64,BB==", parts[1].GetProperty("assets")[0].GetProperty("src").GetString());
         var labels = parts.Where(p => p.GetProperty("type").GetString() == "Label").ToDictionary(p => p.GetProperty("id").GetString()!);
         Assert.Equal("FINAL/OT  ·  LAST NIGHT", labels["sportsStatus"].GetProperty("text").GetString());
+        Assert.Equal(("CAPITALS", "PANTHERS"), (labels["sportsName320"].GetProperty("text").GetString(), labels["sportsName960"].GetProperty("text").GetString()));
         Assert.Equal(("AWAY", "HOME"), (labels["sportsSide320"].GetProperty("text").GetString(), labels["sportsSide960"].GetProperty("text").GetString()));
         // Loser (away, 1) smaller and dimmer than the winner (home, 2).
         (string?, string?, string?) Score(string id) => (labels[id].GetProperty("text").GetString(),
             labels[id].GetProperty("style").GetProperty("fontSize").GetString(), labels[id].GetProperty("style").GetProperty("fill").GetString());
-        Assert.Equal(("1", "150", "#B3B3B3"), Score("sportsScore320"));
+        Assert.Equal(("1", "150", "rgba(255,255,255,0.55)"), Score("sportsScore320"));
         Assert.Equal(("2", "220", "#FFFFFF"), Score("sportsScore960"));
         var logo = Assert.Single(parts, p => p.GetProperty("id").GetString()!.StartsWith("sportsLogo"));
         Assert.Equal(220, logo.GetProperty("position").GetProperty("x").GetInt32());

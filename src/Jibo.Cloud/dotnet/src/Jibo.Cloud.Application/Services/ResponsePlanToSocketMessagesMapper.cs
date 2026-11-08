@@ -2039,21 +2039,28 @@ public sealed class ResponsePlanToSocketMessagesMapper
                 assets = new object[] { new { id = "sportsShade-1", src = card.Shade, type = "texture" } }
             });
         }
-        static object Text(string id, string text, int size, string fill, int x, int y) => new
+        static object Text(string id, string text, int size, string fill, int x, int y, int spacing = 0, bool shadow = false) => new
         {
             id, type = "Label", text,
-            style = new { fontSize = size.ToString(CultureInfo.InvariantCulture), fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill, align = "center" },
+            style = new
+            {
+                fontSize = size.ToString(CultureInfo.InvariantCulture), fontFamily = "Proxima Nova Soft", fontWeight = "bold", fill,
+                // padding: PIXI 4 clips the last letter of letter-spaced text without it.
+                align = "center", letterSpacing = spacing, padding = 12, dropShadow = shadow, dropShadowColor = "#000000", dropShadowAlpha = 0.25,
+                dropShadowBlur = 14, dropShadowDistance = 6, dropShadowAngle = Math.PI / 2
+            },
             position = new { x, y }, targetAnchor = new { x = 0.5, y = 0.5 }
         };
         components.Add(Text("sportsStatus", string.Join("  ·  ", new[] { card.Status, card.When.ToUpperInvariant() }.Where(t => t.Length > 0)),
-            40, "#FFFFFF", 640, 50));
+            32, "#FFFFFF", 640, 50, spacing: 3));
         foreach (var (side, other, center, label) in new[] { (card.Away, card.Home, 320, "AWAY"), (card.Home, card.Away, 960, "HOME") })
         {
-            components.Add(Text($"sportsSide{center}", label, 44, "#FFFFFF", center, 135));
+            components.Add(Text($"sportsSide{center}", label, 28, "rgba(255,255,255,0.7)", center, 125, spacing: 8));
+            components.Add(Text($"sportsName{center}", side.Name.ToUpperInvariant(), 52, "#FFFFFF", center, 178, spacing: 2));
             // The losing score is smaller and dimmer (a tie shows both full).
             var losing = side.Score < other.Score;
             components.Add(Text($"sportsScore{center}", side.Score.ToString(CultureInfo.InvariantCulture), losing ? 150 : 220,
-                losing ? "#B3B3B3" : "#FFFFFF", center, 300));
+                losing ? "rgba(255,255,255,0.55)" : "#FFFFFF", center, 345, shadow: true));
             if (side.Logo is not null)
                 components.Add(new
                 {

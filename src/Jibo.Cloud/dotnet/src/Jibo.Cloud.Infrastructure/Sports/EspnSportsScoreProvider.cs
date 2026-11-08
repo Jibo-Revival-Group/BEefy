@@ -142,19 +142,26 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
         return image.ToBase64String(SixLabors.ImageSharp.Formats.Png.PngFormat.Instance);
     }
 
-    // Laid over the background: black, clear at the center line and getting steeply darker toward each outer edge
-    // (curve d^1.5, 97% at the edge, ~53% a third of the way in), so the sides fade almost to black. Same for every game.
+    // Laid over the background, the same for every game: black, clear at the center line and getting steeply darker
+    // toward each outer edge (curve d^1.5, 97% at the edge, ~53% a third of the way in), and a 45% black rounded pill
+    // (480x64) behind the status line.
     private static readonly Lazy<string> Shade = new(() =>
     {
         using var image = new Image<Rgba32>(1280, 720);
         image.ProcessPixelRows(rows =>
         {
-            var first = rows.GetRowSpan(0);
-            for (var x = 0; x < 640; x++)
+            for (var y = 0; y < rows.Height; y++)
             {
-                first[x] = first[1279 - x] = new Rgba32(0, 0, 0, (byte)MathF.Round(255 * 0.97f * MathF.Pow((639 - x) / 639f, 1.5f)));
+                var row = rows.GetRowSpan(y);
+                for (var x = 0; x < 1280; x++)
+                {
+                    var edge = 0.97f * MathF.Pow(MathF.Abs(x - 639.5f) / 639.5f, 1.5f);
+                    var dx = MathF.Max(MathF.Abs(x - 639.5f) - 208, 0);
+                    var dy = MathF.Abs(y - 50f);
+                    var pill = dy <= 32 && dx * dx + dy * dy <= 32 * 32 ? 0.45f : 0f;
+                    row[x] = new Rgba32(0, 0, 0, (byte)MathF.Round(255 * (pill + edge * (1 - pill))));
+                }
             }
-            for (var y = 1; y < rows.Height; y++) first.CopyTo(rows.GetRowSpan(y));
         });
         return image.ToBase64String(SixLabors.ImageSharp.Formats.Png.PngFormat.Instance);
     });
