@@ -4686,6 +4686,32 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Theory]
+    [InlineData("sing daisy bell for me please")]
+    [InlineData("sing daisy bell")]
+    [InlineData("hey jibo can you sing daisy daisy")]
+    [InlineData("sing a bicycle built for two")]
+    public async Task BuildDecisionAsync_SingDaisyBell_LaunchesTheSong(string transcript)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
+
+        Assert.Equal("sing_daisy_bell", decision.IntentName);
+        Assert.Equal("@be/daisy-bell", decision.SkillName);
+        Assert.Equal(true, decision.SkillPayload!["nativeLaunch"]);
+    }
+
+    [Theory]
+    [InlineData("sing me a song")]
+    [InlineData("who is daisy")]
+    [InlineData("daisy bell")]
+    [InlineData("sing jingle bells")]
+    public async Task BuildDecisionAsync_OtherDaisyOrSingRequests_AreNotTheSong(string transcript)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
+
+        Assert.NotEqual("sing_daisy_bell", decision.IntentName);
+    }
+
+    [Theory]
     [InlineData("tell me the sports news")]
     [InlineData("what's the football news")]
     [InlineData("sports headlines")]

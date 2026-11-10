@@ -11,6 +11,11 @@ public sealed partial class JiboInteractionService
         @"^(?!(?:please )?(?:play|put on|shuffle|open|launch|start)\b).*\b(?:play|plays|playing|played|game|games|score|scores|win|wins|won|winning|lose|lost|losing|beat|beating|how (?:did|are|is) .+ do(?:ing)?)\b",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    // "sing Daisy Bell", "can you sing daisy daisy", "sing a bicycle built for two" (a sing request naming the song).
+    private static readonly Regex DaisyBellRequest = new(
+        @"\bsing\b.*\b(?:daisy|bicycle built for two)\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     public async Task<JiboInteractionDecision> BuildDecisionCoreAsync(TurnContext turn,
         CancellationToken cancellationToken = default)
     {
@@ -32,6 +37,15 @@ public sealed partial class JiboInteractionService
                 new Dictionary<string, object?>
                 {
                     ["skillId"] = "@be/phone-battery", ["nativeLaunch"] = true, ["localIntent"] = "phoneBattery"
+                });
+
+        // "sing Daisy Bell": BEam's @be/daisy-bell plays Jibo singing the chorus (prod: "sing daisy bell for me please" x2).
+        if (!SkillListenOwnership.IsSkillOwnedListen(turn) &&
+            DaisyBellRequest.IsMatch(turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty))
+            return new JiboInteractionDecision("sing_daisy_bell", string.Empty, "@be/daisy-bell",
+                new Dictionary<string, object?>
+                {
+                    ["skillId"] = "@be/daisy-bell", ["nativeLaunch"] = true, ["localIntent"] = "sing"
                 });
 
         SyncLoopPeopleFromTurn(turn);
