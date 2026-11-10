@@ -5946,6 +5946,30 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task OrphanBinaryWithoutListen_AfterGoToSleep_DoesNotWakeHim()
+    {
+        Task<IReadOnlyList<WebSocketReply>> Send(string? text = null, byte[]? binary = null) => _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-sleep-orphan-token",
+            Text = text, Binary = binary
+        });
+        await Send("""{"type":"LISTEN","transID":"trans-sleep-orphan","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}""");
+        await Send("""{"type":"CLIENT_ASR","transID":"trans-sleep-orphan","data":{"text":"go to sleep"}}""");
+        var session = _store.FindSessionByToken("hub-sleep-orphan-token")!;
+        Assert.Equal("ASLEEP", WebSocketTurnFinalizationService.ResolveGlsmPhase(session));
+
+        // The mic's tail keeps streaming after the turn; past the unstick age it used to send NO_INPUT + @be/idle.
+        await Send(binary: new byte[4096]);
+        session.TurnState.OrphanAudioWithoutListenSinceUtc =
+            DateTimeOffset.UtcNow - WebSocketTurnState.OrphanAudioWithoutListenUnstickAge - TimeSpan.FromMilliseconds(100);
+        session.TurnState.IgnoreAdditionalAudioUntilUtc = null;
+        var replies = await Send(binary: new byte[4096]);
+
+        Assert.Empty(replies);
+        Assert.Equal("ASLEEP", WebSocketTurnFinalizationService.ResolveGlsmPhase(session));
+    }
+
+    [Fact]
     public async Task OrphanBinaryWithoutListen_UnsticksWithIdleRedirectAfterThreshold()
     {
         var session = _store.OpenSession(

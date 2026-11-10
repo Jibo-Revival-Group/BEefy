@@ -315,8 +315,9 @@ public sealed class WebSocketTurnFinalizationService(
                     ignoreAudioWithoutListen);
 
                 // Keep discarding orphan audio, but after sustained no-LISTEN streaming
-                // send NO_INPUT + @be/idle so robots exit the blue-ring deadlock.
-                if (ignoreAudioWithoutListen && !ignoreLateAudio)
+                // send NO_INPUT + @be/idle so robots exit the blue-ring deadlock. Not when he
+                // was just told to sleep: the @be/idle redirect woke him ("go to sleep" undone in 4 s).
+                if (ignoreAudioWithoutListen && !ignoreLateAudio && ResolveGlsmPhase(session) != "ASLEEP")
                 {
                     var unstickReplies = await TryUnstickOrphanListenAudioAsync(
                         session,
