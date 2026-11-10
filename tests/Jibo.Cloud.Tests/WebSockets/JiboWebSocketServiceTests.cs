@@ -10567,7 +10567,7 @@ public sealed class JiboWebSocketServiceTests
             Path = "/listen",
             Kind = "neo-hub-listen",
             Token = token,
-            Text = """{"type":"CLIENT_ASR","transID":"trans-chitchat-emotion","data":{"text":"smile"}}"""
+            Text = """{"type":"CLIENT_ASR","transID":"trans-chitchat-emotion","data":{"text":"you should try to be happy"}}"""
         });
 
         Assert.Equal(3, replies.Count);

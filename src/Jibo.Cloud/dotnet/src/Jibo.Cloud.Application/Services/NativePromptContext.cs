@@ -94,7 +94,8 @@ internal static class NativePromptContext
         reduced = Regex.Replace(reduced, @"(?<neg>!!|!)\s*(?<key>loop\.owner|location\.city|referent|speaker)(?![\w.])", match =>
         {
             var key = match.Groups["key"].Value;
-            var present = values.TryGetValue(key, out var value) && value.Length > 0 || values.Keys.Any(k => k.StartsWith(key + ".", StringComparison.Ordinal));
+            var present = values.TryGetValue(key, out var value) && value.Length > 0
+                || values.Any(p => p.Key.StartsWith(key + ".", StringComparison.Ordinal) && p.Value.Length > 0);
             var yes = match.Groups["neg"].Value == "!" ? !present : present;
             return yes ? "true" : "false";
         });

@@ -2159,7 +2159,7 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
-    public async Task BuildDecisionAsync_Smile_RoutesThroughEmotionCommandSplit()
+    public async Task BuildDecisionAsync_Smile_UsesOriginalSmileMim()
     {
         var service = CreateService();
 
@@ -2169,13 +2169,11 @@ public sealed class JiboInteractionServiceTests
             NormalizedTranscript = "smile"
         });
 
-        Assert.Equal("emotion_command", decision.IntentName);
+        // The original chitchat grammar answers "smile" with RA_JBO_Smile ("That was my smile."), not a mood change.
         Assert.Equal("chitchat-skill", decision.SkillName);
         Assert.NotNull(decision.SkillPayload);
-        Assert.Contains("cat='happy'", decision.SkillPayload!["esml"]?.ToString(), StringComparison.Ordinal);
-        Assert.NotNull(decision.ContextUpdates);
-        Assert.Equal("EmotionCommand", decision.ContextUpdates![ChitchatRouteKey]);
-        Assert.Equal("happy", decision.ContextUpdates[ChitchatEmotionKey]);
+        Assert.Equal("RA_JBO_Smile", decision.SkillPayload!["mim_id"]);
+        Assert.Contains("filter='smile'", decision.SkillPayload["esml"]?.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2377,7 +2375,7 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
-    public async Task BuildDecisionAsync_DontBeAngry_RoutesThroughPegasusNegativeEmotionCommandPhrase()
+    public async Task BuildDecisionAsync_DontBeAngry_UsesOriginalScriptedReply()
     {
         var service = CreateService();
 
@@ -2387,10 +2385,9 @@ public sealed class JiboInteractionServiceTests
             NormalizedTranscript = "don't be angry"
         });
 
-        Assert.Equal("emotion_command", decision.IntentName);
-        Assert.NotNull(decision.ContextUpdates);
-        Assert.Equal("EmotionCommand", decision.ContextUpdates![ChitchatRouteKey]);
-        Assert.Equal("calm", decision.ContextUpdates[ChitchatEmotionKey]);
+        // Original OI_JBO_ShouldNotBeAngry: "Oh I'm not mad. Just a little socially awkward maybe."
+        Assert.Equal("OI_JBO_ShouldNotBeAngry", decision.SkillPayload!["mim_id"]);
+        Assert.Contains("not mad", decision.ReplyText, StringComparison.Ordinal);
     }
 
     [Fact]

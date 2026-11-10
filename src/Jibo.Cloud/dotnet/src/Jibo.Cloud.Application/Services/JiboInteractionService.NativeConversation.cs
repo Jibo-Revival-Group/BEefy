@@ -25,13 +25,12 @@ public sealed partial class JiboInteractionService
 
         if (isSkillOwnedListen && (TranscriptHeuristics.IsLikelyPromptEchoTranscript(transcript.ToLowerInvariant())
             || TranscriptHeuristics.IsLikelySkillOfferPromptEcho(transcript.ToLowerInvariant()))) return null;
-        if (!isSkillOwnedListen && semanticIntent == "chat")
-        {
-            var emotion = ChitchatStateMachine.TryBuildChatEmotionDecision(transcript.ToLowerInvariant(), catalog, randomizer,
+        // The mood shortcut answers only what the original chitchat grammar has no reply for ("do you get lonely" has one).
+        var emotion = !isSkillOwnedListen && semanticIntent == "chat"
+            ? ChitchatStateMachine.TryBuildChatEmotionDecision(transcript.ToLowerInvariant(), catalog, randomizer,
                 NativeConversationValue.Read(turn.Attributes, ChitchatStateMachine.EmotionMetadataKey)?.ToString(),
-                ResolvePreferredGreetingName(turn, ResolveGreetingPresenceProfile(turn)));
-            if (emotion is not null) return emotion;
-        }
+                ResolvePreferredGreetingName(turn, ResolveGreetingPresenceProfile(turn)))
+            : null;
         NativeParseResult? parsed;
         if (!isSkillOwnedListen && System.Text.RegularExpressions.Regex.IsMatch(transcript.ToLowerInvariant(),
             @"^(?:let'?s talk|talk about) colou?rs[.!?]?$")) return BuildNativeColorQuestion();
@@ -45,7 +44,7 @@ public sealed partial class JiboInteractionService
             var requested = isSkillOwnedListen ? listenRules.Concat(clientRules).Distinct().ToArray() : ["launch"];
             parsed = NativeGrammar.Instance.Parse(transcript, requested, names);
         }
-        if (parsed is null) return null;
+        if (parsed is null) return emotion;
         if (isSkillOwnedListen)
         {
             // A contextual rule returns NLU to the owning robot skill, without a second launch.
@@ -54,6 +53,8 @@ public sealed partial class JiboInteractionService
         }
         if (parsed.Intent == "whoIsPerson" && transcript.Trim().Equals("who is jibo", StringComparison.OrdinalIgnoreCase)) return null;
         var entry = NativeCommandRegistry.Instance.Resolve(parsed);
+        // As in the original chitchat, only scripted-response MIMs answer directly; emotion MIMs stay on the mood route.
+        if (emotion is not null && !IsScriptedChitchatMim(entry)) return emotion;
         if (entry is null)
         {
             var global = await TryBuildNativeGlobalDecisionAsync(parsed, turn, catalog, cancellationToken);
@@ -96,8 +97,11 @@ public sealed partial class JiboInteractionService
             case "example-skill":
                 return new(parsed.Intent, "SLIM: 'Node1' MEMO: 'SomeThing' SLIM: 'Node2' MEMO: 'SomeThing' SLIM: 'Node3' MEMO: 'SomeThing'", "example-skill");
             case "chitchat-skill":
-                return NativeScriptedReplies.Build(entry, parsed, turn, catalog, randomizer,
+                var scripted = NativeScriptedReplies.Build(entry, parsed, turn, catalog, randomizer,
                     ResolvePreferredGreetingName(turn, ResolveGreetingPresenceProfile(turn)), TryResolveReferenceLocalTime(turn));
+                // A mood MIM with no line for the current mood ("are you pleased") keeps the mood shortcut's answer.
+                return emotion is not null && (scripted.SkillPayload is { } payload && payload.TryGetValue("mim_id", out var mimId) ? mimId as string : null) is null or "CC_Fallback"
+                    ? emotion : scripted;
             default: throw new InvalidOperationException($"No native handler for registered cloud skill {entry.Skill}.");
         }
     }
@@ -126,6 +130,13 @@ public sealed partial class JiboInteractionService
         return Task.FromResult(result);
         async Task<JiboInteractionDecision?> Repeat() => await BuildRepeatLastCommandDecisionAsync(turn, cancellationToken);
     }
+
+    private static bool IsScriptedChitchatMim(NativeCommandRegistration? entry) =>
+        entry is { Skill: "chitchat-skill" } && entry.Memo.ValueKind == JsonValueKind.Object
+        && entry.Memo.TryGetProperty("mim", out var mim) && mim.GetString() is { Length: > 0 } id
+        && !id.StartsWith("PR_", StringComparison.Ordinal) // partial recognition ("how angry are you" -> "are you ...")
+        && NativeConversationResources.Instance.Files.Keys.Any(k =>
+            k.StartsWith("packages/skills/resources/mims/chitchat/scripted-responses/" + id, StringComparison.Ordinal));
 
     private static JiboInteractionDecision? BuildNativeClassifierDecision(string intent)
     {
