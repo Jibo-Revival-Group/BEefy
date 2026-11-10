@@ -89,14 +89,16 @@ public sealed class ProtocolToTurnContextMapper
 
         if (turnState.BufferedAudioBytes > 0)
         {
-            var audioPageCounts = BufferedAudioPageClassifier.Describe(turnState.BufferedAudioFrames);
+            // The socket keeps appending frames while a turn finalizes in the background: copy once
+            // (List.ToArray never throws "Collection was modified"; a concurrent Clear leaves nulls).
+            var frames = turnState.BufferedAudioFrames.ToArray().Where(frame => frame is not null).ToArray();
+            var audioPageCounts = BufferedAudioPageClassifier.Describe(frames);
             attributes["bufferedAudioBytes"] = turnState.BufferedAudioBytes;
             attributes["bufferedAudioChunks"] = turnState.BufferedAudioChunkCount;
             attributes["bufferedAudioRawFrames"] = audioPageCounts.RawFrameCount;
             attributes["bufferedAudioMetadataPages"] = audioPageCounts.MetadataPageCount;
             attributes["bufferedAudioAudioBearingPages"] = audioPageCounts.AudioBearingPageCount;
-            attributes["bufferedAudioFrames"] =
-                turnState.BufferedAudioFrames.Select(frame => frame.ToArray()).ToArray();
+            attributes["bufferedAudioFrames"] = frames;
         }
 
         if (!string.IsNullOrWhiteSpace(turnState.AudioTranscriptHint))

@@ -2260,16 +2260,19 @@ public sealed class WebSocketTurnFinalizationService(
     private async Task StoreBufferedAudioArtifactAsync(CloudSession session, TurnContext turn,
         CancellationToken cancellationToken)
     {
-        if (mediaContentStore is null || session.TurnState.BufferedAudioFrames.Count == 0) return;
+        // The turn's own copy of the audio: the live list is still growing.
+        if (mediaContentStore is null ||
+            !turn.Attributes.TryGetValue("bufferedAudioFrames", out var value) ||
+            value is not IReadOnlyList<byte[]> { Count: > 0 } frames) return;
 
-        var rawContent = session.TurnState.BufferedAudioFrames.SelectMany(frame => frame).ToArray();
+        var rawContent = frames.SelectMany(frame => frame).ToArray();
         var isOgg = rawContent.Length >= 4 && rawContent.AsSpan(0, 4).SequenceEqual("OggS"u8);
         var content = rawContent;
         if (isOgg)
         {
             try
             {
-                content = Audio.OggOpusAudioNormalizer.Normalize(session.TurnState.BufferedAudioFrames);
+                content = Audio.OggOpusAudioNormalizer.Normalize(frames);
             }
             catch (InvalidOperationException exception)
             {

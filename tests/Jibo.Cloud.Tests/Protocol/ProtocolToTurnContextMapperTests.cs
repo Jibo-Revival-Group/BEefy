@@ -32,6 +32,32 @@ public sealed class ProtocolToTurnContextMapperTests
     }
 
     [Fact]
+    public async Task MapListenMessage_CopiesAudioWhileTheSocketKeepsAppending()
+    {
+        // Prod: "Collection was modified" failed background finalization while audio still arrived.
+        var session = new CloudSession();
+        session.TurnState.BufferedAudioBytes = 3;
+        session.TurnState.BufferedAudioFrames.Add([1, 2, 3]);
+        var envelope = new WebSocketMessageEnvelope { Text = """{"data":{"text":"hi"}}""" };
+        using var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        var writer = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                session.TurnState.BufferedAudioFrames.Add([4]);
+                if (session.TurnState.BufferedAudioFrames.Count > 4096) session.TurnState.BufferedAudioFrames.Clear();
+            }
+        });
+
+        while (!stop.IsCancellationRequested)
+        {
+            var turn = ProtocolToTurnContextMapper.MapListenMessage(envelope, session, "LISTEN");
+            Assert.All((IReadOnlyList<byte[]>)turn.Attributes["bufferedAudioFrames"]!, Assert.NotNull);
+        }
+        await writer;
+    }
+
+    [Fact]
     public void MapListenMessage_PreservesHouseholdListMetadata()
     {
         var session = new CloudSession

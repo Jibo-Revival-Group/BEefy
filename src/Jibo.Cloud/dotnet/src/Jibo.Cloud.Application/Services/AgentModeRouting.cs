@@ -16,6 +16,7 @@ public static class AgentModeRouting
         var normalized = TranscriptTextNormalizer.NormalizeLooseText(text);
         normalized = TranscriptTextNormalizer.StripLeadingPhrases(normalized,
             ["hey jibo", "hello jibo", "hi jibo", "jibo"]);
+        normalized = TranscriptTextNormalizer.StripLeadingPhrases(normalized, ["um", "uh", "erm", "hmm", "ah"]); // prod: "um let's chat" x3
         normalized = TranscriptTextNormalizer.StripTrailingCourtesyWords(normalized);
         if (IsLetsChat(normalized) || LetsChatMishearings.Contains(normalized) ||
             normalized is "let's have a conversation" or "let s have a conversation" or "lets have a conversation" or "let us have a conversation")

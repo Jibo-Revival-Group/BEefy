@@ -89,6 +89,8 @@ public sealed class AgentModeTests
     [InlineData("let's have a chat")]
     [InlineData("hey jibo let's chat please")]
     [InlineData("Let's Chat")]
+    [InlineData("um let's chat")]
+    [InlineData("uh agent mode")]
     public void Launch_AcceptsMisheardLetsChat(string text) => Assert.True(AgentModeRouting.IsLaunch(text));
 
     [Theory]
@@ -100,6 +102,8 @@ public sealed class AgentModeTests
     [InlineData("chat")]
     [InlineData("let's go")]
     [InlineData("pass chat")]
+    [InlineData("um chat")]
+    [InlineData("uh let's go")]
     public void Launch_DoesNotCaptureUnrelatedSentences(string text) => Assert.False(AgentModeRouting.IsLaunch(text));
 
     private static JsonElement[] Messages(ResponsePlan plan, TurnContext turn) =>
