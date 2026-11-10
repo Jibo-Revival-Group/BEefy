@@ -449,7 +449,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
             return messages;
         }
 
-        if (isTurnAroundCommand)
+        if (isTurnAroundCommand && !nativeGlobal) // a native global already launched @be/idle in the LISTEN match
         {
             messages.Add(new SocketReplyPlan(
                 JsonSerializer.Serialize(BuildSkillRedirectPayload(

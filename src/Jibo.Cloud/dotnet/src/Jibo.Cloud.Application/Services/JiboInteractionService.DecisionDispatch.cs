@@ -583,7 +583,7 @@ public sealed partial class JiboInteractionService
             "stop" => BuildStopDecision(),
             "sleep" => BuildSleepDecision(),
             "wake_up" => BuildWakeUpDecision(),
-            "turn_around" => BuildIdleGlobalCommandDecision("turn_around", "turnAround", "Don't mind if I do."),
+            "turn_around" => BuildTurnAroundDecision(),
             "spin_around" => BuildIdleGlobalCommandDecision("spin_around", "spinAround", "Don't mind if I do."),
             "volume_up" => BuildVolumeControlDecision("volume_up", "volumeUp", "null"),
             "volume_down" => BuildVolumeControlDecision("volume_down", "volumeDown", "null"),

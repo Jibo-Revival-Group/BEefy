@@ -4922,24 +4922,20 @@ public sealed class JiboWebSocketServiceTests
             Text = """{"type":"CLIENT_ASR","transID":"trans-spin","data":{"text":"turn around"}}"""
         });
 
-        Assert.Equal(5, replies.Count);
+        // Like the stock cloud: only the intent, straight to @be/idle in the LISTEN match (no cloud speech, which
+        // launched @be/nimbus and made idle reopen facing forward).
+        Assert.Equal(2, replies.Count);
         Assert.Equal("LISTEN", ReadReplyType(replies[0]));
         Assert.Equal("EOS", ReadReplyType(replies[1]));
-        Assert.Equal("SKILL_REDIRECT", ReadReplyType(replies[2]));
-        Assert.Equal("SKILL_ACTION", ReadReplyType(replies[3]));
-        Assert.Equal("SKILL_ACTION", ReadReplyType(replies[4]));
 
         using var listenPayload = JsonDocument.Parse(replies[0].Text!);
         var nlu = listenPayload.RootElement.GetProperty("data").GetProperty("nlu");
         Assert.Equal("turnAround", nlu.GetProperty("intent").GetString());
         Assert.Equal("global_commands", nlu.GetProperty("domain").GetString());
         Assert.Equal("globals/global_commands_launch", nlu.GetProperty("rules")[0].GetString());
-
-        using var redirectPayload = JsonDocument.Parse(replies[2].Text!);
-        Assert.Equal("@be/idle",
-            redirectPayload.RootElement.GetProperty("data").GetProperty("match").GetProperty("skillID").GetString());
-        Assert.Equal("turnAround",
-            redirectPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
+        var match = listenPayload.RootElement.GetProperty("data").GetProperty("match");
+        Assert.Equal("@be/idle", match.GetProperty("skillID").GetString());
+        Assert.True(match.GetProperty("onRobot").GetBoolean());
     }
 
     [Fact]
@@ -4964,23 +4960,19 @@ public sealed class JiboWebSocketServiceTests
             Text = """{"type":"CLIENT_ASR","transID":"trans-spin-around","data":{"text":"spin around"}}"""
         });
 
-        Assert.Equal(5, replies.Count);
+        // Like the stock cloud: only the intent, straight to @be/idle in the LISTEN match (no cloud speech, which
+        // launched @be/nimbus and made idle reopen facing forward).
+        Assert.Equal(2, replies.Count);
         Assert.Equal("LISTEN", ReadReplyType(replies[0]));
         Assert.Equal("EOS", ReadReplyType(replies[1]));
-        Assert.Equal("SKILL_REDIRECT", ReadReplyType(replies[2]));
-        Assert.Equal("SKILL_ACTION", ReadReplyType(replies[3]));
-        Assert.Equal("SKILL_ACTION", ReadReplyType(replies[4]));
 
         using var listenPayload = JsonDocument.Parse(replies[0].Text!);
         var nlu = listenPayload.RootElement.GetProperty("data").GetProperty("nlu");
         Assert.Equal("turnAround", nlu.GetProperty("intent").GetString());
         Assert.Equal("global_commands", nlu.GetProperty("domain").GetString());
-
-        using var redirectPayload = JsonDocument.Parse(replies[2].Text!);
-        Assert.Equal("@be/idle",
-            redirectPayload.RootElement.GetProperty("data").GetProperty("match").GetProperty("skillID").GetString());
-        Assert.Equal("turnAround",
-            redirectPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
+        var match = listenPayload.RootElement.GetProperty("data").GetProperty("match");
+        Assert.Equal("@be/idle", match.GetProperty("skillID").GetString());
+        Assert.True(match.GetProperty("onRobot").GetBoolean());
     }
 
     [Fact]
@@ -5005,23 +4997,19 @@ public sealed class JiboWebSocketServiceTests
             Text = """{"type":"CLIENT_ASR","transID":"trans-twirl","data":{"text":"twirl"}}"""
         });
 
-        Assert.Equal(5, replies.Count);
+        // Like the stock cloud: only the intent, straight to @be/idle in the LISTEN match (no cloud speech, which
+        // launched @be/nimbus and made idle reopen facing forward).
+        Assert.Equal(2, replies.Count);
         Assert.Equal("LISTEN", ReadReplyType(replies[0]));
         Assert.Equal("EOS", ReadReplyType(replies[1]));
-        Assert.Equal("SKILL_REDIRECT", ReadReplyType(replies[2]));
-        Assert.Equal("SKILL_ACTION", ReadReplyType(replies[3]));
-        Assert.Equal("SKILL_ACTION", ReadReplyType(replies[4]));
 
         using var listenPayload = JsonDocument.Parse(replies[0].Text!);
         var nlu = listenPayload.RootElement.GetProperty("data").GetProperty("nlu");
         Assert.Equal("turnAround", nlu.GetProperty("intent").GetString());
         Assert.Equal("global_commands", nlu.GetProperty("domain").GetString());
-
-        using var redirectPayload = JsonDocument.Parse(replies[2].Text!);
-        Assert.Equal("@be/idle",
-            redirectPayload.RootElement.GetProperty("data").GetProperty("match").GetProperty("skillID").GetString());
-        Assert.Equal("turnAround",
-            redirectPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("intent").GetString());
+        var match = listenPayload.RootElement.GetProperty("data").GetProperty("match");
+        Assert.Equal("@be/idle", match.GetProperty("skillID").GetString());
+        Assert.True(match.GetProperty("onRobot").GetBoolean());
     }
 
     [Fact]

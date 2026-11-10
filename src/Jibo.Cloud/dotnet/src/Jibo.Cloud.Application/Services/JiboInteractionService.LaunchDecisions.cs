@@ -142,6 +142,20 @@ public sealed partial class JiboInteractionService
             });
     }
 
+    // As on the stock cloud, only the intent goes to @be/idle; its TurnAwayState turns him away, asks after an hour whether
+    // he may turn back (6 h at most, sleeps at night). Cloud speech launched @be/nimbus first and idle reopened facing forward.
+    private static JiboInteractionDecision BuildTurnAroundDecision() => new(
+        "turn_around",
+        string.Empty,
+        "@be/idle",
+        new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["skillId"] = "@be/idle",
+            ["globalIntent"] = "turnAround",
+            ["nluDomain"] = "global_commands",
+            ["nativeGlobal"] = true
+        });
+
     private static JiboInteractionDecision BuildIntroductionsLaunchDecision()
     {
         return new JiboInteractionDecision(

@@ -112,7 +112,7 @@ public sealed partial class JiboInteractionService
         JiboInteractionDecision? result = parsed.Intent switch
         {
             "stop" => BuildStopDecision(), "sleep" => BuildSleepDecision(), "requestWakeUp" => BuildWakeUpDecision(),
-            "turnAround" => BuildIdleGlobalCommandDecision("turn_around", "turnAround", "Don't mind if I do."),
+            "turnAround" => BuildTurnAroundDecision(),
             "spinAround" => BuildIdleGlobalCommandDecision("spin_around", "spinAround", "Don't mind if I do."),
             "volumeUp" => BuildVolumeControlDecision("volume_up", "volumeUp", "null"),
             "volumeDown" => BuildVolumeControlDecision("volume_down", "volumeDown", "null"),
