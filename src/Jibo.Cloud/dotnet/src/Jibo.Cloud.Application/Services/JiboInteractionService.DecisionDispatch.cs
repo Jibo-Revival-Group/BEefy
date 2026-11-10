@@ -36,7 +36,9 @@ public sealed partial class JiboInteractionService
 
         SyncLoopPeopleFromTurn(turn);
         var catalog = await contentCache.GetCatalogAsync(cancellationToken);
-        var transcript = (turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty).Trim();
+        // "tell me your favorite X" is asked as "what is your favorite X": the original chitchat grammar only knows the question.
+        var transcript = System.Text.RegularExpressions.Regex.Replace((turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty).Trim(),
+            @"^tell (?:me|us) your (?=(?:least )?favou?rite\b)", "what is your ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         var lowered = transcript.ToLowerInvariant();
         var referenceLocalTime = TryResolveReferenceLocalTime(turn);
         if (sportsScoreProvider is not null && !SkillListenOwnership.IsSkillOwnedListen(turn) && SportsQuestion.IsMatch(lowered) &&
