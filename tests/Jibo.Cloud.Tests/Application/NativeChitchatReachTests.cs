@@ -16,6 +16,7 @@ public sealed class NativeChitchatReachTests
     [InlineData("do you get lonely", "Not really")]                  // was "All systems are go."
     [InlineData("are you mad at me", "never get mad at you")]
     [InlineData("you should be proud", "proud of")]                  // was "I can do that mood."
+    [InlineData("what's your favorite ice cream", "mint chocolate chip")] // was a random favorite (macaroni)
     public async Task OriginalChitchatAnswer(string transcript, string expected)
     {
         var decision = await CreateService().BuildDecisionAsync(new TurnContext

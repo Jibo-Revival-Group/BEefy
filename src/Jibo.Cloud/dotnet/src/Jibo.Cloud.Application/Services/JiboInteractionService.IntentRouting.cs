@@ -2291,6 +2291,15 @@ public sealed partial class JiboInteractionService
         return MatchesAny(loweredTranscript, AsrCommandCatalog.Greeting) ? "hello" : "chat";
     }
 
+    // "what's your favorite ice cream" has its own original MIM; only unknown favorites get the generic KU answer.
+    private static bool HasSpecificOriginalFavorite(string loweredTranscript)
+    {
+        var parsed = NativeGrammar.Instance.Parse(loweredTranscript, ["launch"], []);
+        var entry = parsed is null ? null : NativeCommandRegistry.Instance.Resolve(parsed);
+        return IsScriptedChitchatMim(entry)
+            && entry!.Memo.GetProperty("mim").GetString() is not ("KU_WhatIsYourFavorite" or "KU_WhoIsYourFavorite");
+    }
+
     private static bool TryResolvePegasusPersonalityGap(
         string loweredTranscript,
         out string? semanticIntent)
@@ -2857,7 +2866,8 @@ public sealed partial class JiboInteractionService
                 "who's your favorite",
                 "who s your favorite",
                 "tell me your favorite",
-                "tell us your favorite"))
+                "tell us your favorite")
+            && !HasSpecificOriginalFavorite(loweredTranscript))
         {
             semanticIntent = loweredTranscript.StartsWith("who", StringComparison.Ordinal)
                 ? "robot_who_is_your_favorite"

@@ -1311,7 +1311,7 @@ public sealed class JiboInteractionServiceTests
     [InlineData("what is your favorite Star Wars character", "robot_favorite_star_wars_character", "R 2 D 2")]
     [InlineData("what is your favorite Star Wars movie", "robot_favorite_star_wars_movie", "whole thing")]
     [InlineData("what is your favorite", "robot_what_is_your_favorite", "favorites")]
-    [InlineData("who is your favorite", "robot_who_is_your_favorite", "favorite")]
+    [InlineData("who is your favorite", "doesJiboHaveFavorite", "hard to say")] // original RI_JBO_HasFavoriteHuman
     [InlineData("did you have a favorite", "robot_did_you_have_a_favorite", "favorites")]
     [InlineData("what was your favorite color", "robot_favorite_color", "favorite color")]
     [InlineData("your favorite football team should be the Patriots", "robot_favorite_team_should_be", "Maybe so")]
