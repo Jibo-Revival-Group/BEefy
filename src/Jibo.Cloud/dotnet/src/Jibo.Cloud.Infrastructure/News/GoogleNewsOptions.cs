@@ -10,8 +10,7 @@ public sealed class GoogleNewsOptions
 
     public string Language { get; set; } = "en-US";
 
-    /// <summary>One top headline from each, in order, when the user didn't ask for a category.</summary>
-    public string[] DefaultCategories { get; set; } = ["technology", "science", "sports"];
+    /// <summary>Topics used when the user didn't ask for one and set none in BEacon (5 of them at random).</summary>
+    public string[] DefaultCategories { get; set; } = [.. Jibo.Cloud.Application.Abstractions.NewsTopics.All];
 
-    public int FailureCacheTtlSeconds { get; set; } = 45;
 }

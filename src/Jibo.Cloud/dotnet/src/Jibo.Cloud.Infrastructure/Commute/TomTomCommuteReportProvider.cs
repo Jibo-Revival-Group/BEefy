@@ -7,8 +7,8 @@ using Jibo.Runtime.Abstractions;
 namespace Jibo.Cloud.Infrastructure.Commute;
 
 /// <summary>
-/// Live commute: TomTom travel time from the robot's home address to the speaker's job address,
-/// both saved in BEacon. Robots without both addresses keep the profile-based fallback.
+/// Live commute: TomTom travel time from the speaker's home (or the household's) to the speaker's job,
+/// all saved in BEacon. Robots without both addresses keep the profile-based fallback.
 /// </summary>
 public sealed class TomTomCommuteReportProvider(
     IUserIntegrationStore integrationStore,
@@ -27,9 +27,11 @@ public sealed class TomTomCommuteReportProvider(
         var addresses = robot is null || !routing.IsConfigured
             ? []
             : integrationStore.GetCommuteAddresses(MemberCalendarFeedRecord.RobotScope(robot));
-        var home = addresses.FirstOrDefault(static item => item.MemberId == CommuteAddressRecord.HomeMemberId);
-        var work = PickWork(addresses.Where(static item => item.MemberId != CommuteAddressRecord.HomeMemberId).ToArray(),
+        var work = PickWork(addresses.Where(static item => !CommuteAddressRecord.IsHome(item.MemberId)).ToArray(),
             ReadAttribute(turn, "personalReportUserName") ?? ReadAttribute(turn, "userName"));
+        // The person's own home when BEacon has one, else the household's.
+        var home = (work is null ? null : addresses.FirstOrDefault(item => item.MemberId == CommuteAddressRecord.HomeOf(work.MemberId))) ??
+                   addresses.FirstOrDefault(static item => item.MemberId == CommuteAddressRecord.HomeMemberId);
         if (home is null || work is null) return await fallbackProvider.GetReportAsync(turn, cancellationToken);
 
         var profile = cloudStateStore.GetCommuteProfiles().FirstOrDefault(static item => item.IsEnabled);

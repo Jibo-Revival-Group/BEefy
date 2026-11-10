@@ -5,6 +5,7 @@ using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Commute;
+using Jibo.Cloud.Infrastructure.Content;
 using Jibo.Cloud.Infrastructure.Persistence;
 using Jibo.Runtime.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -81,6 +82,74 @@ public sealed class TomTomCommuteTests
         Assert.Equal(["Geocoded Home St", "Geocoded Work St"], saved.Select(item => item.Address).Order().ToArray());
         Assert.Equal("America/New_York", saved.Single(item => item.MemberId == "home").TimeZoneId);
         Assert.Contains("Geocoded Work St", list.BodyText);
+    }
+
+    [Fact]
+    public async Task Provider_UsesTheSpeakersOwnHome_WhenBEaconHasOne()
+    {
+        using var store = new TempStore();
+        var scope = MemberCalendarFeedRecord.RobotScope(Robot);
+        store.Store.UpsertCommuteAddress(new CommuteAddressRecord { Scope = scope, MemberId = CommuteAddressRecord.HomeMemberId, Address = "home", Latitude = 1, Longitude = 1 });
+        store.Store.UpsertCommuteAddress(new CommuteAddressRecord { Scope = scope, MemberId = CommuteAddressRecord.HomeOf("zoe"), Address = "dorm", Latitude = 5, Longitude = 5 });
+        store.Store.UpsertCommuteAddress(new CommuteAddressRecord { Scope = scope, MemberId = "zoe", Address = "school", Latitude = 3, Longitude = 3, MemberName = "Zoe Vincent" });
+        store.Store.UpsertCommuteAddress(new CommuteAddressRecord { Scope = scope, MemberId = "zane", Address = "job", Latitude = 2, Longitude = 2, MemberName = "Zane Vincent" });
+        var routing = new FakeRouting();
+        var provider = new TomTomCommuteReportProvider(store.Store, routing, new InMemoryCloudStateStore(), new NullProvider());
+
+        await provider.GetReportAsync(Speaker("zoe"));
+        Assert.Equal((5d, 5d, 3d, 3d), routing.Last); // her own home, not the household's (and not a "job")
+        await provider.GetReportAsync(Speaker("zane"));
+        Assert.Equal((1d, 1d, 2d, 2d), routing.Last); // no home of his own: the household's
+
+        static TurnContext Speaker(string name) => new()
+        {
+            DeviceId = Robot, Attributes = new Dictionary<string, object?> { ["personalReportUserName"] = name }
+        };
+    }
+
+    [Fact]
+    public async Task NewsTopics_SavedPerPersonInBEacon_DecideTheSpeakersBriefingTopics()
+    {
+        using var store = new TempStore();
+        var cloud = new InMemoryCloudStateStore();
+        var protocol = new JiboCloudProtocolService(cloud, userIntegrationStore: store.Store, commuteRouting: new FakeRouting());
+        var set = await protocol.DispatchAsync(Signed(cloud, "SetNewsTopics",
+            new { memberId = "zoe", memberName = "Zoe Vincent", disabledTopics = new[] { "sports", "Health", "not-a-topic" } }));
+        await protocol.DispatchAsync(Signed(cloud, "SetNewsTopics", new { memberId = "zane", memberName = "Zane", disabledTopics = new[] { "general" } }));
+        var list = await protocol.DispatchAsync(Signed(cloud, "GetNewsTopics", new { }));
+        Assert.Equal(200, set.StatusCode);
+        Assert.Contains("\"disabledTopics\":[\"sports\",\"health\"]", list.BodyText);
+
+        var news = new CapturingNews();
+        var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), newsBriefingProvider: news, userIntegrationStore: store.Store);
+        Task Ask(string text, string? speaker) => service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = text, NormalizedTranscript = text, DeviceId = Robot,
+            Attributes = speaker is null ? new Dictionary<string, object?>() : new Dictionary<string, object?> { ["userName"] = speaker }
+        });
+
+        await Ask("tell me the news", "Zoe");
+        Assert.Equal(["general", "world", "nation", "business", "technology", "entertainment", "science"], news.Last!.PreferredCategories);
+        await Ask("tell me the science news", "Zoe"); // asking for a topic still works
+        Assert.Equal(["science"], news.Last!.PreferredCategories);
+        await Ask("tell me the news", "Someone Else"); // two people set topics, and this isn't either of them
+        Assert.Empty(news.Last!.PreferredCategories);
+    }
+
+    private sealed class CapturingNews : INewsBriefingProvider
+    {
+        public NewsBriefingRequest? Last;
+        public Task<NewsBriefingSnapshot?> GetBriefingAsync(NewsBriefingRequest request, CancellationToken cancellationToken = default)
+        {
+            Last = request;
+            return Task.FromResult<NewsBriefingSnapshot?>(null);
+        }
+    }
+
+    private sealed class FirstItemRandomizer : IJiboRandomizer
+    {
+        public T Choose<T>(IReadOnlyList<T> items) => items[0];
     }
 
     private static ProtocolEnvelope Signed(InMemoryCloudStateStore cloud, string operation, object body)

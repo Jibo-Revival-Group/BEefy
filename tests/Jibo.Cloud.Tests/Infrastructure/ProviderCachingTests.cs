@@ -222,7 +222,7 @@ public sealed class ProviderCachingTests
         "</channel></rss>";
 
     private static (GoogleNewsBriefingProvider Provider, CountingHttpMessageHandler Handler) GoogleNews(
-        Func<string, HttpResponseMessage> feedForPath, bool feedRedirect = false)
+        Func<string, HttpResponseMessage> feedForPath, bool feedRedirect = false, string[]? defaults = null)
     {
         var handler = new CountingHttpMessageHandler(message =>
         {
@@ -233,7 +233,8 @@ public sealed class ProviderCachingTests
             response.RequestMessage = message;
             return response;
         });
-        return (new GoogleNewsBriefingProvider(new HttpClient(handler), new GoogleNewsOptions(),
+        return (new GoogleNewsBriefingProvider(new HttpClient(handler),
+            defaults is null ? new GoogleNewsOptions() : new GoogleNewsOptions { DefaultCategories = defaults },
             NullLogger<GoogleNewsBriefingProvider>.Instance), handler);
     }
 
@@ -249,7 +250,7 @@ public sealed class ProviderCachingTests
             "/rss/headlines/section/topic/SCIENCE" => GoogleNewsFeed("Science one is the top science story", "Science two"),
             "/rss/headlines/section/topic/SPORTS" => GoogleNewsFeed("Sports one is the top sports story", "Sports two"),
             _ => GoogleNewsFeed("Unexpected feed")
-        }), feedRedirect: true);
+        }), feedRedirect: true, defaults: ["technology", "science", "sports"]);
 
         var result = await provider.GetBriefingAsync(new NewsBriefingRequest([]));
         await provider.GetBriefingAsync(new NewsBriefingRequest([]));
@@ -304,6 +305,19 @@ public sealed class ProviderCachingTests
         // Like the stock skill, stories without a photo are left out while the category has photo stories.
         Assert.Equal(["Robotics lab opens", "Students win the coding cup"], result.Headlines.Select(headline => headline.Title));
         Assert.Equal(new NewsImage("https://news.google.com/api/attachments/LAB=-w1280-h720-p-df", 640, 360), result.Headlines[0].Image);
+    }
+
+    [Fact]
+    public async Task GoogleNewsBriefingProvider_KeepsFiveRandomTopics_WhenMoreAreOn_LikeStockTrimCats()
+    {
+        var (provider, _) = GoogleNews(path => Xml(GoogleNewsFeed("Story about " + path.Split('/')[^1].ToLowerInvariant() + " today")));
+
+        var result = await provider.GetBriefingAsync(new NewsBriefingRequest([.. NewsTopics.All]));
+
+        Assert.NotNull(result);
+        var topics = result.Headlines.Select(headline => headline.Category!).ToArray();
+        Assert.Equal(5, topics.Length);
+        Assert.Equal(topics.OrderBy(topic => NewsTopics.All.ToList().IndexOf(topic)), topics); // original order kept
     }
 
     [Fact]

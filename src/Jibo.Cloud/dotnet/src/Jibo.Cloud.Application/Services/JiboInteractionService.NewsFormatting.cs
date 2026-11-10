@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Jibo.Cloud.Application.Abstractions;
+using Jibo.Cloud.Domain.Models;
 using Jibo.Runtime.Abstractions;
 
 namespace Jibo.Cloud.Application.Services;
@@ -287,7 +288,8 @@ public sealed partial class JiboInteractionService
         {
             <= 0 => "Here's today's news.",
             1 => $"Here's today's {preferredCategories[0]} news.",
-            _ => $"Here's today's {preferredCategories[0]} and {preferredCategories[1]} news."
+            2 => $"Here's today's {preferredCategories[0]} and {preferredCategories[1]} news.",
+            _ => "Here's today's news."
         };
 
         return string.IsNullOrWhiteSpace(sourceName)
@@ -318,6 +320,9 @@ public sealed partial class JiboInteractionService
             if (normalizedTranscript.Contains(keyword, StringComparison.Ordinal))
                 AddNewsCategory(categories, category);
 
+        // No topic asked for: the topics this person left on in BEacon's Personal Reports tab.
+        if (categories.Count == 0 && ResolveSpeakerNewsTopics(turn) is { } enabledTopics) return enabledTopics;
+
         var tenantScope = ResolveTenantScope(turn);
         var explicitPreference = personalMemoryStore.GetPreference(tenantScope, "news");
         if (!string.IsNullOrWhiteSpace(explicitPreference))
@@ -332,6 +337,23 @@ public sealed partial class JiboInteractionService
         }
 
         return [.. categories.Take(MaxPreferredNewsCategories)];
+    }
+
+    private List<string>? ResolveSpeakerNewsTopics(TurnContext turn)
+    {
+        if (userIntegrationStore is null || string.IsNullOrWhiteSpace(turn.DeviceId)) return null;
+        var people = userIntegrationStore.GetNewsTopics(MemberCalendarFeedRecord.RobotScope(turn.DeviceId.Trim()));
+        if (people.Count == 0) return null;
+
+        // Like commute jobs: the speaker by the name BEacon saved, or the only person who set topics.
+        var name = new[] { "personalReportUserName", "userName" }
+            .Select(key => turn.Attributes.TryGetValue(key, out var value) ? value?.ToString()?.Trim() : null)
+            .FirstOrDefault(static value => !string.IsNullOrEmpty(value));
+        static string First(string? text) => (text ?? string.Empty).Trim().Split(' ')[0].ToLowerInvariant();
+        var person = (name is null ? null : people.FirstOrDefault(item => First(item.MemberName) == First(name))) ??
+                     (people.Count == 1 ? people[0] : null);
+        var enabled = person is null ? null : NewsTopics.All.Except(person.DisabledTopics).ToList();
+        return enabled is { Count: > 0 } ? enabled : null;
     }
 
     private static IEnumerable<string> MapNewsCategoryText(string text)

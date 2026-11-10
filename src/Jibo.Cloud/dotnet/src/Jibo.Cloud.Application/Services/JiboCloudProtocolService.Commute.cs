@@ -6,7 +6,7 @@ namespace Jibo.Cloud.Application.Services;
 public sealed partial class JiboCloudProtocolService
 {
     private static bool IsCommuteOperation(string operation) =>
-        operation is "GetCommuteAddresses" or "SetCommuteAddress" or "ClearCommuteAddress";
+        operation is "GetCommuteAddresses" or "SetCommuteAddress" or "ClearCommuteAddress" or "GetNewsTopics" or "SetNewsTopics";
 
     /// <summary>
     /// BEacon's home address (Etc tab) and each person's job (People tab), geocoded here so the
@@ -53,6 +53,27 @@ public sealed partial class JiboCloudProtocolService
                     address = found.Address, lat = found.Latitude, lng = found.Longitude, city = found.City,
                     state = found.State, stateAbbr = found.StateCode, country = found.Country, countryCode = found.CountryCode
                 });
+            }
+            // Personal Reports tab: the news topics each person turned off.
+            case "GetNewsTopics":
+                return ProtocolDispatchResult.Ok(new
+                {
+                    topics = NewsTopics.All,
+                    people = userIntegrationStore.GetNewsTopics(scope)
+                        .Select(static item => new { memberId = item.MemberId, disabledTopics = item.DisabledTopics }).ToArray()
+                });
+            case "SetNewsTopics":
+            {
+                if (memberId == CommuteAddressRecord.HomeMemberId) return CalendarError(400, "memberId is required.");
+                var disabled = body?.TryGetProperty("disabledTopics", out var list) == true && list.ValueKind == System.Text.Json.JsonValueKind.Array
+                    ? list.EnumerateArray().Select(static item => item.GetString()?.Trim().ToLowerInvariant())
+                        .Where(static topic => topic is not null && NewsTopics.All.Contains(topic)).Distinct().ToArray()
+                    : [];
+                userIntegrationStore.UpsertNewsTopics(new NewsTopicsRecord
+                {
+                    Scope = scope, MemberId = memberId, MemberName = ReadString(body, "memberName"), DisabledTopics = disabled!
+                });
+                return ProtocolDispatchResult.Ok(new { memberId, disabledTopics = disabled });
             }
             case "ClearCommuteAddress":
                 userIntegrationStore.ClearCommuteAddress(scope, memberId);

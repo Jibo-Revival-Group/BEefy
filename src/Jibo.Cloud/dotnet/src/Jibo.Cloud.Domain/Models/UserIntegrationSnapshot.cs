@@ -9,4 +9,5 @@ public sealed class UserIntegrationSnapshot
     public HomeAssistantLinkRecord[] HomeAssistantLinks { get; init; } = [];
     public MemberCalendarFeedRecord[] MemberCalendarFeeds { get; init; } = [];
     public CommuteAddressRecord[] CommuteAddresses { get; init; } = [];
+    public NewsTopicsRecord[] NewsTopics { get; init; } = [];
 }

@@ -11,7 +11,7 @@ namespace Jibo.Cloud.Infrastructure.News;
 /// <summary>
 /// Free, keyless Google News topic RSS feeds, with each story's photo scraped from the topic's web page.
 /// Like the stock report-skill: up to 5 categories, 3 stories for one category, 2 each for two, else 1
-/// each, and only stories with a photo (unless none of a category's stories has one).
+/// each (5 random ones when more are on), and only stories with a photo (unless none of a category's stories has one).
 /// </summary>
 public sealed class GoogleNewsBriefingProvider(
     HttpClient httpClient,
@@ -38,13 +38,8 @@ public sealed class GoogleNewsBriefingProvider(
         @"aria-label=""More - ([^""]+)""",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    // "general" is the Top stories feed; the rest are Google News topic sections.
-    private static readonly HashSet<string> SupportedCategories = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "general", "world", "nation", "business", "technology", "entertainment", "science", "sports", "health"
-    };
-
-    private readonly ConcurrentDictionary<string, (NewsBriefingSnapshot Snapshot, DateTimeOffset ExpiresUtc)> _cache =
+    // Each category's top 3 stories (with photos), so any mix of a person's topics reuses them.
+    private readonly ConcurrentDictionary<string, (IReadOnlyList<NewsHeadline> Stories, DateTimeOffset ExpiresUtc)> _cache =
         new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<NewsBriefingSnapshot?> GetBriefingAsync(
@@ -53,16 +48,18 @@ public sealed class GoogleNewsBriefingProvider(
     {
         var categories = ResolveCategories(request.PreferredCategories);
         var perCategory = categories.Length switch { 1 => 3, 2 => 2, _ => 1 };
-        var cacheKey = string.Join(",", categories);
-        if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresUtc > DateTimeOffset.UtcNow)
-            return cached.Snapshot;
-
         var headlines = new List<NewsHeadline>();
         var seenTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string? failureStatus = null, failureMessage = null, failureEndpoint = null;
         int? failureStatusCode = null;
         foreach (var category in categories)
         {
+            if (_cache.TryGetValue(category, out var cached) && cached.ExpiresUtc > DateTimeOffset.UtcNow)
+            {
+                headlines.AddRange(cached.Stories.Where(story => seenTitles.Add(story.Title)).Take(perCategory));
+                continue;
+            }
+
             var uri = BuildFeedUri(category);
             try
             {
@@ -79,16 +76,17 @@ public sealed class GoogleNewsBriefingProvider(
                 }
 
                 var document = XDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-                var feed = ReadHeadlines(document, category).Where(headline => !seenTitles.Contains(headline.Title)).ToList();
+                var feed = ReadHeadlines(document, category);
                 var photos = await ReadPhotoPathsAsync(category, response.RequestMessage?.RequestUri ?? uri, cancellationToken);
                 var withPhotos = feed.Where(headline => photos.ContainsKey(headline.Title)).ToList();
-                foreach (var headline in (withPhotos.Count > 0 ? withPhotos : feed).Take(perCategory))
-                {
-                    seenTitles.Add(headline.Title);
-                    headlines.Add(photos.TryGetValue(headline.Title, out var path)
+                var stories = new List<NewsHeadline>();
+                foreach (var headline in (withPhotos.Count > 0 ? withPhotos : feed).Take(3))
+                    stories.Add(photos.TryGetValue(headline.Title, out var path)
                         ? headline with { Image = await ReadImageAsync(path, cancellationToken) }
                         : headline);
-                }
+                if (stories.Count > 0)
+                    _cache[category] = (stories, HalfHourAlignedCacheExpiry.GetExpiryUtc(DateTimeOffset.UtcNow));
+                headlines.AddRange(stories.Where(story => seenTitles.Add(story.Title)).Take(perCategory));
             }
             catch (Exception exception) when (exception is not OperationCanceledException ||
                                               !cancellationToken.IsCancellationRequested)
@@ -104,13 +102,9 @@ public sealed class GoogleNewsBriefingProvider(
             ? new NewsBriefingSnapshot(headlines, SourceName, "success")
             : new NewsBriefingSnapshot([], SourceName, failureStatus ?? "empty",
                 failureMessage ?? "Google News returned no usable headlines.", failureStatusCode, failureEndpoint);
-        var expiresUtc = headlines.Count > 0
-            ? HalfHourAlignedCacheExpiry.GetExpiryUtc(DateTimeOffset.UtcNow)
-            : DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, options.FailureCacheTtlSeconds));
-        _cache[cacheKey] = (snapshot, expiresUtc);
         logger.LogInformation(
             "Google News briefing. Categories={Categories} HeadlineCount={HeadlineCount} WithPhotos={WithPhotos}",
-            cacheKey, headlines.Count, headlines.Count(headline => headline.Image is not null));
+            string.Join(",", categories), headlines.Count, headlines.Count(headline => headline.Image is not null));
         return snapshot;
     }
 
@@ -119,16 +113,18 @@ public sealed class GoogleNewsBriefingProvider(
         static string[] Supported(IEnumerable<string> categories) => categories
             .Where(category => !string.IsNullOrWhiteSpace(category))
             .Select(category => category.Trim().ToLowerInvariant())
-            .Where(SupportedCategories.Contains)
+            .Where(NewsTopics.All.Contains)
             .Distinct()
-            .Take(MaxCategories)
             .ToArray();
 
-        var requested = Supported(preferredCategories);
-        if (requested.Length > 0) return requested;
+        var chosen = Supported(preferredCategories);
+        if (chosen.Length == 0) chosen = Supported(options.DefaultCategories);
+        if (chosen.Length == 0) return ["general"];
 
-        var defaults = Supported(options.DefaultCategories);
-        return defaults.Length > 0 ? defaults : ["general"];
+        // Stock NewsMimLogic.trimCats: over 5 topics, drop random ones until 5 are left (order kept).
+        var kept = chosen.ToList();
+        while (kept.Count > MaxCategories) kept.RemoveAt(Random.Shared.Next(kept.Count));
+        return [.. kept];
     }
 
     private Uri BuildFeedUri(string category)

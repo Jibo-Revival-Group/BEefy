@@ -31,6 +31,9 @@ public interface IUserIntegrationStore
     CommuteAddressRecord UpsertCommuteAddress(CommuteAddressRecord address);
     CommuteAddressRecord? ClearCommuteAddress(string scope, string memberId);
 
+    IReadOnlyList<NewsTopicsRecord> GetNewsTopics(string scope);
+    NewsTopicsRecord UpsertNewsTopics(NewsTopicsRecord topics);
+
     IReadOnlyList<MemberCalendarFeedRecord> GetMemberCalendarFeeds(string? loopId = null);
     MemberCalendarFeedRecord? FindMemberCalendarFeed(string loopId, string memberId);
 

@@ -11,6 +11,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
     private List<HomeAssistantLinkRecord> _links;
     private List<MemberCalendarFeedRecord> _calendarFeeds;
     private List<CommuteAddressRecord> _commuteAddresses;
+    private List<NewsTopicsRecord> _newsTopics;
 
     public InMemoryUserIntegrationStore(EncryptedUserDataSnapshotStore snapshotStore)
     {
@@ -19,6 +20,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
         _links = snapshot.HomeAssistantLinks.ToList();
         _calendarFeeds = snapshot.MemberCalendarFeeds.ToList();
         _commuteAddresses = (snapshot.CommuteAddresses ?? []).ToList();
+        _newsTopics = (snapshot.NewsTopics ?? []).ToList();
     }
 
     public IReadOnlyList<HomeAssistantLinkRecord> GetHomeAssistantLinks()
@@ -195,6 +197,28 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
         }
     }
 
+    public IReadOnlyList<NewsTopicsRecord> GetNewsTopics(string scope)
+    {
+        lock (_syncRoot)
+        {
+            return _newsTopics.Where(item => item.Scope.Equals(scope, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+    }
+
+    public NewsTopicsRecord UpsertNewsTopics(NewsTopicsRecord topics)
+    {
+        if (string.IsNullOrWhiteSpace(topics.Scope) || string.IsNullOrWhiteSpace(topics.MemberId))
+            throw new ArgumentException("Scope and member id are required.", nameof(topics));
+        lock (_syncRoot)
+        {
+            _newsTopics.RemoveAll(item => item.Scope.Equals(topics.Scope, StringComparison.OrdinalIgnoreCase) &&
+                                          item.MemberId.Equals(topics.MemberId, StringComparison.OrdinalIgnoreCase));
+            _newsTopics.Add(topics);
+            PersistLocked();
+            return topics;
+        }
+    }
+
     private static bool SameCommuteAddress(CommuteAddressRecord item, string scope, string memberId) =>
         item.Scope.Equals(scope, StringComparison.OrdinalIgnoreCase) &&
         item.MemberId.Equals(memberId, StringComparison.OrdinalIgnoreCase);
@@ -327,7 +351,8 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
             SchemaVersion = UserIntegrationSnapshot.CurrentSchemaVersion,
             HomeAssistantLinks = _links.ToArray(),
             MemberCalendarFeeds = _calendarFeeds.ToArray(),
-            CommuteAddresses = _commuteAddresses.ToArray()
+            CommuteAddresses = _commuteAddresses.ToArray(),
+            NewsTopics = _newsTopics.ToArray()
         });
     }
 
