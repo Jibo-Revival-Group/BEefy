@@ -1272,6 +1272,14 @@ public sealed partial class JiboInteractionService
             loweredTranscript.Contains("favourite", StringComparison.Ordinal))
             return null;
 
+        // "Tell me the sports news" is the news, not the Sports station ("news radio" still is).
+        if ((loweredTranscript.Contains("news", StringComparison.Ordinal) ||
+             loweredTranscript.Contains("headline", StringComparison.Ordinal)) &&
+            !loweredTranscript.Contains("radio", StringComparison.Ordinal) &&
+            !loweredTranscript.Contains("station", StringComparison.Ordinal) &&
+            !loweredTranscript.Contains("talk", StringComparison.Ordinal))
+            return null;
+
         foreach (var (phrase, station) in RadioGenreAliases)
             if (loweredTranscript.Contains(phrase, StringComparison.Ordinal))
                 return station;

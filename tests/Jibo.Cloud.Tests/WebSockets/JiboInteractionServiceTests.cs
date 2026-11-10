@@ -4685,6 +4685,42 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("Country", decision.SkillPayload!["station"]);
     }
 
+    [Theory]
+    [InlineData("tell me the sports news")]
+    [InlineData("what's the football news")]
+    [InlineData("sports headlines")]
+    [InlineData("tell me the science news")]
+    public async Task BuildDecisionAsync_TopicNews_IsNewsNotRadio(string transcript)
+    {
+        var service = CreateService();
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = transcript,
+            NormalizedTranscript = transcript
+        });
+
+        Assert.Equal("news", decision.IntentName);
+    }
+
+    [Theory]
+    [InlineData("play sports radio", "Sports")]
+    [InlineData("play news radio", "NewsAndTalk")]
+    [InlineData("play news and talk", "NewsAndTalk")]
+    public async Task BuildDecisionAsync_NewsOrSportsRadio_StillPlaysTheStation(string transcript, string station)
+    {
+        var service = CreateService();
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = transcript,
+            NormalizedTranscript = transcript
+        });
+
+        Assert.Equal("radio_genre", decision.IntentName);
+        Assert.Equal(station, decision.SkillPayload!["station"]);
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_StopThat_MapsToIdleStopCommand()
     {
