@@ -42,7 +42,7 @@ public sealed partial class JiboInteractionService(
     private const string LastReactiveGreetingUtcMetadataKey = "greetingsLastReactiveUtc";
 
     private const int MaxWeatherForecastDayOffset = 5;
-    private const int MaxNewsHeadlines = 3;
+    private const int MaxNewsHeadlines = 5; // stock report-skill: 3 for one category, 2 each for two, else 1 each (max 5 categories)
     private const int MaxPreferredNewsCategories = 2;
 
     private static readonly Regex SplitAlarmPattern = new(

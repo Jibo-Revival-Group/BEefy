@@ -16,7 +16,11 @@ public sealed record NewsHeadline(
     string? Summary = null,
     string? Category = null,
     string? SourceName = null,
-    string? Url = null);
+    string? Url = null,
+    NewsImage? Image = null);
+
+/// <summary>A headline photo; the stock newsHeadline view scales it from its pixel size.</summary>
+public sealed record NewsImage(string Url, int Width, int Height);
 
 public sealed record NewsBriefingSnapshot(
     IReadOnlyList<NewsHeadline> Headlines,

@@ -4154,6 +4154,60 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task ClientAsr_TellMeTheNews_ShowsEachHeadlinePhotoWithItsCategory_LikeStockNewsHeadlineView()
+    {
+        var service = CreateService(
+            new InMemoryCloudStateStore(),
+            newsBriefingProvider: new StubNewsBriefingProvider(
+                new NewsBriefingSnapshot(
+                    [
+                        new NewsHeadline("Robotics club opens a new community lab", "Lab", "technology",
+                            Image: new NewsImage("https://img.example/lab.jpg", 640, 360)),
+                        new NewsHeadline("Local students win a regional coding challenge", "Win", "general",
+                            Image: new NewsImage("https://img.example/win.jpg", 300, 400))
+                    ],
+                    "Google News")));
+        await service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-news-photo-token",
+            Text = """{"type":"LISTEN","transID":"trans-news-photo","data":{"hotphrase":true,"rules":["launch","globals/global_commands_launch"]}}"""
+        });
+
+        var replies = await service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-news-photo-token",
+            Text = """{"type":"CLIENT_ASR","transID":"trans-news-photo","data":{"text":"tell me the news"}}"""
+        });
+
+        using var payload = JsonDocument.Parse(replies[2].Text!);
+        var children = payload.RootElement.GetProperty("data").GetProperty("action").GetProperty("config")
+            .GetProperty("jcp").GetProperty("children");
+        var cards = children.EnumerateArray()
+            .Where(child => child.GetProperty("config").TryGetProperty("views", out _))
+            .Select(child => child.GetProperty("config").GetProperty("views").GetProperty("newsImages"))
+            .ToArray();
+        Assert.Equal(2, cards.Length);
+
+        JsonElement Component(JsonElement view, string id) =>
+            view.GetProperty("componentConfigs").EnumerateArray().Single(c => c.GetProperty("id").GetString() == id);
+        // 16:9 photo fills the width (scale 2); a portrait photo fills the height and is centred.
+        var lab = Component(cards[0], "headlineClip");
+        Assert.Equal("https://img.example/lab.jpg", lab.GetProperty("assets")[0].GetProperty("src").GetString());
+        Assert.Equal(2, lab.GetProperty("transform").GetProperty("scaleX").GetDouble());
+        Assert.Equal("Technology", Component(cards[0], "categoryText").GetProperty("text").GetString());
+        var win = Component(cards[1], "headlineClip");
+        Assert.Equal(1.8, win.GetProperty("transform").GetProperty("scaleY").GetDouble());
+        Assert.Equal(370, win.GetProperty("position").GetProperty("x").GetInt32());
+        Assert.Equal("Top Stories", Component(cards[1], "categoryText").GetProperty("text").GetString());
+        Assert.Equal("assets/personal-report-skill/news/categoryGradient_v01.crn",
+            Component(cards[1], "categoryClip").GetProperty("assets")[0].GetProperty("src").GetString());
+        // Only the last card clears the screen when it closes.
+        Assert.True(cards[0].GetProperty("defaultSelect").GetProperty("leaveEmpty").GetBoolean());
+        Assert.False(cards[1].GetProperty("defaultSelect").GetProperty("leaveEmpty").GetBoolean());
+        Assert.True(cards[1].GetProperty("defaultSelect").GetProperty("removeAll").GetBoolean());
+    }
+
+    [Fact]
     public async Task ClientAsr_TellMeTheNews_WithProvider_UsesProviderHeadlinesInSpeech()
     {
         var service = CreateService(

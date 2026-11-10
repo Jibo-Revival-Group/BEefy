@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Jibo.Cloud.Application.Abstractions;
@@ -8,8 +9,9 @@ using Microsoft.Extensions.Logging;
 namespace Jibo.Cloud.Infrastructure.News;
 
 /// <summary>
-/// Free, keyless Google News topic RSS feeds. A briefing takes the top headline of each category
-/// in turn (then the next one of each, if more headlines are wanted than there are categories).
+/// Free, keyless Google News topic RSS feeds, with each story's photo scraped from the topic's web page.
+/// Like the stock report-skill: up to 5 categories, 3 stories for one category, 2 each for two, else 1
+/// each, and only stories with a photo (unless none of a category's stories has one).
 /// </summary>
 public sealed class GoogleNewsBriefingProvider(
     HttpClient httpClient,
@@ -17,12 +19,24 @@ public sealed class GoogleNewsBriefingProvider(
     ILogger<GoogleNewsBriefingProvider> logger)
     : INewsBriefingProvider
 {
-    private const int MaxHeadlines = 5;
+    private const int MaxCategories = 5;
     private const string SourceName = "Google News";
+    private const string BrowserUserAgent =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
 
     private static readonly Regex UnsafeHeadlineTermPattern = new(
         @"\b(?:murder|homicide|suicide|porn|pornography|sex\s+crime|sexual\s+assault|graphic\s+violence|beheading|massacre)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    // shortcut: scrapes Google's page markup (a card's photo, then its "More - <title>" menu label);
+    // upgrade to an image API if Google changes the markup and photos stop appearing.
+    private static readonly Regex PhotoPattern = new(
+        @"<img class=""Quavad[^""]*""[^>]*?\ssrc=""(/api/attachments/[^""]+)""",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex CardTitlePattern = new(
+        @"aria-label=""More - ([^""]+)""",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // "general" is the Top stories feed; the rest are Google News topic sections.
     private static readonly HashSet<string> SupportedCategories = new(StringComparer.OrdinalIgnoreCase)
@@ -38,12 +52,13 @@ public sealed class GoogleNewsBriefingProvider(
         CancellationToken cancellationToken = default)
     {
         var categories = ResolveCategories(request.PreferredCategories);
-        var count = Math.Clamp(request.MaxHeadlines, 1, MaxHeadlines);
-        var cacheKey = $"{count}|{string.Join(",", categories)}";
+        var perCategory = categories.Length switch { 1 => 3, 2 => 2, _ => 1 };
+        var cacheKey = string.Join(",", categories);
         if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresUtc > DateTimeOffset.UtcNow)
             return cached.Snapshot;
 
-        var feeds = new List<IReadOnlyList<NewsHeadline>>();
+        var headlines = new List<NewsHeadline>();
+        var seenTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string? failureStatus = null, failureMessage = null, failureEndpoint = null;
         int? failureStatusCode = null;
         foreach (var category in categories)
@@ -51,9 +66,7 @@ public sealed class GoogleNewsBriefingProvider(
             var uri = BuildFeedUri(category);
             try
             {
-                using var message = new HttpRequestMessage(HttpMethod.Get, uri);
-                message.Headers.TryAddWithoutValidation("User-Agent", options.UserAgent);
-                using var response = await httpClient.SendAsync(message, cancellationToken);
+                using var response = await GetAsync(uri, options.UserAgent, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     failureStatus ??= "http_error";
@@ -66,7 +79,16 @@ public sealed class GoogleNewsBriefingProvider(
                 }
 
                 var document = XDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-                feeds.Add(ReadHeadlines(document, category));
+                var feed = ReadHeadlines(document, category).Where(headline => !seenTitles.Contains(headline.Title)).ToList();
+                var photos = await ReadPhotoPathsAsync(category, response.RequestMessage?.RequestUri ?? uri, cancellationToken);
+                var withPhotos = feed.Where(headline => photos.ContainsKey(headline.Title)).ToList();
+                foreach (var headline in (withPhotos.Count > 0 ? withPhotos : feed).Take(perCategory))
+                {
+                    seenTitles.Add(headline.Title);
+                    headlines.Add(photos.TryGetValue(headline.Title, out var path)
+                        ? headline with { Image = await ReadImageAsync(path, cancellationToken) }
+                        : headline);
+                }
             }
             catch (Exception exception) when (exception is not OperationCanceledException ||
                                               !cancellationToken.IsCancellationRequested)
@@ -78,14 +100,6 @@ public sealed class GoogleNewsBriefingProvider(
             }
         }
 
-        // Top headline of every category first, then each category's next one.
-        var headlines = new List<NewsHeadline>(count);
-        var seenTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var rank = 0; headlines.Count < count && feeds.Any(feed => rank < feed.Count); rank++)
-            foreach (var feed in feeds)
-                if (rank < feed.Count && headlines.Count < count && seenTitles.Add(feed[rank].Title))
-                    headlines.Add(feed[rank]);
-
         var snapshot = headlines.Count > 0
             ? new NewsBriefingSnapshot(headlines, SourceName, "success")
             : new NewsBriefingSnapshot([], SourceName, failureStatus ?? "empty",
@@ -94,8 +108,9 @@ public sealed class GoogleNewsBriefingProvider(
             ? HalfHourAlignedCacheExpiry.GetExpiryUtc(DateTimeOffset.UtcNow)
             : DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, options.FailureCacheTtlSeconds));
         _cache[cacheKey] = (snapshot, expiresUtc);
-        logger.LogInformation("Google News briefing. Categories={Categories} HeadlineCount={HeadlineCount}",
-            string.Join(",", categories), headlines.Count);
+        logger.LogInformation(
+            "Google News briefing. Categories={Categories} HeadlineCount={HeadlineCount} WithPhotos={WithPhotos}",
+            cacheKey, headlines.Count, headlines.Count(headline => headline.Image is not null));
         return snapshot;
     }
 
@@ -106,6 +121,7 @@ public sealed class GoogleNewsBriefingProvider(
             .Select(category => category.Trim().ToLowerInvariant())
             .Where(SupportedCategories.Contains)
             .Distinct()
+            .Take(MaxCategories)
             .ToArray();
 
         var requested = Supported(preferredCategories);
@@ -117,10 +133,95 @@ public sealed class GoogleNewsBriefingProvider(
 
     private Uri BuildFeedUri(string category)
     {
-        var edition = $"hl={Uri.EscapeDataString(options.Language)}&gl={Uri.EscapeDataString(options.Country)}" +
-                      $"&ceid={Uri.EscapeDataString($"{options.Country}:{options.Language.Split('-')[0]}")}";
         var path = category == "general" ? "rss" : $"rss/headlines/section/topic/{category.ToUpperInvariant()}";
-        return new Uri($"{options.BaseUrl.TrimEnd('/')}/{path}?{edition}");
+        return new Uri($"{options.BaseUrl.TrimEnd('/')}/{path}?{Edition}");
+    }
+
+    private string Edition =>
+        $"hl={Uri.EscapeDataString(options.Language)}&gl={Uri.EscapeDataString(options.Country)}" +
+        $"&ceid={Uri.EscapeDataString($"{options.Country}:{options.Language.Split('-')[0]}")}";
+
+    private async Task<HttpResponseMessage> GetAsync(Uri uri, string userAgent, CancellationToken cancellationToken)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Get, uri);
+        message.Headers.TryAddWithoutValidation("User-Agent", userAgent);
+        return await httpClient.SendAsync(message, cancellationToken);
+    }
+
+    /// <summary>Title -> photo path, from the web page of the topic whose feed redirected to <paramref name="feedUri"/>.</summary>
+    private async Task<Dictionary<string, string>> ReadPhotoPathsAsync(
+        string category, Uri feedUri, CancellationToken cancellationToken)
+    {
+        var photos = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var pageUri = category == "general"
+            ? new Uri($"{options.BaseUrl.TrimEnd('/')}/topstories?{Edition}")
+            : new Uri(feedUri.GetLeftPart(UriPartial.Path).Replace("/rss/topics/", "/topics/") + feedUri.Query);
+        try
+        {
+            using var response = await GetAsync(pageUri, BrowserUserAgent, cancellationToken);
+            if (!response.IsSuccessStatusCode) return photos;
+
+            var page = await response.Content.ReadAsStringAsync(cancellationToken);
+            foreach (Match photo in PhotoPattern.Matches(page))
+            {
+                var after = photo.Index + photo.Length;
+                var title = CardTitlePattern.Match(page, after, Math.Min(6000, page.Length - after));
+                if (title.Success)
+                    photos.TryAdd(Regex.Replace(WebUtility.HtmlDecode(title.Groups[1].Value), @"\s+", " ").Trim(),
+                        WebUtility.HtmlDecode(photo.Groups[1].Value).Split('=')[0]);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException ||
+                                          !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Google News photos unavailable. Category={Category}", category);
+        }
+
+        return photos;
+    }
+
+    private async Task<NewsImage?> ReadImageAsync(string attachmentPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Redirects to the largest copy Google keeps (about 700x390), CORS-open for the robot.
+            using var response = await GetAsync(
+                new Uri($"{options.BaseUrl.TrimEnd('/')}{attachmentPath}=-w1280-h720-p-df"),
+                options.UserAgent,
+                cancellationToken);
+            if (!response.IsSuccessStatusCode || response.RequestMessage?.RequestUri is not { } imageUri) return null;
+
+            return ReadImageSize(await response.Content.ReadAsByteArrayAsync(cancellationToken)) is { } size
+                ? new NewsImage(imageUri.ToString(), size.Width, size.Height)
+                : null;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException ||
+                                          !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Google News photo failed. Path={Path}", attachmentPath);
+            return null;
+        }
+    }
+
+    /// <summary>Pixel size from a JPEG frame header or a PNG IHDR (the formats Google serves).</summary>
+    internal static (int Width, int Height)? ReadImageSize(byte[] bytes)
+    {
+        if (bytes.Length > 24 && bytes[0] == 0x89 && bytes[1] == (byte)'P' && bytes[2] == (byte)'N' && bytes[3] == (byte)'G')
+            return (bytes[16] << 24 | bytes[17] << 16 | bytes[18] << 8 | bytes[19],
+                bytes[20] << 24 | bytes[21] << 16 | bytes[22] << 8 | bytes[23]);
+        if (bytes.Length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8) return null;
+
+        for (var i = 2; i + 9 < bytes.Length;)
+        {
+            if (bytes[i] != 0xFF) return null;
+            var marker = bytes[i + 1];
+            // SOF0-SOF15 carry the size; C4 (DHT), C8 (JPG) and CC (DAC) share the range but don't.
+            if (marker is >= 0xC0 and <= 0xCF and not 0xC4 and not 0xC8 and not 0xCC)
+                return (bytes[i + 7] << 8 | bytes[i + 8], bytes[i + 5] << 8 | bytes[i + 6]);
+            i += 2 + (bytes[i + 2] << 8 | bytes[i + 3]);
+        }
+
+        return null;
     }
 
     private static List<NewsHeadline> ReadHeadlines(XDocument document, string category)

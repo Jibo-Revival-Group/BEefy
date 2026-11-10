@@ -148,7 +148,11 @@ public sealed partial class JiboInteractionService
                 ["text"] = headlineText,
                 ["anim_cat"] = "news",
                 ["anim_meta"] = "news-stinger",
-                ["hold_timeout"] = 6
+                ["hold_timeout"] = 6,
+                ["news_category"] = headline.Category,
+                ["news_image_url"] = headline.Image?.Url,
+                ["news_image_width"] = headline.Image?.Width,
+                ["news_image_height"] = headline.Image?.Height
             });
         }
 

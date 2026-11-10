@@ -1581,6 +1581,9 @@ public sealed class ResponsePlanToSocketMessagesMapper
         var children = new List<object>(sections.Count);
         var weatherCommentEsml = ReadPayloadString(weatherPayload, "weather_comment_esml");
         var weatherHighLowEsml = ReadPayloadString(weatherPayload, "weather_high_low_esml");
+        var lastNewsPhotoIndex = -1;
+        for (var index = 0; index < sections.Count; index += 1)
+            if (ReadPayloadString(sections[index], "news_image_url") is not null) lastNewsPhotoIndex = index;
         for (var index = 0; index < sections.Count; index += 1)
         {
             var section = sections[index];
@@ -1659,6 +1662,8 @@ public sealed class ResponsePlanToSocketMessagesMapper
             if (calendarView is not null) AttachPausedGuiView(config, "calendarEvents", calendarView);
             if (isCommuteSection && BuildCommuteTrafficView(animMeta) is { } trafficView)
                 AttachPausedGuiView(config, "commuteTraffic", trafficView);
+            if (isNewsSection && BuildNewsHeadlineView(section, index, index == lastNewsPhotoIndex) is { } newsView)
+                AttachPausedGuiView(config, "newsImages", newsView);
 
             if (shouldHoldSection)
             {
@@ -2075,6 +2080,81 @@ public sealed class ResponsePlanToSocketMessagesMapper
             ["open"] = new { transitionOpen = "trans_in", removeAll = true },
             ["defaultSelect"] = new { transitionClose = "trans_out", removeAll = true, leaveEmpty = false },
             ["componentConfigs"] = components.ToArray()
+        };
+    }
+
+    /// <summary>
+    /// Stock report-skill newsHeadline view (views/newsHeadline.json + NewsViews.ts): the story photo
+    /// filling the 1280x720 face, the category gradient and the category name.
+    /// </summary>
+    private static object? BuildNewsHeadlineView(IDictionary<string, object?> section, int index, bool isLast)
+    {
+        var url = ReadPayloadString(section, "news_image_url");
+        var width = TryReadPayloadInt(section, "news_image_width");
+        var height = TryReadPayloadInt(section, "news_image_height");
+        if (url is null || width is not > 0 || height is not > 0) return null;
+
+        const double screenWidth = 1280, screenHeight = 720;
+        var fillHeight = width < height || (double)width.Value / height.Value > screenWidth / screenHeight;
+        var scale = fillHeight ? screenHeight / height.Value : screenWidth / width.Value;
+        var category = ReadPayloadString(section, "news_category")?.ToLowerInvariant() switch
+        {
+            null or "general" => "Top Stories",
+            "nation" => "U.S.",
+            var name => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(name)
+        };
+
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["viewConfig"] = new { type = "View", id = $"headlineView_{index}", category = "gui" },
+            ["open"] = new { transitionOpen = "trans_in", removeAll = true },
+            // The last card clears the screen when it closes; the others hand over to the next card.
+            ["defaultSelect"] = isLast
+                ? new { transitionClose = "trans_out", remove = true, removeAll = true, leaveEmpty = false }
+                : (object)new { transitionClose = "trans_out", remove = true, leaveEmpty = true },
+            ["componentConfigs"] = new object[]
+            {
+                new
+                {
+                    id = "headlineClip",
+                    type = "Clip",
+                    assets = new object[] { new { id = "headlinePng", src = url, type = "texture" } },
+                    position = new
+                    {
+                        x = (int)Math.Floor((screenWidth - width.Value * scale) / 2),
+                        y = (int)Math.Floor((screenHeight - height.Value * scale) / 2)
+                    },
+                    transform = new { scaleX = scale, scaleY = scale }
+                },
+                new
+                {
+                    id = "categoryClip",
+                    type = "Clip",
+                    assets = new object[]
+                    {
+                        new { id = "categoryPng", src = "assets/personal-report-skill/news/categoryGradient_v01.crn", type = "texture" }
+                    },
+                    position = new { x = 0, y = 353 },
+                    transform = new { scaleX = 1280, scaleY = 1 }
+                },
+                new
+                {
+                    id = "categoryText",
+                    type = "Label",
+                    text = category,
+                    style = new
+                    {
+                        fontSize = "90",
+                        fontFamily = "Proxima Nova Soft",
+                        fontWeight = "bold",
+                        letterSpacing = 2,
+                        fill = "#FFFFFF",
+                        align = "center"
+                    },
+                    position = new { x = 640, y = 640 },
+                    targetAnchor = new { x = 0.5, y = 1 }
+                }
+            }
         };
     }
 

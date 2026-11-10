@@ -222,9 +222,17 @@ public sealed class ProviderCachingTests
         "</channel></rss>";
 
     private static (GoogleNewsBriefingProvider Provider, CountingHttpMessageHandler Handler) GoogleNews(
-        Func<string, HttpResponseMessage> feedForPath)
+        Func<string, HttpResponseMessage> feedForPath, bool feedRedirect = false)
     {
-        var handler = new CountingHttpMessageHandler(message => feedForPath(message.RequestUri?.AbsolutePath ?? ""));
+        var handler = new CountingHttpMessageHandler(message =>
+        {
+            var response = feedForPath(message.RequestUri?.AbsolutePath ?? "");
+            // Like Google: the topic feed lands on /rss/topics/<id>, whose web page is /topics/<id>.
+            if (feedRedirect && message.RequestUri!.AbsolutePath.StartsWith("/rss/headlines/section/topic/"))
+                message.RequestUri = new Uri(message.RequestUri.ToString().Replace("/rss/headlines/section/topic/", "/rss/topics/"));
+            response.RequestMessage = message;
+            return response;
+        });
         return (new GoogleNewsBriefingProvider(new HttpClient(handler), new GoogleNewsOptions(),
             NullLogger<GoogleNewsBriefingProvider>.Instance), handler);
     }
@@ -241,7 +249,7 @@ public sealed class ProviderCachingTests
             "/rss/headlines/section/topic/SCIENCE" => GoogleNewsFeed("Science one is the top science story", "Science two"),
             "/rss/headlines/section/topic/SPORTS" => GoogleNewsFeed("Sports one is the top sports story", "Sports two"),
             _ => GoogleNewsFeed("Unexpected feed")
-        }));
+        }), feedRedirect: true);
 
         var result = await provider.GetBriefingAsync(new NewsBriefingRequest([]));
         await provider.GetBriefingAsync(new NewsBriefingRequest([]));
@@ -268,6 +276,34 @@ public sealed class ProviderCachingTests
         Assert.NotNull(result);
         Assert.Equal(["Bills beat the Vikings", "Celtics win again", "Red Sox sign a pitcher"],
             result.Headlines.Select(headline => headline.Title));
+    }
+
+    [Fact]
+    public async Task GoogleNewsBriefingProvider_AttachesEachStorysPhoto_FromTheTopicPage_PreferringStoriesWithPhotos()
+    {
+        // Smallest JPEG prefix with a SOF0 frame header: 640 wide, 360 high.
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x01, 0x68, 0x02, 0x80, 0x03];
+        const string page = """
+            <img class="Quavad vwBmvb" srcset="x" alt="" src="/api/attachments/LAB=-w280-h168-p-df-rw" />
+            <button aria-label="More - Robotics lab opens">
+            <img class="Quavad vwBmvb" src="/api/attachments/WIN=-w280-h168-p-df-rw" />
+            <button aria-label="More - Students win the coding cup">
+            """;
+        var (provider, _) = GoogleNews(path => path switch
+        {
+            "/rss/headlines/section/topic/SCIENCE" => Xml(GoogleNewsFeed("A story with no photo at all", "Robotics lab opens", "Students win the coding cup")),
+            "/topics/SCIENCE" => Xml(page),
+            "/api/attachments/LAB=-w1280-h720-p-df" or "/api/attachments/WIN=-w1280-h720-p-df" =>
+                new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(jpeg) },
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+        }, feedRedirect: true);
+
+        var result = await provider.GetBriefingAsync(new NewsBriefingRequest(["science"]));
+
+        Assert.NotNull(result);
+        // Like the stock skill, stories without a photo are left out while the category has photo stories.
+        Assert.Equal(["Robotics lab opens", "Students win the coding cup"], result.Headlines.Select(headline => headline.Title));
+        Assert.Equal(new NewsImage("https://news.google.com/api/attachments/LAB=-w1280-h720-p-df", 640, 360), result.Headlines[0].Image);
     }
 
     [Fact]

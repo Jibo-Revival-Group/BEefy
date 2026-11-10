@@ -6146,7 +6146,7 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("NewsAPI", decision.SkillPayload["news_source"]);
         Assert.Equal(2, decision.SkillPayload["news_headline_count"]);
         Assert.Equal("provider_success", decision.SkillPayload["news_provider_status"]);
-        Assert.Equal(3, decision.SkillPayload["news_provider_requested_headlines"]);
+        Assert.Equal(5, decision.SkillPayload["news_provider_requested_headlines"]);
         Assert.Equal(2, decision.SkillPayload["news_provider_resolved_headlines"]);
         Assert.NotNull(decision.SkillPayload["news_headlines"]);
         Assert.IsType<Dictionary<string, object?>[]>(decision.SkillPayload["news_headlines"]);
