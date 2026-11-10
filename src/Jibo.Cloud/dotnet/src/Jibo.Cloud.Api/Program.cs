@@ -17,6 +17,8 @@ using System.Text;
 OpenJiboEnvLoader.Load();
 
 var builder = WebApplication.CreateBuilder(args);
+// Robot websockets never close on their own, so the default 30 s drain was pure downtime on every restart.
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(5));
 
 var adminConfigOverlayPath = ResolveAdminConfigOverlayPath(builder);
 if (File.Exists(adminConfigOverlayPath))
