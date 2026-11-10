@@ -31,6 +31,7 @@ public sealed class WolframAlphaSearchProviderTests
         Assert.Contains("What", query, StringComparison.Ordinal);
         Assert.Contains("20th", query, StringComparison.Ordinal);
         Assert.Contains("president", query, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(capturedRequest.Headers.UserAgent); // Wolfram returns 403 without one
     }
 
     [Fact]

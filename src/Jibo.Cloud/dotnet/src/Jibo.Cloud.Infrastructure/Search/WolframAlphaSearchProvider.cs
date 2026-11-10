@@ -71,7 +71,7 @@ public sealed class WolframAlphaSearchProvider(
         try
         {
             var requestUri = BuildRequestUri(appId, query, latLong);
-            using var response = await httpClient.GetAsync(requestUri, cancellationToken);
+            using var response = await GetAsync(requestUri, cancellationToken);
             var answerText = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
             if (!response.IsSuccessStatusCode)
                 return ClassifyHttpFailure(response.StatusCode, answerText);
@@ -95,7 +95,7 @@ public sealed class WolframAlphaSearchProvider(
         {
             var uri = $"https://www.wolframalpha.com/api/v1/llm-api?appid={Uri.EscapeDataString(appId)}&maxchars=800&input={Uri.EscapeDataString(query)}"
                       + (latLong is null ? "" : $"&latlong={Uri.EscapeDataString(latLong)}");
-            using var response = await httpClient.GetAsync(uri, cancellationToken);
+            using var response = await GetAsync(new Uri(uri), cancellationToken);
             if (!response.IsSuccessStatusCode) return null;
             var answer = ReadResultSection(await response.Content.ReadAsStringAsync(cancellationToken));
             return answer is null ? null : new KnowledgeSearchResult(answer, SearchBackendKind.Wolfram);
@@ -125,6 +125,14 @@ public sealed class WolframAlphaSearchProvider(
         // Notes like "(NFL team)" read badly aloud.
         answer = System.Text.RegularExpressions.Regex.Replace(answer, @"\s*\((?:[^()]|\([^()]*\))*\)", "").Trim();
         return answer.Length is 0 or > 400 ? null : answer + ".";
+    }
+
+    // Wolfram's servers answer 403 to requests without a User-Agent, and HttpClient sends none by default.
+    private Task<HttpResponseMessage> GetAsync(Uri uri, CancellationToken cancellationToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.TryAddWithoutValidation("User-Agent", "OpenJiboCloud/1.0");
+        return httpClient.SendAsync(request, cancellationToken);
     }
 
     private static KnowledgeSearchResult ClassifyHttpFailure(HttpStatusCode statusCode, string responseBody)
