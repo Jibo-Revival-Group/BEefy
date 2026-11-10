@@ -70,11 +70,8 @@ public static class ServiceCollectionExtensions
         if (string.IsNullOrWhiteSpace(openWeatherOptions.ApiKey))
             openWeatherOptions.ApiKey = Environment.GetEnvironmentVariable("OPENWEATHER_API_KEY");
 
-        var newsApiOptions = new NewsApiOptions();
-        configuration?.GetSection("OpenJibo:News:NewsApi").Bind(newsApiOptions);
-
-        if (string.IsNullOrWhiteSpace(newsApiOptions.ApiKey))
-            newsApiOptions.ApiKey = Environment.GetEnvironmentVariable("NEWSAPI_KEY");
+        var googleNewsOptions = new GoogleNewsOptions();
+        configuration?.GetSection("OpenJibo:News:GoogleNews").Bind(googleNewsOptions);
 
         var holidayOptions = new HolidayCalendarOptions();
         configuration?.GetSection("OpenJibo:Holiday").Bind(holidayOptions);
@@ -124,14 +121,14 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<SherpaRecognizerWarmupHostedService>();
         services.AddHostedService<SherpaIdleReleaseHostedService>();
         services.AddSingleton(openWeatherOptions);
-        services.AddSingleton(newsApiOptions);
+        services.AddSingleton(googleNewsOptions);
         services.AddSingleton(holidayOptions);
         services.AddSingleton(uselessFactsOptions);
         services.AddSingleton(freeDictionaryApiOptions);
         services.AddSingleton(wikipediaSummaryOptions);
         services.AddSingleton(searchBackendOptions);
         services.AddHttpClient<IWeatherReportProvider, OpenWeatherReportProvider>();
-        services.AddHttpClient<INewsBriefingProvider, NewsApiBriefingProvider>();
+        services.AddHttpClient<INewsBriefingProvider, GoogleNewsBriefingProvider>();
         services.AddHttpClient<IFunFactProvider, UselessFactsFunFactProvider>();
         services.AddHttpClient<ISportsScoreProvider, EspnSportsScoreProvider>();
         services.AddHttpClient<IWordDefinitionProvider, FreeDictionaryApiDefinitionProvider>();
