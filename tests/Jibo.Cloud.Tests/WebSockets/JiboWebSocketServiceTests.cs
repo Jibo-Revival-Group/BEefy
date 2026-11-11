@@ -6024,6 +6024,28 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task OrphanBinaryWithoutListen_WhileASkillIsOpen_EndsTheListenWithoutClosingIt()
+    {
+        var session = _store.OpenSession("neo-hub-listen", "openjibo-default-loop", "hub-orphan-skill-token", "neo-hub.jibo.com", "/listen");
+        session.TurnState.TransId = "trans-orphan-skill";
+        session.LastTransId = "trans-orphan-skill";
+        session.TurnState.ListenRules = ["word-of-the-day/puzzle"];
+        session.Metadata["lastContextSkillId"] = "@be/infinite-word-of-the-day";
+        Task<IReadOnlyList<WebSocketReply>> Send() => _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-orphan-skill-token", Binary = new byte[4096]
+        });
+
+        Assert.Empty(await Send());
+        session.TurnState.OrphanAudioWithoutListenSinceUtc =
+            DateTimeOffset.UtcNow - WebSocketTurnState.OrphanAudioWithoutListenUnstickAge - TimeSpan.FromMilliseconds(100);
+        var replies = await Send();
+
+        Assert.Equal(["LISTEN", "EOS"], replies.Select(ReadReplyType).ToArray());
+        Assert.Equal("no-input", session.LastListenType);
+    }
+
+    [Fact]
     public async Task OrphanBinaryWithoutListen_UnsticksWithIdleRedirectAfterThreshold()
     {
         var session = _store.OpenSession(

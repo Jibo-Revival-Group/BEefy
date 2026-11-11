@@ -2954,11 +2954,17 @@ public sealed class WebSocketTurnFinalizationService(
         session.LastIntent = null;
         session.LastListenType = "no-input";
 
-        var replies = ResponsePlanToSocketMessagesMapper
-            .MapNoInputAndRedirectToSkill(
-                turnState.TransId ?? session.LastTransId ?? string.Empty,
-                turnState.ListenRules,
-                "@be/idle")
+        // NO_INPUT ends the stuck listen. The @be/idle redirect is only for idle: it would close a skill that is
+        // still open (Word of the Day was closed after every answer while the mic's tail streamed).
+        var openSkill = session.Metadata.TryGetValue(SkillListenOwnership.LastContextSkillIdKey, out var contextSkill)
+            ? contextSkill as string
+            : null;
+        var transId = turnState.TransId ?? session.LastTransId ?? string.Empty;
+        var replies = (string.IsNullOrWhiteSpace(openSkill) ||
+                       string.Equals(openSkill, "@be/idle", StringComparison.OrdinalIgnoreCase) ||
+                       SkillListenOwnership.IsNimbusConversationSkill(openSkill)
+                ? ResponsePlanToSocketMessagesMapper.MapNoInputAndRedirectToSkill(transId, turnState.ListenRules, "@be/idle")
+                : ResponsePlanToSocketMessagesMapper.MapNoInput(transId, turnState.ListenRules))
             .Select(map => new WebSocketReply { Text = map.Text, DelayMs = map.DelayMs })
             .ToArray();
 
