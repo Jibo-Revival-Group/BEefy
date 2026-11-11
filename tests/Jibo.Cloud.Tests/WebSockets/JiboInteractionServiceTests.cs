@@ -3634,6 +3634,85 @@ public sealed class JiboInteractionServiceTests
             decision.ReplyText);
     }
 
+    private static InMemoryUserIntegrationStore HomeAddressStore(string robot, string? city)
+    {
+        var store = new InMemoryUserIntegrationStore(new EncryptedUserDataSnapshotStore(
+            Path.Combine(Path.GetTempPath(), $"openjibo-weather-home-{Guid.NewGuid():N}.json"), new UserDataEncryptionService()));
+        store.UpsertCommuteAddress(new CommuteAddressRecord
+        {
+            Scope = MemberCalendarFeedRecord.RobotScope(robot), MemberId = CommuteAddressRecord.HomeMemberId,
+            Address = "1 Main St, Tyngsborough, MA 01879", Latitude = 42.6767, Longitude = -71.4245, City = city
+        });
+        return store;
+    }
+
+    private static TurnContext WeatherTurn(string transcript) => new()
+    {
+        DeviceId = "Air-Degree-Lunch-Canvas",
+        RawTranscript = transcript,
+        NormalizedTranscript = transcript,
+        Attributes = new Dictionary<string, object?>
+        {
+            // What the robot guessed from its IP address: Pleasant Hill, Missouri.
+            ["context"] = """{"runtime":{"location":{"city":"Pleasant Hill","state":"Missouri","lat":38.8358494,"lng":-94.1427229,"iso":"2026-05-09T09:00:00-05:00"}}}"""
+        }
+    };
+
+    [Fact]
+    public async Task BuildDecisionAsync_Weather_UsesHomeAddressOverIpLocation()
+    {
+        var provider = new CapturingWeatherReportProvider
+        {
+            Snapshot = new WeatherReportSnapshot("Dunstable", "clear sky", 50, 55, 40, "clear", false)
+        };
+        var service = CreateService(weatherReportProvider: provider,
+            userIntegrationStore: HomeAddressStore("Air-Degree-Lunch-Canvas", "Tyngsborough"));
+
+        var decision = await service.BuildDecisionAsync(WeatherTurn("how is the weather"));
+
+        Assert.Equal("weather", decision.IntentName);
+        Assert.Null(provider.LastRequest?.LocationQuery);
+        Assert.Equal(42.6767, provider.LastRequest?.Latitude);
+        Assert.Equal(-71.4245, provider.LastRequest?.Longitude);
+        Assert.Equal("Tyngsborough", provider.LastRequest?.PreferredLocationName);
+        Assert.Contains("Tyngsborough", decision.ReplyText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Pleasant Hill", decision.ReplyText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_Weather_HomeAddressWithoutTown_NeverUsesIpPlaceName()
+    {
+        // Saved before the town was stored: home coordinates, and the weather service's own name for the place.
+        var provider = new CapturingWeatherReportProvider
+        {
+            Snapshot = new WeatherReportSnapshot("Tyngsborough", "clear sky", 50, 55, 40, "clear", false)
+        };
+        var service = CreateService(weatherReportProvider: provider,
+            userIntegrationStore: HomeAddressStore("Air-Degree-Lunch-Canvas", null));
+
+        var decision = await service.BuildDecisionAsync(WeatherTurn("how is the weather"));
+
+        Assert.Equal(42.6767, provider.LastRequest?.Latitude);
+        Assert.Null(provider.LastRequest?.PreferredLocationName);
+        Assert.DoesNotContain("Pleasant Hill", decision.ReplyText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_Weather_SpokenPlaceBeatsHomeAddress()
+    {
+        var provider = new CapturingWeatherReportProvider
+        {
+            Snapshot = new WeatherReportSnapshot("Chicago", "clear sky", 50, 55, 40, "clear", false)
+        };
+        var service = CreateService(weatherReportProvider: provider,
+            userIntegrationStore: HomeAddressStore("Air-Degree-Lunch-Canvas", "Tyngsborough"));
+
+        await service.BuildDecisionAsync(WeatherTurn("what's the weather in chicago"));
+
+        Assert.Equal("Chicago", provider.LastRequest?.LocationQuery);
+        Assert.Null(provider.LastRequest?.Latitude);
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_WeatherWithRuntimeCity_PrefersContextLocationNameOverProviderLabel()
     {
@@ -6759,7 +6838,8 @@ public sealed class JiboInteractionServiceTests
         IKnowledgeSearchService? knowledgeSearchService = null,
         ITurnProgressPublisher? turnProgressPublisher = null,
         IJiboExperienceContentRepository? contentRepository = null,
-        IJiboRandomizer? randomizer = null)
+        IJiboRandomizer? randomizer = null,
+        IUserIntegrationStore? userIntegrationStore = null)
     {
         return new JiboInteractionService(
             new JiboExperienceContentCache(contentRepository ?? new InMemoryJiboExperienceContentRepository()),
@@ -6776,7 +6856,8 @@ public sealed class JiboInteractionServiceTests
             measurementConversionCatalog,
             knowledgeSearchService,
             turnProgressPublisher,
-            cloudStateStore);
+            cloudStateStore,
+            userIntegrationStore: userIntegrationStore);
     }
 
     private static string StripMarkup(string text)

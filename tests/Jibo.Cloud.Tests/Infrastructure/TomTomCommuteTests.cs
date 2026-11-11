@@ -81,6 +81,7 @@ public sealed class TomTomCommuteTests
         var saved = store.Store.GetCommuteAddresses(MemberCalendarFeedRecord.RobotScope(Robot));
         Assert.Equal(["Geocoded Home St", "Geocoded Work St"], saved.Select(item => item.Address).Order().ToArray());
         Assert.Equal("America/New_York", saved.Single(item => item.MemberId == "home").TimeZoneId);
+        Assert.Equal("Testville", saved.Single(item => item.MemberId == "home").City); // weather's name for home
         Assert.Contains("Geocoded Work St", list.BodyText);
     }
 

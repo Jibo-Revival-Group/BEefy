@@ -19,6 +19,8 @@ public sealed class CommuteAddressRecord
     public string Address { get; init; } = string.Empty;
     public double Latitude { get; init; }
     public double Longitude { get; init; }
+    /// <summary>The geocoded town (e.g. Tyngsborough): the name weather uses for the home address.</summary>
+    public string? City { get; init; }
     public string? MemberName { get; init; }
     public string? TimeZoneId { get; init; }
     public DateTimeOffset UpdatedUtc { get; init; } = DateTimeOffset.UtcNow;

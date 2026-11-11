@@ -1,11 +1,20 @@
 using System.Text.RegularExpressions;
 using Jibo.Cloud.Application.Abstractions;
+using Jibo.Cloud.Domain.Models;
 using Jibo.Runtime.Abstractions;
 
 namespace Jibo.Cloud.Application.Services;
 
 public sealed partial class JiboInteractionService
 {
+    /// <summary>The household's home address set in BEacon (Commute), if this robot has one.</summary>
+    private CommuteAddressRecord? TryResolveHomeWeatherLocation(TurnContext turn)
+    {
+        if (userIntegrationStore is null || string.IsNullOrWhiteSpace(turn.DeviceId)) return null;
+        return userIntegrationStore.GetCommuteAddresses(MemberCalendarFeedRecord.RobotScope(turn.DeviceId.Trim()))
+            .FirstOrDefault(static item => item.MemberId == CommuteAddressRecord.HomeMemberId);
+    }
+
     private async Task<JiboInteractionDecision> BuildWeatherReportDecisionAsync(
         TurnContext turn,
         string transcript,
@@ -15,9 +24,13 @@ public sealed partial class JiboInteractionService
         var catalog = await contentCache.GetCatalogAsync(cancellationToken);
         var normalizedTranscript = NormalizeCommandPhrase(transcript);
         var clientWeatherEntities = ReadEntities(turn);
-        var locationQuery = TryResolveWeatherLocationQuery(transcript) ?? string.Join(", ",
+        // A place said aloud wins; otherwise the home address from BEacon (Commute), and only without one the
+        // robot's own guess (from its IP address).
+        var spokenLocation = TryResolveWeatherLocationQuery(transcript);
+        var home = spokenLocation is null ? TryResolveHomeWeatherLocation(turn) : null;
+        var locationQuery = spokenLocation ?? (home is not null ? null : string.Join(", ",
             new[] { "city", "state", "country" }.Select(key => clientWeatherEntities.GetValueOrDefault(key))
-                .Where(value => !string.IsNullOrWhiteSpace(value) && value != "null"));
+                .Where(value => !string.IsNullOrWhiteSpace(value) && value != "null")));
         if (string.IsNullOrWhiteSpace(locationQuery)) locationQuery = null;
         var weatherDate = ResolveWeatherDateEntity(turn, transcript, normalizedTranscript, referenceLocalTime);
         var isRangeForecastRequest = IsRangeForecastRequest(normalizedTranscript);
@@ -39,12 +52,12 @@ public sealed partial class JiboInteractionService
                 ChooseWeatherServiceDownReply(catalog));
 
         var weatherCoordinates = string.IsNullOrWhiteSpace(locationQuery)
-            ? TryResolveWeatherCoordinates(turn)
+            ? home is not null ? (home.Latitude, home.Longitude) : TryResolveWeatherCoordinates(turn)
             : null;
         // Prefer the robot's known place name (e.g. Pleasant Hill) over OpenWeather's
         // nearest POI label (e.g. Lone Jack) when fetching by GPS.
         var preferredLocationName = string.IsNullOrWhiteSpace(locationQuery)
-            ? TryResolveCurrentLocationName(turn)
+            ? home is not null ? home.City : TryResolveCurrentLocationName(turn)
             : null;
         var useCelsius = ShouldUseCelsius(turn, transcript);
         var isNextWeekForecast = IsNextWeekForecastRequest(normalizedTranscript, isRangeForecastRequest);

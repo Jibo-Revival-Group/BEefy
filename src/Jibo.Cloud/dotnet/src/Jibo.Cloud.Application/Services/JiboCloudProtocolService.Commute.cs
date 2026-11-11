@@ -45,6 +45,7 @@ public sealed partial class JiboCloudProtocolService
                     Address = found.Address,
                     Latitude = found.Latitude,
                     Longitude = found.Longitude,
+                    City = found.City,
                     MemberName = ReadString(body, "memberName"),
                     TimeZoneId = ReadString(body, "timeZone")
                 });
