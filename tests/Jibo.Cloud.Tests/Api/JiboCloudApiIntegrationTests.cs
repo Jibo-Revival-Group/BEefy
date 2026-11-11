@@ -94,6 +94,31 @@ public sealed class JiboCloudApiIntegrationTests
     }
 
     [Fact]
+    public async Task Songs_ServesMp3sFromWwwrootSongs()
+    {
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+        var root = factory.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>().ContentRootPath;
+        var songs = Path.Combine(root, "wwwroot", "songs");
+        Directory.CreateDirectory(songs);
+        var file = Path.Combine(songs, "test-song-" + Guid.NewGuid().ToString("N") + ".mp3");
+        await File.WriteAllTextAsync(file, "mp3 bytes");
+        try
+        {
+            var response = await client.GetAsync("/songs/" + Path.GetFileName(file));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("audio/mpeg", response.Content.Headers.ContentType?.MediaType);
+            Assert.Equal("mp3 bytes", await response.Content.ReadAsStringAsync());
+            Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/songs/missing.mp3")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/songs/..%2Fappsettings.json")).StatusCode);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
     public async Task Harness_ServesReleaseSmokeModuleAndModuleEntryPoint()
     {
         await using var factory = CreateFactory();

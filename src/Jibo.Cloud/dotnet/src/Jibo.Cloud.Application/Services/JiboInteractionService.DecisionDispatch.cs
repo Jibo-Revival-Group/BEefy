@@ -16,6 +16,14 @@ public sealed partial class JiboInteractionService
         @"\bsing\b.*\b(?:daisy|bicycle built for two)\b",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // Songs @be/daisy-bell sings. Url null = the song built into the skill; otherwise an mp3 it streams, so a new song
+    // is a line here plus its mp3 in Jibo.Cloud.Api/wwwroot/songs (served at https://api.5x1.com/songs/) - no OTA.
+    // Put more specific patterns first: the first match wins.
+    private static readonly (Regex Request, string? Url)[] Songs =
+    [
+        (DaisyBellRequest, null)
+    ];
+
     public async Task<JiboInteractionDecision> BuildDecisionCoreAsync(TurnContext turn,
         CancellationToken cancellationToken = default)
     {
@@ -41,12 +49,16 @@ public sealed partial class JiboInteractionService
 
         // "sing Daisy Bell": BEam's @be/daisy-bell plays Jibo singing the chorus (prod: "sing daisy bell for me please" x2).
         if (!SkillListenOwnership.IsSkillOwnedListen(turn) &&
-            DaisyBellRequest.IsMatch(turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty))
-            return new JiboInteractionDecision("sing_daisy_bell", string.Empty, "@be/daisy-bell",
-                new Dictionary<string, object?>
-                {
-                    ["skillId"] = "@be/daisy-bell", ["nativeLaunch"] = true, ["localIntent"] = "sing"
-                });
+            Songs.FirstOrDefault(song => song.Request.IsMatch(turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty))
+                is { Request: not null } sung)
+        {
+            var payload = new Dictionary<string, object?>
+            {
+                ["skillId"] = "@be/daisy-bell", ["nativeLaunch"] = true, ["localIntent"] = "sing"
+            };
+            if (sung.Url is not null) payload["nluEntities"] = new Dictionary<string, object?> { ["url"] = sung.Url };
+            return new JiboInteractionDecision("sing_daisy_bell", string.Empty, "@be/daisy-bell", payload);
+        }
 
         SyncLoopPeopleFromTurn(turn);
         var catalog = await contentCache.GetCatalogAsync(cancellationToken);

@@ -22,6 +22,13 @@ internal static class PortalStaticFileMapper
             () => Serve(portalDirectory, "admin/config/index.html", "text/html; charset=utf-8"));
         app.MapGet("/portal/admin/config/config.js",
             () => Serve(portalDirectory, "admin/config/config.js", "application/javascript; charset=utf-8"));
+
+        // Songs @be/daisy-bell downloads (Songs in JiboInteractionService.DecisionDispatch): a bare .mp3 name, no paths.
+        var songsDirectory = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "songs");
+        app.MapGet("/songs/{file}", (string file) =>
+            Path.GetFileName(file) == file && file.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
+                ? Serve(songsDirectory, file, "audio/mpeg")
+                : Results.NotFound());
     }
 
     internal static void MapPortalStaticFiles(this WebApplication app)

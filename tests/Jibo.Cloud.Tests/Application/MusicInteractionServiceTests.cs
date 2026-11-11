@@ -85,6 +85,27 @@ public sealed class MusicInteractionServiceTests
         Assert.Equal("@be/music", listen.GetProperty("data").GetProperty("match").GetProperty("skillID").GetString());
     }
 
+    // A song BEefy hosts reaches @be/daisy-bell as nlu.entities.url; the built-in song sends none.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("https://api.5x1.com/songs/new-song.mp3")]
+    public async Task Sing_SendsTheSongUrlToTheRobot(string? url)
+    {
+        var turn = Turn("sing daisy bell");
+        var plan = await new DemoConversationBroker(Service()).HandleTurnAsync(turn);
+        var action = Assert.Single(plan.Actions.OfType<InvokeNativeSkillAction>());
+        Assert.Equal("@be/daisy-bell", action.SkillName);
+        Assert.False(action.Payload.ContainsKey("nluEntities"), "Daisy Bell is built into the skill");
+        if (url is not null) action.Payload["nluEntities"] = new Dictionary<string, object?> { ["url"] = url };
+
+        var listen = ResponsePlanToSocketMessagesMapper.Map(plan, turn, new CloudSession(), false)
+            .Select(message => JsonDocument.Parse(message.Text).RootElement.Clone())
+            .Single(message => message.GetProperty("type").GetString() == "LISTEN").GetProperty("data");
+        Assert.Equal("@be/daisy-bell", listen.GetProperty("match").GetProperty("skillID").GetString());
+        var entities = listen.GetProperty("nlu").GetProperty("entities");
+        Assert.Equal(url, entities.TryGetProperty("url", out var sent) ? sent.GetString() : null);
+    }
+
     [Theory]
     [InlineData("play the radio", "radio")]
     [InlineData("play circuit saver", "launchGame")]
