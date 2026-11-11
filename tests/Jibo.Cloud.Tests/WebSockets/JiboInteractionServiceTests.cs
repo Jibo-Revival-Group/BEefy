@@ -6473,6 +6473,28 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("I heard pastoral.", decision.ReplyText);
     }
 
+    [Theory]
+    [InlineData("@be/infinite-word-of-the-day", "@be/infinite-word-of-the-day")]
+    [InlineData("@be/word-of-the-day", "@be/word-of-the-day")]
+    [InlineData(null, "@be/word-of-the-day")]
+    [InlineData("@be/idle", "@be/word-of-the-day")]
+    public async Task BuildDecisionAsync_WordOfDayGuess_AnswersTheSkillThatAsked(string? contextSkill, string expected)
+    {
+        var attributes = new Dictionary<string, object?>
+        {
+            ["clientIntent"] = "guess",
+            ["clientRules"] = (string[])["word-of-the-day/puzzle"],
+            ["clientEntities"] = JsonDocument.Parse("""{"guess":"pastoral"}""").RootElement.Clone()
+        };
+        if (contextSkill is not null) attributes["lastContextSkillId"] = contextSkill;
+
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = "guess", NormalizedTranscript = "guess", Attributes = attributes });
+
+        Assert.Equal("word_of_the_day_guess", decision.IntentName);
+        Assert.Equal(expected, decision.SkillName);
+        Assert.Equal(expected, decision.SkillPayload!["skillId"]);
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_WordOfDayGuess_UsesSpokenTranscriptDuringPuzzleTurn()
     {

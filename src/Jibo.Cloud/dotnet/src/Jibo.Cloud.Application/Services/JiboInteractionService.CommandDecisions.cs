@@ -245,9 +245,15 @@ public sealed partial class JiboInteractionService
     private static JiboInteractionDecision BuildWordOfTheDayGuessDecision(
         IReadOnlyDictionary<string, string> clientEntities,
         string transcript,
-        IReadOnlyList<string> listenAsrHints)
+        IReadOnlyList<string> listenAsrHints,
+        string? askingSkillId = null)
     {
         var guess = ResolveWordOfTheDayGuess(clientEntities, transcript, listenAsrHints);
+        // Answer the skill that asked: a fork (e.g. @be/infinite-word-of-the-day) would otherwise be closed for the stock one.
+        var skillId = askingSkillId is { } asking && asking.StartsWith("@be/", StringComparison.OrdinalIgnoreCase) &&
+                      asking.Contains("word-of-the-day", StringComparison.OrdinalIgnoreCase)
+            ? asking
+            : "@be/word-of-the-day";
 
         var reply = string.IsNullOrWhiteSpace(guess)
             ? "I heard your word of the day guess."
@@ -256,11 +262,11 @@ public sealed partial class JiboInteractionService
         return new JiboInteractionDecision(
             "word_of_the_day_guess",
             reply,
-            "@be/word-of-the-day",
+            skillId,
             new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
                 ["guess"] = guess,
-                ["skillId"] = "@be/word-of-the-day",
+                ["skillId"] = skillId,
                 ["cloudResponseMode"] = "completion_only"
             });
     }
