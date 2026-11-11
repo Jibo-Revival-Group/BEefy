@@ -604,7 +604,19 @@ public sealed class WebSocketTurnFinalizationService(
         if (string.IsNullOrWhiteSpace(skillId)) return;
 
         session.Metadata[SkillListenOwnership.LastContextSkillIdKey] = skillId;
+        if (!string.IsNullOrWhiteSpace(session.Token)) RobotContextSkill[session.Token] = skillId;
     }
+
+    // The robot opens a new listen socket per turn, and one that only streams leftover audio never sends CONTEXT:
+    // remember each robot's (token's) last reported skill so the orphan-audio unstick knows a skill is open.
+    // shortcut: in-memory, one entry per robot token; lost on restart (then the old @be/idle behaviour applies).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> RobotContextSkill = new(StringComparer.Ordinal);
+
+    private static string? ReadOpenSkill(CloudSession session) =>
+        session.Metadata.TryGetValue(SkillListenOwnership.LastContextSkillIdKey, out var contextSkill) && contextSkill is string text &&
+        !string.IsNullOrWhiteSpace(text)
+            ? text
+            : !string.IsNullOrWhiteSpace(session.Token) && RobotContextSkill.TryGetValue(session.Token, out var remembered) ? remembered : null;
 
     private static void PersistInvokedSkillId(
         CloudSession session,
@@ -2956,9 +2968,7 @@ public sealed class WebSocketTurnFinalizationService(
 
         // NO_INPUT ends the stuck listen. The @be/idle redirect is only for idle: it would close a skill that is
         // still open (Word of the Day was closed after every answer while the mic's tail streamed).
-        var openSkill = session.Metadata.TryGetValue(SkillListenOwnership.LastContextSkillIdKey, out var contextSkill)
-            ? contextSkill as string
-            : null;
+        var openSkill = ReadOpenSkill(session);
         var transId = turnState.TransId ?? session.LastTransId ?? string.Empty;
         var replies = (string.IsNullOrWhiteSpace(openSkill) ||
                        string.Equals(openSkill, "@be/idle", StringComparison.OrdinalIgnoreCase) ||
