@@ -5816,6 +5816,23 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task EmptyClientAsr_AfterRightWord_InInfiniteWordOfTheDay_DoesNotRedirectToIdle()
+    {
+        Task<IReadOnlyList<WebSocketReply>> Send(string text) => _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-iwod-right-word-token", Text = text
+        });
+        // An earlier socket from the same robot reported the open skill.
+        await Send("""{"type":"CONTEXT","transID":"trans-iwod-0","data":{"skill":{"id":"@be/infinite-word-of-the-day"}}}""");
+        _store.CloseSession(_store.FindSessionByToken("hub-iwod-right-word-token")!.SessionId);
+
+        await Send("""{"type":"LISTEN","transID":"trans-iwod-right-word","data":{"rules":["word-of-the-day/right_word","globals/gui_nav","globals/mim_repeat","globals/global_commands_launch"]}}""");
+        var replies = await Send("""{"type":"CLIENT_ASR","transID":"trans-iwod-right-word","data":{}}""");
+
+        Assert.DoesNotContain("SKILL_REDIRECT", replies.Select(ReadReplyType));
+    }
+
+    [Fact]
     public async Task EmptyClientAsr_AfterWordOfDayRightWordListen_IsIgnored()
     {
         await _service.HandleMessageAsync(new WebSocketMessageEnvelope

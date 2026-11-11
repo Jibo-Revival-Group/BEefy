@@ -778,7 +778,7 @@ public sealed class WebSocketTurnFinalizationService(
         PersistTurnHints(session, envelope.Text);
 
         var turn = ProtocolToTurnContextMapper.MapListenMessage(envelope, session, "LISTEN");
-        if (ShouldIgnoreCompletedWordOfDayTurn(turn))
+        if (ShouldIgnoreCompletedWordOfDayTurn(turn, session))
         {
             logger.LogDebug("Listen setup ignored completed word-of-day turn session={SessionId} transId={TransId}",
                 session.SessionId,
@@ -1549,7 +1549,7 @@ public sealed class WebSocketTurnFinalizationService(
                 finalizedTurn = WithSyntheticTranscript(finalizedTurn, "hello");
             }
 
-            if (ShouldIgnoreCompletedWordOfDayTurn(finalizedTurn))
+            if (ShouldIgnoreCompletedWordOfDayTurn(finalizedTurn, session))
             {
                 turnState.AwaitingTurnCompletion = false;
                 turnState.IgnoreAdditionalAudioUntilUtc =
@@ -4157,10 +4157,12 @@ public sealed class WebSocketTurnFinalizationService(
                !string.IsNullOrWhiteSpace(session.LastIntent);
     }
 
-    private static bool ShouldIgnoreCompletedWordOfDayTurn(TurnContext turn)
+    private static bool ShouldIgnoreCompletedWordOfDayTurn(TurnContext turn, CloudSession session)
     {
         if (!string.IsNullOrWhiteSpace(turn.NormalizedTranscript) ||
             !string.IsNullOrWhiteSpace(turn.RawTranscript)) return false;
+        // Infinite Word of the Day keeps going after the right word (it asks for another), so don't send it to idle.
+        if (string.Equals(ReadOpenSkill(session), "@be/infinite-word-of-the-day", StringComparison.OrdinalIgnoreCase)) return false;
 
         return ReadRules(turn, "listenRules")
             .Any(static rule => string.Equals(rule, "word-of-the-day/right_word", StringComparison.OrdinalIgnoreCase));
