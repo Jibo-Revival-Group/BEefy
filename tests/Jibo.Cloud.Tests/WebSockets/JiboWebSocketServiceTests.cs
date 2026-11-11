@@ -5833,6 +5833,23 @@ public sealed class JiboWebSocketServiceTests
     }
 
     [Fact]
+    public async Task EmptyClientAsr_AfterRightWord_OnceInfiniteWordOfTheDayClosed_RedirectsToIdleAgain()
+    {
+        Task<IReadOnlyList<WebSocketReply>> Send(string text) => _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-iwod-closed-token", Text = text
+        });
+        await Send("""{"type":"CONTEXT","transID":"trans-iwodc-0","data":{"skill":{"id":"@be/infinite-word-of-the-day"}}}""");
+        await Send("""{"type":"CONTEXT","transID":"trans-iwodc-1","data":{"skill":{"id":null}}}""");
+        _store.CloseSession(_store.FindSessionByToken("hub-iwod-closed-token")!.SessionId);
+
+        await Send("""{"type":"LISTEN","transID":"trans-iwodc-right-word","data":{"rules":["word-of-the-day/right_word","globals/gui_nav"]}}""");
+        var replies = await Send("""{"type":"CLIENT_ASR","transID":"trans-iwodc-right-word","data":{}}""");
+
+        Assert.Contains("SKILL_REDIRECT", replies.Select(ReadReplyType));
+    }
+
+    [Fact]
     public async Task EmptyClientAsr_AfterWordOfDayRightWordListen_IsIgnored()
     {
         await _service.HandleMessageAsync(new WebSocketMessageEnvelope
@@ -6038,54 +6055,6 @@ public sealed class JiboWebSocketServiceTests
 
         Assert.Empty(replies);
         Assert.Equal("ASLEEP", WebSocketTurnFinalizationService.ResolveGlsmPhase(session));
-    }
-
-    [Fact]
-    public async Task OrphanBinaryWithoutListen_WhileASkillIsOpen_EndsTheListenWithoutClosingIt()
-    {
-        var session = _store.OpenSession("neo-hub-listen", "openjibo-default-loop", "hub-orphan-skill-token", "neo-hub.jibo.com", "/listen");
-        session.TurnState.TransId = "trans-orphan-skill";
-        session.LastTransId = "trans-orphan-skill";
-        session.TurnState.ListenRules = ["word-of-the-day/puzzle"];
-        session.Metadata["lastContextSkillId"] = "@be/infinite-word-of-the-day";
-        Task<IReadOnlyList<WebSocketReply>> Send() => _service.HandleMessageAsync(new WebSocketMessageEnvelope
-        {
-            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-orphan-skill-token", Binary = new byte[4096]
-        });
-
-        Assert.Empty(await Send());
-        session.TurnState.OrphanAudioWithoutListenSinceUtc =
-            DateTimeOffset.UtcNow - WebSocketTurnState.OrphanAudioWithoutListenUnstickAge - TimeSpan.FromMilliseconds(100);
-        var replies = await Send();
-
-        Assert.Equal(["LISTEN", "EOS"], replies.Select(ReadReplyType).ToArray());
-        Assert.Equal("no-input", session.LastListenType);
-    }
-
-    [Fact]
-    public async Task OrphanBinaryWithoutListen_OnANewSocket_RemembersTheRobotsOpenSkill()
-    {
-        // The robot reports its skill on one listen socket, then streams leftover audio on a new one with no CONTEXT.
-        await _service.HandleMessageAsync(new WebSocketMessageEnvelope
-        {
-            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-orphan-two-token",
-            Text = """{"type":"CONTEXT","transID":"trans-two-a","data":{"skill":{"id":"@be/infinite-word-of-the-day"}}}"""
-        });
-        var first = _store.FindSessionByToken("hub-orphan-two-token")!;
-        Assert.Equal("@be/infinite-word-of-the-day", first.Metadata["lastContextSkillId"]);
-        _store.CloseSession(first.SessionId);
-
-        var session = _store.OpenSession("neo-hub-listen", "openjibo-default-loop", "hub-orphan-two-token", "neo-hub.jibo.com", "/listen");
-        session.TurnState.TransId = "trans-two-b";
-        Task<IReadOnlyList<WebSocketReply>> Send() => _service.HandleMessageAsync(new WebSocketMessageEnvelope
-        {
-            HostName = "neo-hub.jibo.com", Path = "/listen", Kind = "neo-hub-listen", Token = "hub-orphan-two-token", Binary = new byte[4096]
-        });
-        Assert.Empty(await Send());
-        session.TurnState.OrphanAudioWithoutListenSinceUtc =
-            DateTimeOffset.UtcNow - WebSocketTurnState.OrphanAudioWithoutListenUnstickAge - TimeSpan.FromMilliseconds(100);
-
-        Assert.Equal(["LISTEN", "EOS"], (await Send()).Select(ReadReplyType).ToArray());
     }
 
     [Fact]

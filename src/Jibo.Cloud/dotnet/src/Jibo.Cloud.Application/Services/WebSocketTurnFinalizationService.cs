@@ -601,16 +601,24 @@ public sealed class WebSocketTurnFinalizationService(
     private static void PersistContextSkillId(CloudSession session, string? text)
     {
         var skillId = TryReadContextSkillId(text);
-        if (string.IsNullOrWhiteSpace(skillId)) return;
+        if (string.IsNullOrWhiteSpace(skillId))
+        {
+            // A CONTEXT with no skill means the robot's skill closed; forget it.
+            if (!string.IsNullOrWhiteSpace(session.Token) && IsContextMessage(text)) RobotContextSkill.TryRemove(session.Token, out _);
+            return;
+        }
 
         session.Metadata[SkillListenOwnership.LastContextSkillIdKey] = skillId;
         if (!string.IsNullOrWhiteSpace(session.Token)) RobotContextSkill[session.Token] = skillId;
     }
 
-    // The robot opens a new listen socket per turn, and one that only streams leftover audio never sends CONTEXT:
-    // remember each robot's (token's) last reported skill so the orphan-audio unstick knows a skill is open.
+    // The robot opens a new listen socket per turn and sends CONTEXT after LISTEN:
+    // remember each robot's (token's) last reported skill so a LISTEN knows which skill is open.
     // shortcut: in-memory, one entry per robot token; lost on restart (then the old @be/idle behaviour applies).
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> RobotContextSkill = new(StringComparer.Ordinal);
+
+    private static bool IsContextMessage(string? text) =>
+        text is not null && text.Contains("\"CONTEXT\"", StringComparison.Ordinal);
 
     private static string? ReadOpenSkill(CloudSession session) =>
         session.Metadata.TryGetValue(SkillListenOwnership.LastContextSkillIdKey, out var contextSkill) && contextSkill is string text &&
@@ -2966,15 +2974,11 @@ public sealed class WebSocketTurnFinalizationService(
         session.LastIntent = null;
         session.LastListenType = "no-input";
 
-        // NO_INPUT ends the stuck listen. The @be/idle redirect is only for idle: it would close a skill that is
-        // still open (Word of the Day was closed after every answer while the mic's tail streamed).
-        var openSkill = ReadOpenSkill(session);
-        var transId = turnState.TransId ?? session.LastTransId ?? string.Empty;
-        var replies = (string.IsNullOrWhiteSpace(openSkill) ||
-                       string.Equals(openSkill, "@be/idle", StringComparison.OrdinalIgnoreCase) ||
-                       SkillListenOwnership.IsNimbusConversationSkill(openSkill)
-                ? ResponsePlanToSocketMessagesMapper.MapNoInputAndRedirectToSkill(transId, turnState.ListenRules, "@be/idle")
-                : ResponsePlanToSocketMessagesMapper.MapNoInput(transId, turnState.ListenRules))
+        var replies = ResponsePlanToSocketMessagesMapper
+            .MapNoInputAndRedirectToSkill(
+                turnState.TransId ?? session.LastTransId ?? string.Empty,
+                turnState.ListenRules,
+                "@be/idle")
             .Select(map => new WebSocketReply { Text = map.Text, DelayMs = map.DelayMs })
             .ToArray();
 
