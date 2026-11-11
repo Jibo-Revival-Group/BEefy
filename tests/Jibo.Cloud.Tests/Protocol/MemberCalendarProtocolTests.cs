@@ -67,6 +67,27 @@ public sealed class MemberCalendarProtocolTests
     }
 
     [Fact]
+    public async Task GetWithIncludeUrls_ReturnsOnlyThisRobotsOwnFeedLinks()
+    {
+        // JiboSync copies a person's calendar to the robots in its cluster.
+        using var harness = CreateHarness();
+        await harness.Service.DispatchAsync(Signed(harness, "SetCalendarFeed", new { memberId = "looper-zane", icalUrl = FeedUrl },
+            accessKeyId: "robot-a-key", secret: "s", deviceId: "Auburn-Motor-Salad-Angora"));
+
+        var own = await harness.Service.DispatchAsync(Signed(harness, "GetCalendarFeeds", new { includeUrls = true },
+            accessKeyId: "robot-a-key", secret: "s", deviceId: "Auburn-Motor-Salad-Angora"));
+        using (var payload = JsonDocument.Parse(own.BodyText))
+        {
+            var member = payload.RootElement.GetProperty("members")[0];
+            Assert.Equal(("looper-zane", FeedUrl, true),
+                (member.GetProperty("memberId").GetString(), member.GetProperty("icalUrl").GetString(), member.GetProperty("isEnabled").GetBoolean()));
+        }
+        var other = await harness.Service.DispatchAsync(Signed(harness, "GetCalendarFeeds", new { includeUrls = true },
+            accessKeyId: "robot-b-key", secret: "s", deviceId: "Luster-Lead-Truffle-Denim"));
+        Assert.DoesNotContain("secret-feed-token", other.BodyText);
+    }
+
+    [Fact]
     public async Task Set_TogglesSavedFeedWithoutRequiringItsPrivateUrl()
     {
         using var harness = CreateHarness();

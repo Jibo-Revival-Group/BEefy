@@ -33,13 +33,22 @@ public sealed partial class JiboCloudProtocolService
                 return ProtocolDispatchResult.Ok(new { saved = true });
             }
             case "GetCalendarFeeds":
+            {
+                var feeds = userIntegrationStore.GetMemberCalendarFeeds(loopId);
+                // JiboSync copies a person's feed to the robot's own cluster, so it asks for the private links
+                // (still only this robot's own feeds); BEacon's page never does.
+                if (ReadBool(body, "includeUrls") == true)
+                    return ProtocolDispatchResult.Ok(new
+                    {
+                        loopId,
+                        members = feeds.Select(feed => new { memberId = feed.MemberId, icalUrl = feed.IcalUrl, isEnabled = feed.IsEnabled }).ToArray()
+                    });
                 return ProtocolDispatchResult.Ok(new
                 {
                     loopId,
-                    members = userIntegrationStore.GetMemberCalendarFeeds(loopId)
-                        .Select(feed => CalendarFeedStatus(feed.MemberId, feed))
-                        .ToArray()
+                    members = feeds.Select(feed => CalendarFeedStatus(feed.MemberId, feed)).ToArray()
                 });
+            }
             case "SetCalendarFeed":
             {
                 var memberId = ReadString(body, "memberId") ?? ReadString(body, "id");
