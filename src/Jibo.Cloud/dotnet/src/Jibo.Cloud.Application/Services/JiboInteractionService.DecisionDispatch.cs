@@ -48,8 +48,7 @@ public sealed partial class JiboInteractionService
                 });
 
         // "sing Daisy Bell": BEam's @be/daisy-bell plays Jibo singing the chorus (prod: "sing daisy bell for me please" x2).
-        // BetaFeatures: @be/daisy-bell ships in 3.1.9; older robots don't have it.
-        if (!SkillListenOwnership.IsSkillOwnedListen(turn) && BetaFeatures.IsEnabled(turn) &&
+        if (!SkillListenOwnership.IsSkillOwnedListen(turn) &&
             Songs.FirstOrDefault(song => song.Request.IsMatch(turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty))
                 is { Request: not null } sung)
         {
@@ -70,7 +69,7 @@ public sealed partial class JiboInteractionService
         var referenceLocalTime = TryResolveReferenceLocalTime(turn);
         if (sportsScoreProvider is not null && !SkillListenOwnership.IsSkillOwnedListen(turn) && SportsQuestion.IsMatch(lowered) &&
             await sportsScoreProvider.AnswerAsync(lowered, referenceLocalTime ?? DateTimeOffset.Now, cancellationToken) is { } sportsAnswer)
-            return sportsAnswer.Card is { } card && BetaFeatures.IsEnabled(turn)
+            return sportsAnswer.Card is { } card
                 ? new JiboInteractionDecision("sports_score", sportsAnswer.Spoken, "chitchat-skill",
                     new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
                     {

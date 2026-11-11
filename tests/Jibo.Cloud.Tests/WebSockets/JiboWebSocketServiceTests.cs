@@ -4366,11 +4366,11 @@ public sealed class JiboWebSocketServiceTests
         Assert.Contains("weather service is offline", esml, StringComparison.OrdinalIgnoreCase);
     }
 
-    // .165 tags its CONTEXT (runtime.beta); that turn's sports answer carries the score card.
+    // Every robot's sports answer carries the score card since 3.1.9, beta tag (.165's runtime.beta) or not.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task ClientAsr_SportsWithScore_ShowsTheCardOnlyWhenContextHasTheBetaTag(bool beta)
+    public async Task ClientAsr_SportsWithScore_ShowsTheCard(bool beta)
     {
         var card = new SportsScoreCard(new SportsCardSide("Celtics", 119, "007a33", null), new SportsCardSide("Hornets", 80, "00788c", null),
             "data:image/png;base64,AA==");
@@ -4392,7 +4392,7 @@ public sealed class JiboWebSocketServiceTests
 
         var all = string.Join("\n", replies.Select(r => r.Text));
         Assert.Contains("SKILL_ACTION", all);
-        Assert.Equal(beta, all.Contains("sportsScoreView", StringComparison.Ordinal));
+        Assert.Contains("sportsScoreView", all);
     }
 
     private sealed class FixedSportsProvider(SportsScoreCard card) : ISportsScoreProvider

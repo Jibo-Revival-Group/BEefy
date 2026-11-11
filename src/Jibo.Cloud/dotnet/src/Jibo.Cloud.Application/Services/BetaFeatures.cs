@@ -11,7 +11,7 @@ namespace Jibo.Cloud.Application.Services;
 /// </summary>
 public static class BetaFeatures
 {
-    public const string CurrentOtaRelease = "3.1.8";
+    public const string CurrentOtaRelease = "3.1.9";
 
     public static bool IsEnabled(TurnContext turn) =>
         IsNewerThanCurrentOta(turn.FirmwareVersion) ||

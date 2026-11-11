@@ -4699,12 +4699,13 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal(true, decision.SkillPayload!["nativeLaunch"]);
     }
 
-    // @be/daisy-bell ships in 3.1.9: older robots without the beta tag keep the old answer.
+    // 3.1.9 shipped @be/daisy-bell: every robot gets the song, beta tag or not.
     [Theory]
     [InlineData("""{"runtime":{"beta":true}}""", "3.1.8", true)]
-    [InlineData(null, "3.1.8", false)]
+    [InlineData(null, "3.1.8", true)]
     [InlineData(null, "3.1.9", true)]
-    public async Task BuildDecisionAsync_SingDaisyBell_OnlyForRobotsThatHaveTheSkill(string? context, string release, bool sings)
+    [InlineData(null, null, true)]
+    public async Task BuildDecisionAsync_SingDaisyBell_ForEveryRobot(string? context, string? release, bool sings)
     {
         var turn = new TurnContext { RawTranscript = "sing daisy bell", NormalizedTranscript = "sing daisy bell", FirmwareVersion = release };
         if (context is not null) turn.Attributes["context"] = context;
@@ -6685,16 +6686,14 @@ public sealed class JiboInteractionServiceTests
         else Assert.NotEqual("sports_score", decision.IntentName);
     }
 
-    // The card needs BEam beta (data: images); .165 tags its CONTEXT (runtime.beta), and after the next OTA every robot gets it.
+    // 3.1.9 shipped the data: image support the card needs: every robot gets it, beta tag or not.
     [Theory]
     [InlineData("""{"runtime":{"beta":true},"general":{"release":"3.1.8"}}""", "3.1.8", true)]
-    [InlineData("""{"runtime":{},"general":{"release":"3.1.8","beta":true}}""", "3.1.8", false)]
-    [InlineData("""{"runtime":{"beta":"yes"},"general":{"release":"3.1.8"}}""", "3.1.8", false)]
+    [InlineData(null, "3.1.8", true)]
     [InlineData(null, "3.1.9", true)]
-    [InlineData(null, "3.2.0", true)]
-    [InlineData(null, "BEam.1.0.0", false)]
-    [InlineData(null, null, false)]
-    public async Task BuildDecisionAsync_SportsCard_OnlyForBetaRobotsUntilTheNextOta(string? context, string? release, bool card)
+    [InlineData(null, "BEam.1.0.0", true)]
+    [InlineData(null, null, true)]
+    public async Task BuildDecisionAsync_SportsCard_ForEveryRobot(string? context, string? release, bool card)
     {
         var scoreCard = new SportsScoreCard(new SportsCardSide("Capitals", 1, "c8102e", "http://logo/wsh.png"),
             new SportsCardSide("Panthers", 2, "041e42", null), "data:image/png;base64,AA==", "data:image/png;base64,BB==", "FINAL/OT", "Last night");
