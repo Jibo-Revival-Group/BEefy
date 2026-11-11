@@ -48,7 +48,8 @@ public sealed partial class JiboInteractionService
                 });
 
         // "sing Daisy Bell": BEam's @be/daisy-bell plays Jibo singing the chorus (prod: "sing daisy bell for me please" x2).
-        if (!SkillListenOwnership.IsSkillOwnedListen(turn) &&
+        // BetaFeatures: @be/daisy-bell ships in 3.1.9; older robots don't have it.
+        if (!SkillListenOwnership.IsSkillOwnedListen(turn) && BetaFeatures.IsEnabled(turn) &&
             Songs.FirstOrDefault(song => song.Request.IsMatch(turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty))
                 is { Request: not null } sung)
         {

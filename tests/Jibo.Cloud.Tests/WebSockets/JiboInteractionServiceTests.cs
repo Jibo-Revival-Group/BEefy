@@ -4692,11 +4692,26 @@ public sealed class JiboInteractionServiceTests
     [InlineData("sing a bicycle built for two")]
     public async Task BuildDecisionAsync_SingDaisyBell_LaunchesTheSong(string transcript)
     {
-        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript, FirmwareVersion = "3.1.9" });
 
         Assert.Equal("sing_daisy_bell", decision.IntentName);
         Assert.Equal("@be/daisy-bell", decision.SkillName);
         Assert.Equal(true, decision.SkillPayload!["nativeLaunch"]);
+    }
+
+    // @be/daisy-bell ships in 3.1.9: older robots without the beta tag keep the old answer.
+    [Theory]
+    [InlineData("""{"runtime":{"beta":true}}""", "3.1.8", true)]
+    [InlineData(null, "3.1.8", false)]
+    [InlineData(null, "3.1.9", true)]
+    public async Task BuildDecisionAsync_SingDaisyBell_OnlyForRobotsThatHaveTheSkill(string? context, string release, bool sings)
+    {
+        var turn = new TurnContext { RawTranscript = "sing daisy bell", NormalizedTranscript = "sing daisy bell", FirmwareVersion = release };
+        if (context is not null) turn.Attributes["context"] = context;
+
+        var decision = await CreateService().BuildDecisionAsync(turn);
+
+        Assert.Equal(sings, decision.IntentName == "sing_daisy_bell");
     }
 
     [Theory]

@@ -91,7 +91,7 @@ public sealed class MusicInteractionServiceTests
     [InlineData("https://api.5x1.com/songs/new-song.mp3")]
     public async Task Sing_SendsTheSongUrlToTheRobot(string? url)
     {
-        var turn = Turn("sing daisy bell");
+        var turn = Turn("sing daisy bell", "3.1.9");
         var plan = await new DemoConversationBroker(Service()).HandleTurnAsync(turn);
         var action = Assert.Single(plan.Actions.OfType<InvokeNativeSkillAction>());
         Assert.Equal("@be/daisy-bell", action.SkillName);
