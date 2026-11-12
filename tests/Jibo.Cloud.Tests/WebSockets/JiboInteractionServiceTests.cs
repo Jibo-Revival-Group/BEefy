@@ -3200,7 +3200,8 @@ public sealed class JiboInteractionServiceTests
             Snapshot = new NewsBriefingSnapshot(
                 [
                     new NewsHeadline("Space missions are preparing for new launches",
-                        "Teams are preparing new orbital missions."),
+                        "Teams are preparing new orbital missions.", "science",
+                        Image: new NewsImage("https://img.example/space.jpg", 640, 360)),
                     new NewsHeadline("AI tools keep pushing into everyday products",
                         "Consumer products continue adopting AI features.")
                 ],
@@ -3241,6 +3242,13 @@ public sealed class JiboInteractionServiceTests
             section.TryGetValue("anim_meta", out var animMeta) &&
             string.Equals(animCat?.ToString(), "news", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(animMeta?.ToString(), "news-stinger", StringComparison.OrdinalIgnoreCase));
+        // The report shows each story's photo and category, like asking for the news on its own.
+        var space = Assert.Single(sections, static section =>
+            string.Equals(section["kind"]?.ToString(), "news_headline", StringComparison.OrdinalIgnoreCase) &&
+            section["text"]?.ToString()?.StartsWith("Space missions", StringComparison.Ordinal) == true);
+        Assert.Equal("https://img.example/space.jpg", space["news_image_url"]);
+        Assert.Equal(640, space["news_image_width"]);
+        Assert.Equal("science", space["news_category"]);
     }
 
     [Fact]

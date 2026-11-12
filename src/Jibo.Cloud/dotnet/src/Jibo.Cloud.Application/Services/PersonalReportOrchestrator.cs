@@ -490,16 +490,30 @@ internal static partial class PersonalReportOrchestrator
                 "news-intro, no-eye-end",
                 newsHold));
 
+            // The news decision's own headline sections carry each story's photo and category.
+            var newsHeadlineSections = (newsSkillPayload!.TryGetValue("news_sections", out var rawSections)
+                    ? rawSections as IEnumerable<IDictionary<string, object?>>
+                    : null)?
+                .Where(static section => string.Equals(section.TryGetValue("kind", out var kind) ? kind?.ToString() : null,
+                    "news_headline", StringComparison.OrdinalIgnoreCase))
+                .ToList() ?? [];
             foreach (var title in headlineTitles)
             {
                 var headlineText = title.EndsWith(".", StringComparison.Ordinal) ? title : $"{title}.";
                 spokenParts.Add(headlineText);
+                var headlineExtras = new Dictionary<string, object?>(newsHold, StringComparer.OrdinalIgnoreCase);
+                var match = newsHeadlineSections.FirstOrDefault(section =>
+                    string.Equals(section.TryGetValue("text", out var text) ? text?.ToString() : null, headlineText,
+                        StringComparison.Ordinal));
+                if (match is not null)
+                    foreach (var (key, value) in match)
+                        if (key.StartsWith("news_", StringComparison.OrdinalIgnoreCase)) headlineExtras[key] = value;
                 sequenceSections.Add(BuildReportSequenceSection(
                     "news_headline",
                     headlineText,
                     "news",
                     "news-stinger",
-                    newsHold));
+                    headlineExtras));
             }
 
             spokenNews = string.Join(" ", spokenParts);
