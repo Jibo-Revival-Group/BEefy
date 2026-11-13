@@ -104,10 +104,12 @@ public sealed partial class JiboInteractionService
 
     private static JiboInteractionDecision BuildRobotBirthdayDecision(TurnContext turn)
     {
-        var birthdate = ResolveRobotBirthdate(turn);
+        // Stock JBO_WhenIsJiboBirthday: without the robot's own date, no date is claimed.
         return new JiboInteractionDecision(
             "robot_birthday",
-            $"My birthday is {FormatBirthdateWords(birthdate)}.");
+            TryResolveRobotBirthdate(turn) is { } birthdate
+                ? $"My birthday is {FormatBirthdateWords(birthdate)}."
+                : "My birthday is the day I was first powered on.");
     }
 
     private static string RenderAgeTemplate(

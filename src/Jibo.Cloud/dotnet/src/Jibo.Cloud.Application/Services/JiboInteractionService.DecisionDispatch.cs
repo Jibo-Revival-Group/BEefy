@@ -319,6 +319,17 @@ public sealed partial class JiboInteractionService
                 ? WithBirthdayLine(turn, chitchatDecision, TryResolveReferenceLocalTime(turn))
                 : chitchatDecision;
 
+        // Stock RN_HappyBirthdayToJibo: the celebrating lines are only for his real birthday, the day he was
+        // first powered up (sent by the robot). Any other day, or when the robot sent no date, it is not his birthday.
+        if (semanticIntent == "birthday_celebration" &&
+            !(TryResolveRobotBirthdate(turn) is { } robotBirthdate &&
+              IsRobotBirthday(DateOnly.FromDateTime((referenceLocalTime ?? DateTimeOffset.UtcNow).Date), robotBirthdate)))
+            return new JiboInteractionDecision(
+                semanticIntent,
+                "Today's not my birthday, but I'll take your happy.",
+                SkillName: "chitchat-skill",
+                ContextUpdates: ScriptedResponseDecisionBuilder.BuildScriptedResponseContextUpdates());
+
         if (SeasonalHolidayRouteBuilder.TryBuildDecision(
                 semanticIntent,
                 lowered,

@@ -352,7 +352,7 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Fact]
-    public async Task BuildDecisionAsync_WhenIsYourBirthday_UsesPersonaBirthdayReply()
+    public async Task BuildDecisionAsync_WhenIsYourBirthday_WithoutRobotBirthdate_ClaimsNoDate()
     {
         var service = CreateService();
 
@@ -363,7 +363,34 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("robot_birthday", decision.IntentName);
-        Assert.Equal("My birthday is March 22, 2026.", decision.ReplyText);
+        Assert.Equal("My birthday is the day I was first powered on.", decision.ReplyText);
+    }
+
+    [Theory]
+    [InlineData(null, "not my birthday")]
+    [InlineData("2018-06-01T12:00:00Z", "not my birthday")]
+    [InlineData("TODAY", "another year older")]
+    public async Task BuildDecisionAsync_HappyBirthday_CelebratesOnlyOnTheRobotsBirthday(string? poweredUp, string expected)
+    {
+        var service = CreateService();
+        var attributes = new Dictionary<string, object?>();
+        if (poweredUp is not null)
+        {
+            // "TODAY": powered up on this date eight years ago.
+            var date = poweredUp == "TODAY" ? DateTimeOffset.UtcNow.AddYears(-8) : DateTimeOffset.Parse(poweredUp);
+            attributes["context"] = "{\"runtime\":{\"loop\":{\"jibo\":{\"id\":\"robot-1\",\"birthdate\":" +
+                                    date.ToUnixTimeMilliseconds() + "}}}}";
+        }
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "happy birthday",
+            NormalizedTranscript = "happy birthday",
+            Attributes = attributes
+        });
+
+        Assert.Equal("birthday_celebration", decision.IntentName);
+        Assert.Contains(expected, decision.ReplyText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -398,7 +425,7 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("robot_birthday", decision.IntentName);
-        Assert.Equal("My birthday is March 22, 2026.", decision.ReplyText);
+        Assert.Equal("My birthday is the day I was first powered on.", decision.ReplyText);
     }
 
     [Fact]
@@ -413,7 +440,7 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("robot_birthday", decision.IntentName);
-        Assert.Equal("My birthday is March 22, 2026.", decision.ReplyText);
+        Assert.Equal("My birthday is the day I was first powered on.", decision.ReplyText);
     }
 
     [Fact]
@@ -1894,7 +1921,6 @@ public sealed class JiboInteractionServiceTests
     [InlineData("do you like valentines day", "seasonal_valentines_day", "Valentine")]
     [InlineData("do you like kwanzaa", "seasonal_kwanzaa", "Kwanzaa")]
     [InlineData("do you like easter", "seasonal_easter", "Easter")]
-    [InlineData("happy birthday", "birthday_celebration", "another year older")]
     public async Task BuildDecisionAsync_SeasonalCharm_UsesImportedReplies(
         string transcript,
         string expectedIntent,
@@ -4128,7 +4154,7 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("robot_birthday", decision.IntentName);
-        Assert.Equal("My birthday is March 22, 2026.", decision.ReplyText);
+        Assert.Equal("My birthday is the day I was first powered on.", decision.ReplyText);
     }
 
     [Fact]
@@ -4147,7 +4173,7 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("robot_birthday", decision.IntentName);
-        Assert.Equal("My birthday is March 22, 2026.", decision.ReplyText);
+        Assert.Equal("My birthday is the day I was first powered on.", decision.ReplyText);
     }
 
     [Fact]
