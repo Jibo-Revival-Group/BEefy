@@ -23,12 +23,11 @@ PACKAGES = ["ctranslate2==4.9.0", "sentencepiece==0.2.3"]
 
 
 def main():
-    root = Path(__file__).resolve().parents[2] / "App_Data" / "speech-translation"
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--directory", type=Path, default=root)
+    parser.add_argument("--directory", type=Path, help="default: App_Data/speech-translation in this checkout")
     parser.add_argument("--python", default=sys.executable, help="Python 3.10-3.13 with venv support")
     args = parser.parse_args()
-    directory = args.directory
+    directory = args.directory or Path(__file__).resolve().parents[2] / "App_Data" / "speech-translation"
     directory.mkdir(parents=True, exist_ok=True)
 
     if not shutil.which("espeak-ng"):
