@@ -8,6 +8,7 @@
 
 	<ItemGroup>
 		<Content Include="Audio\AsrCorrection\worker.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Include="Audio\SpeechTranslation\*.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<Content Include="Content\LegacyMims\BuildA\**\*.mim">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>

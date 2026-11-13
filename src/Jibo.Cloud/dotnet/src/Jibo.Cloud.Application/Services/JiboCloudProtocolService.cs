@@ -23,7 +23,8 @@ public sealed partial class JiboCloudProtocolService(
     RobotIdentitySuggestionStore? identitySuggestionStore = null,
     IUserIntegrationStore? userIntegrationStore = null,
     IMemberCalendarFeedProbe? calendarFeedProbe = null,
-    ICommuteRouting? commuteRouting = null)
+    ICommuteRouting? commuteRouting = null,
+    ISpeechTranslator? speechTranslator = null)
 {
     private const int SchedulerBackupDelayMs = 250;
     private const int SchedulerDownloadTickMs = 100;
@@ -175,6 +176,8 @@ public sealed partial class JiboCloudProtocolService(
                 return HandleMemberCalendarAsync(operation, envelope);
             if (IsCommuteOperation(operation))
                 return HandleCommuteAsync(operation, envelope);
+            if (operation == "TranslateSpeech")
+                return HandleTranslateSpeechAsync(envelope);
             return Task.FromResult(HandleLoop(operation, envelope));
         }
 

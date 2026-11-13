@@ -35,6 +35,7 @@ public static class ServiceCollectionExtensions
         var sttOptions = new BufferedAudioSttOptions();
         var listenEndpointingOptions = new ListenEndpointingOptions();
         var asrCorrectionOptions = new AsrCorrectionOptions();
+        var speechTranslationOptions = new SpeechTranslationOptions();
         var beefyErOptions = new BeefyErOptions();
         if (configuration is not null)
         {
@@ -44,6 +45,7 @@ public static class ServiceCollectionExtensions
             configuration.GetSection("OpenJibo:Stt").Bind(sttOptions);
             configuration.GetSection("OpenJibo:Listen").Bind(listenEndpointingOptions);
             configuration.GetSection("OpenJibo:Stt:Correction").Bind(asrCorrectionOptions);
+            configuration.GetSection("OpenJibo:SpeechTranslation").Bind(speechTranslationOptions);
             configuration.GetSection("OpenJibo:Stt:BeefyEr").Bind(beefyErOptions);
         }
 
@@ -115,6 +117,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<LocalAsrCorrectionModel>();
         services.AddSingleton<IAsrCorrectionModel>(provider => provider.GetRequiredService<LocalAsrCorrectionModel>());
         services.AddHostedService(provider => provider.GetRequiredService<LocalAsrCorrectionModel>());
+        services.AddSingleton(speechTranslationOptions);
+        services.AddSingleton<LocalSpeechTranslator>();
+        services.AddSingleton<ISpeechTranslator>(provider => provider.GetRequiredService<LocalSpeechTranslator>());
+        services.AddHostedService(provider => provider.GetRequiredService<LocalSpeechTranslator>());
         services.AddSingleton(sttOptions);
         services.AddSingleton(listenEndpointingOptions);
         services.AddHostedService<WhisperServerHostedService>();
