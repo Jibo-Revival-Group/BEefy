@@ -354,7 +354,18 @@ internal static class SeasonalHolidayRouteBuilder
                 "santa tracker",
                 "where is santa",
                 "where is santa right now",
-                "can you show me santa tracker"))
+                "can you show me santa tracker",
+                // the santa-scanner animation: people ask for it the way they ask for the monster scan
+                "santa scanner",
+                "santa radar",
+                "scan for santa",
+                "scanned for santa",
+                "scanning for santa",
+                "check for santa",
+                "look for santa",
+                "search for santa",
+                "find santa",
+                "spot santa"))
         {
             semanticIntent = "seasonal_santa_tracker";
             return true;

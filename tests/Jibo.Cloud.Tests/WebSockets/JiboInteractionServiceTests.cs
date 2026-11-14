@@ -1973,15 +1973,20 @@ public sealed class JiboInteractionServiceTests
         Assert.NotEqual("robot_favorite_flower", decision.IntentName);
     }
 
-    [Fact]
-    public async Task BuildDecisionAsync_SeasonalSantaTracker_UsesAnimatedSkillPayload()
+    [Theory]
+    [InlineData("show santa tracker")]
+    [InlineData("scan for santa")]
+    [InlineData("scanned for santa claus")]
+    [InlineData("check for santa")]
+    [InlineData("santa scanner")]
+    public async Task BuildDecisionAsync_SeasonalSantaTracker_UsesAnimatedSkillPayload(string transcript)
     {
         var service = CreateService();
 
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
-            RawTranscript = "show santa tracker",
-            NormalizedTranscript = "show santa tracker"
+            RawTranscript = transcript,
+            NormalizedTranscript = transcript
         });
 
         Assert.Equal("seasonal_santa_tracker", decision.IntentName);
