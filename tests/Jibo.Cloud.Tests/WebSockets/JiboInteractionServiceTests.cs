@@ -7127,6 +7127,24 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Theory]
+    [InlineData("pretend to be pac man")]
+    [InlineData("pretend to be pack man")]
+    [InlineData("pretend to be pac-man")]
+    [InlineData("Pretend to be Pacman.")]
+    [InlineData("can you pretend you're pac man")]
+    [InlineData("act like pac man")]
+    [InlineData("can you pretend to be pac man")]
+    [InlineData("pretend to be a pacman please")]
+    public async Task BuildDecisionAsync_PretendToBePacManOpensThePacManPack(string heard)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = heard, NormalizedTranscript = heard });
+
+        Assert.Equal("open_skill", decision.IntentName);
+        Assert.Equal("@be/pacman", decision.SkillName);
+        Assert.Equal(true, decision.SkillPayload!["nativeLaunch"]);
+    }
+
+    [Theory]
     [InlineData("let's check the weather", "agent_mode")]
     [InlineData("work is hard today", "twerk")]
     [InlineData("can you work", "twerk")]

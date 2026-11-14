@@ -1891,8 +1891,14 @@ public sealed partial class JiboInteractionService
         @"^(?:hey jibo |jibo )?(?:can you |could you |please )?(?:open|launch|start|run|go to|play|use)(?: up)?(?: the| my| your)? (?<name>.+?)(?: skill| app)?(?: please)?$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50));
 
+    // "Pretend to be Pac-Man" opens the Pac-Man pack; ASR spells the name every way (pac man, pack man, pacman, pac-man).
+    private static readonly Regex PacManPattern = new(
+        @"^(?:hey jibo |jibo )?(?:can you |could you |will you |please )?(?:pretend|act)(?: to be| you ?'?re| you are| like| as)(?: a)? (?:pac|pack|pak) ?m[ae]n(?: please)?$",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50));
+
     internal static string? TryResolveSkillToOpen(string loweredTranscript)
     {
+        if (PacManPattern.IsMatch(TranscriptTextNormalizer.NormalizeLooseText(loweredTranscript))) return "@be/pacman";
         var match = OpenSkillPattern.Match(TranscriptTextNormalizer.NormalizeLooseText(loweredTranscript));
         if (!match.Success) return null;
         var name = match.Groups["name"].Value;

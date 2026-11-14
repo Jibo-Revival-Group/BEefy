@@ -73,6 +73,9 @@ public sealed partial class JiboInteractionService
             }
         }
 
+        // Before the cloud NLU's "can you <action>" intent, which would otherwise take "can you pretend to be pac man".
+        if (PacManPattern.IsMatch(TranscriptTextNormalizer.NormalizeLooseText(loweredTranscript))) return "open_skill";
+
         if (RepeatLastCommandParser.IsRepeatRequest(loweredTranscript)) return "repeat_last_command";
 
         // CLIENT_NLU may supply only the semantic intent, without recognized text.
