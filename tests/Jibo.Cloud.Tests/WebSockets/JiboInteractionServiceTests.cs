@@ -1974,6 +1974,23 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Theory]
+    [InlineData("do you believe in aliens")]
+    [InlineData("jibo do you believe in ufos")]
+    [InlineData("are aliens real")]
+    public async Task BuildDecisionAsync_Aliens_PlaysUfoAnimation(string transcript)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = transcript,
+            NormalizedTranscript = transcript
+        });
+
+        Assert.Equal("robot_believes_in_aliens", decision.IntentName);
+        Assert.Equal("chitchat-skill", decision.SkillName);
+        Assert.Contains("filter='ufo'", decision.SkillPayload!["esml"]?.ToString());
+    }
+
+    [Theory]
     [InlineData("show santa tracker")]
     [InlineData("scan for santa")]
     [InlineData("scanned for santa claus")]

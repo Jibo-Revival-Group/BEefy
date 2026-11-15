@@ -1675,6 +1675,7 @@ public sealed partial class JiboInteractionService
             "ha_climate_get_temp" => await BuildHaClimateGetTempDecisionAsync(turn, cancellationToken),
             "ha_climate_clarify" => await BuildHaClimateClarifyDecisionAsync(turn, cancellationToken),
             "pizza" => BuildPizzaDecision(),
+            "robot_believes_in_aliens" => BuildAliensDecision(),
             "order_pizza" => BuildOrderPizzaDecision(),
             "proactive_pizza_day" => BuildProactivePizzaDayDecision(referenceLocalTime),
             "proactive_pizza_preference" => BuildProactivePizzaPreferenceDecision(),

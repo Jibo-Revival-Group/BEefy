@@ -658,6 +658,24 @@ public sealed partial class JiboInteractionService
         return BuildPizzaAnimationDecision("pizza", "One pizza, coming right up.");
     }
 
+    // Jibo's own UFO jiboji (jiboji_ufo_01) answers it; the original cloud had no reply for this question.
+    private static JiboInteractionDecision BuildAliensDecision()
+    {
+        const string replyText = "I like to think so. Space is a really big place.";
+        return new JiboInteractionDecision(
+            "robot_believes_in_aliens",
+            replyText,
+            "chitchat-skill",
+            new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["esml"] = "<speak>I like to think so. Space is a <pitch mult='1.2'>really </pitch>big place. <anim cat='jiboji' filter='ufo'/></speak>",
+                ["mim_id"] = "runtime-chat",
+                ["mim_type"] = "announcement",
+                ["prompt_id"] = "RUNTIME_PROMPT",
+                ["prompt_sub_category"] = "AN"
+            });
+    }
+
     private JiboInteractionDecision BuildPizzaAnimationDecision(string intentName, string replyText)
     {
         var prompt = randomizer.Choose(PizzaMimPrompts);

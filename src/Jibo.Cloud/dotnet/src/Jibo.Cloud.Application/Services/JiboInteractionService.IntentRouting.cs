@@ -2153,6 +2153,9 @@ public sealed partial class JiboInteractionService
               loweredTranscript.Contains("flip", StringComparison.Ordinal))))
             return "pizza";
 
+        if (MatchesAny(loweredTranscript, "believe in aliens", "believe in alien", "believe in ufos", "do aliens exist", "are aliens real"))
+            return "robot_believes_in_aliens";
+
         if (MatchesAny(loweredTranscript, "personal report", "my report", "daily report", "my update"))
             return "personal_report";
 
