@@ -1367,6 +1367,25 @@ public sealed partial class JiboInteractionService
         return new ClockAlarmValue($"{hour}:{minute:00}", ampm);
     }
 
+    // Days an alarm repeats on, as "1,2,3,4,5" (0 = Sunday) for @be/clock's repeat entity, or null for a one-time alarm.
+    // Day names only count with "every"/"on ...s" so "an alarm for Monday" stays a one-time alarm.
+    internal static string? TryParseAlarmRepeat(string loweredTranscript)
+    {
+        if (Regex.IsMatch(loweredTranscript, @"\b(?:every ?day|daily)\b")) return "0,1,2,3,4,5,6";
+        if (Regex.IsMatch(loweredTranscript, @"\b(?:every )?week ?days\b|\bevery week ?day\b")) return "1,2,3,4,5";
+        if (Regex.IsMatch(loweredTranscript, @"\b(?:every )?week ?ends\b|\bevery week ?end\b")) return "0,6";
+
+        string[] names = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+        var every = Regex.IsMatch(loweredTranscript, @"\bevery\b");
+        var days = new List<int>();
+        for (var day = 0; day < names.Length; day++)
+            if (Regex.IsMatch(loweredTranscript, $@"\b{names[day]}s\b") ||
+                (every && Regex.IsMatch(loweredTranscript, $@"\b{names[day]}\b")))
+                days.Add(day);
+
+        return days.Count > 0 ? string.Join(",", days) : null;
+    }
+
     private static string ResolveAmPm(string token, int hour, int minute, DateTimeOffset? referenceLocalTime)
     {
         var normalized = token.Replace(" ", string.Empty, StringComparison.Ordinal)

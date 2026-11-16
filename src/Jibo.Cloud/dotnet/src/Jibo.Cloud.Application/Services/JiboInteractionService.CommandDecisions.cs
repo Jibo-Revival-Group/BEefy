@@ -204,7 +204,8 @@ public sealed partial class JiboInteractionService
                 ["domain"] = "alarm",
                 ["clockIntent"] = "start",
                 ["time"] = alarm.Time,
-                ["ampm"] = alarm.AmPm
+                ["ampm"] = alarm.AmPm,
+                ["repeat"] = TryParseAlarmRepeat(loweredTranscript)
             });
     }
 

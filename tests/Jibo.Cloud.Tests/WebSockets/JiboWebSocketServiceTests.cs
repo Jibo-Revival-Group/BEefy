@@ -1743,6 +1743,44 @@ public sealed class JiboWebSocketServiceTests
         Assert.Equal("am",
             listenPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("entities").GetProperty("ampm")
                 .GetString());
+        Assert.False(listenPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("entities")
+            .TryGetProperty("repeat", out _), "a plain alarm stays one-time");
+    }
+
+    [Theory]
+    [InlineData("set an alarm for 7 am every weekday", "7:00", "1,2,3,4,5")]
+    [InlineData("set an alarm for 6:30 am on weekends", "6:30", "0,6")]
+    [InlineData("set an alarm for 8 am every day", "8:00", "0,1,2,3,4,5,6")]
+    [InlineData("set an alarm for 7:15 am on mondays and fridays", "7:15", "1,5")]
+    [InlineData("set an alarm for 9 am every tuesday", "9:00", "2")]
+    public async Task ClientAsr_SetRepeatingAlarm_SendsRepeatDays(string text, string time, string repeat)
+    {
+        await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com",
+            Path = "/listen",
+            Kind = "neo-hub-listen",
+            Token = "hub-clock-repeat-token",
+            Text =
+                """{"type":"LISTEN","transID":"trans-clock-repeat","data":{"rules":["globals/global_commands_launch"]}}"""
+        });
+
+        var replies = await _service.HandleMessageAsync(new WebSocketMessageEnvelope
+        {
+            HostName = "neo-hub.jibo.com",
+            Path = "/listen",
+            Kind = "neo-hub-listen",
+            Token = "hub-clock-repeat-token",
+            Text = $$$"""{"type":"CLIENT_ASR","transID":"trans-clock-repeat","data":{"text":"{{{text}}}"}}"""
+        });
+
+        using var listenPayload = JsonDocument.Parse(replies[0].Text!);
+        var entities = listenPayload.RootElement.GetProperty("data").GetProperty("nlu").GetProperty("entities");
+        Assert.Equal("@be/clock",
+            listenPayload.RootElement.GetProperty("data").GetProperty("match").GetProperty("skillID").GetString());
+        Assert.Equal("alarm", entities.GetProperty("domain").GetString());
+        Assert.Equal(time, entities.GetProperty("time").GetString());
+        Assert.Equal(repeat, entities.GetProperty("repeat").GetString());
     }
 
     [Fact]

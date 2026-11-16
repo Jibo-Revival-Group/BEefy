@@ -78,6 +78,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         var timerSeconds = ReadSkillPayloadString(skill, "seconds");
         var alarmTime = ReadSkillPayloadString(skill, "time");
         var alarmAmPm = ReadSkillPayloadString(skill, "ampm");
+        var alarmRepeat = ReadSkillPayloadString(skill, "repeat");
         var radioStation = ReadSkillPayloadString(skill, "station");
         var cloudSkill = ReadSkillPayloadString(skill, "cloudSkill");
         var globalIntent = ReadSkillPayloadString(skill, "globalIntent");
@@ -194,6 +195,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
             timerSeconds,
             alarmTime,
             alarmAmPm,
+            alarmRepeat,
             isReportSkillLaunch,
             reportDate,
             reportWeatherCondition);
@@ -753,6 +755,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
         string? timerSeconds,
         string? alarmTime,
         string? alarmAmPm,
+        string? alarmRepeat,
         bool reportSkillLaunch,
         string? reportDate,
         string? reportWeatherCondition)
@@ -807,6 +810,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
 
             entities["time"] = alarmTime ?? string.Empty;
             entities["ampm"] = alarmAmPm ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(alarmRepeat)) entities["repeat"] = alarmRepeat;
 
             return entities;
         }
