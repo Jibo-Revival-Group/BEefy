@@ -27,7 +27,7 @@ public sealed partial class JiboCloudProtocolService
                 {
                     available = commuteRouting?.IsConfigured == true,
                     addresses = userIntegrationStore.GetCommuteAddresses(scope)
-                        .Select(static item => new { memberId = item.MemberId, address = item.Address }).ToArray()
+                        .Select(static item => new { memberId = item.MemberId, address = item.Address, mode = item.Mode }).ToArray()
                 });
             case "SetCommuteAddress":
             {
@@ -36,7 +36,14 @@ public sealed partial class JiboCloudProtocolService
                     return CalendarError(400, "An address is required.");
                 if (commuteRouting is not { IsConfigured: true })
                     return CalendarError(503, "Address lookup isn't set up on this server.");
-                var found = await commuteRouting.GeocodeAsync(address);
+                var mode = ReadString(body, "mode")?.Trim().ToLowerInvariant();
+                if (mode is not null && !CommuteAddressRecord.Modes.Contains(mode))
+                    return CalendarError(400, "Mode must be driving, bicycling or walking.");
+                var existing = userIntegrationStore.GetCommuteAddresses(scope).FirstOrDefault(item => item.MemberId == memberId);
+                // Changing only the mode re-sends the saved address: skip the lookup then.
+                var found = mode is not null && existing is not null && string.Equals(existing.Address, address, StringComparison.OrdinalIgnoreCase)
+                    ? new GeocodedAddress(existing.Address, existing.Latitude, existing.Longitude, existing.City, null, null, null, null)
+                    : await commuteRouting.GeocodeAsync(address);
                 if (found is null) return CalendarError(400, "That address couldn't be found. Check it and try again.");
                 userIntegrationStore.UpsertCommuteAddress(new CommuteAddressRecord
                 {
@@ -47,7 +54,8 @@ public sealed partial class JiboCloudProtocolService
                     Longitude = found.Longitude,
                     City = found.City,
                     MemberName = ReadString(body, "memberName"),
-                    TimeZoneId = ReadString(body, "timeZone")
+                    TimeZoneId = ReadString(body, "timeZone"),
+                    Mode = mode ?? existing?.Mode
                 });
                 return ProtocolDispatchResult.Ok(new
                 {

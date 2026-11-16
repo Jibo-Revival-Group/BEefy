@@ -169,15 +169,16 @@ public sealed partial class JiboInteractionService
         var loweredMode = mode.Trim().ToLowerInvariant();
         var candidates = loweredMode switch
         {
-            "walking" when isHurry => catalog.CommuteTransportHurryReplies,
-            "walking" when isLate => catalog.CommuteTransportLateReplies,
-            "walking" => catalog.CommuteTransportNormalReplies,
+            // Walking and biking have no traffic or transit lines of their own: say the trip and its time.
+            "walking" or "bicycling" when isHurry => catalog.CommuteDriveHurryReplies,
+            "walking" or "bicycling" when isLate => ["If you left now, you'd be a little late."],
+            "walking" or "bicycling" =>
+                [snapshot.Summary is { Length: > 0 } trip
+                    ? $"{char.ToUpperInvariant(trip[0])}{trip[1..]} should take about ${{skill.commute.durationMins}} minutes."
+                    : "Your commute should take about ${skill.commute.durationMins} minutes."],
             "transit" when isHurry => catalog.CommuteTransportHurryReplies,
             "transit" when isLate => catalog.CommuteTransportLateReplies,
             "transit" => catalog.CommuteTransportNormalReplies,
-            "bicycling" when isHurry => catalog.CommuteDriveHurryReplies,
-            "bicycling" when isLate => catalog.CommuteDriveLateReplies,
-            "bicycling" => catalog.CommuteDriveNormalReplies,
             _ when isFarAway => catalog.CommuteNowReplies,
             _ when isTerrible => catalog.CommuteDriveTerribleReplies,
             _ when isPoor => catalog.CommuteDrivePoorReplies,

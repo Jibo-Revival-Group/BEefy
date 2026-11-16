@@ -35,7 +35,7 @@ public sealed class TomTomCommuteReportProvider(
         if (home is null || work is null) return await fallbackProvider.GetReportAsync(turn, cancellationToken);
 
         var profile = cloudStateStore.GetCommuteProfiles().FirstOrDefault(static item => item.IsEnabled);
-        var mode = profile?.Mode ?? "driving";
+        var mode = work.Mode ?? profile?.Mode ?? "driving";
         var route = await RouteAsync(home, work, mode, cancellationToken);
         if (route is null) return null;
 

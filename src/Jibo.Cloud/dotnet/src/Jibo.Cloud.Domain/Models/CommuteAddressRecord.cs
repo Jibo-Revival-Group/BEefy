@@ -23,5 +23,9 @@ public sealed class CommuteAddressRecord
     public string? City { get; init; }
     public string? MemberName { get; init; }
     public string? TimeZoneId { get; init; }
+    /// <summary>How this person gets to work or school: driving, bicycling or walking (null = driving).</summary>
+    public string? Mode { get; init; }
+
+    public static readonly string[] Modes = ["driving", "bicycling", "walking"];
     public DateTimeOffset UpdatedUtc { get; init; } = DateTimeOffset.UtcNow;
 }

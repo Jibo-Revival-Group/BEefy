@@ -86,6 +86,45 @@ public sealed class TomTomCommuteTests
     }
 
     [Fact]
+    public async Task CommuteMode_SavedPerPersonInBEacon_RoutesAndNamesTheTrip()
+    {
+        using var store = new TempStore();
+        var cloud = new InMemoryCloudStateStore();
+        var routing = new FakeRouting();
+        var protocol = new JiboCloudProtocolService(cloud, userIntegrationStore: store.Store, commuteRouting: routing);
+        await protocol.DispatchAsync(Signed(cloud, "SetCommuteAddress", new { address = "Home St" }));
+        await protocol.DispatchAsync(Signed(cloud, "SetCommuteAddress", new { memberId = "zane", address = "Work St", memberName = "Zane" }));
+        var geocodes = routing.Geocodes;
+        // Changing only the mode re-sends the saved address: no new lookup, address kept.
+        var bike = await protocol.DispatchAsync(Signed(cloud, "SetCommuteAddress", new { memberId = "zane", address = "Geocoded Work St", memberName = "Zane", mode = "Bicycling" }));
+        Assert.Equal(200, bike.StatusCode);
+        Assert.Equal(geocodes, routing.Geocodes);
+        Assert.Contains("\"mode\":\"bicycling\"", (await protocol.DispatchAsync(Signed(cloud, "GetCommuteAddresses", new { }))).BodyText);
+        Assert.Equal(400, (await protocol.DispatchAsync(Signed(cloud, "SetCommuteAddress", new { memberId = "zane", address = "Work St", mode = "rocket" }))).StatusCode);
+
+        var provider = new TomTomCommuteReportProvider(store.Store, routing, cloud, new NullProvider());
+        var report = await provider.GetReportAsync(new TurnContext { DeviceId = Robot });
+        Assert.Equal("bicycling", routing.LastMode);
+        Assert.Equal("your bike ride to work", report!.Summary);
+
+        // A new address without a mode keeps the person's mode.
+        await protocol.DispatchAsync(Signed(cloud, "SetCommuteAddress", new { memberId = "zane", address = "New Job St", memberName = "Zane" }));
+        Assert.Equal("bicycling", store.Store.GetCommuteAddresses(MemberCalendarFeedRecord.RobotScope(Robot)).Single(item => item.MemberId == "zane").Mode);
+        await protocol.DispatchAsync(Signed(cloud, "SetCommuteAddress", new { memberId = "zane", address = "Geocoded New Job St", mode = "walking" }));
+        Assert.Equal("your walk to work", (await provider.GetReportAsync(new TurnContext { DeviceId = Robot }))!.Summary);
+
+        // Spoken: the walk and its time, not car traffic or transit lines.
+        var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), commuteReportProvider: provider, userIntegrationStore: store.Store);
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "how is my commute", NormalizedTranscript = "how is my commute", DeviceId = Robot
+        });
+        Assert.Contains("Your walk to work should take about 26 minutes.", decision.ReplyText);
+        Assert.DoesNotContain("ransit", decision.ReplyText);
+    }
+
+    [Fact]
     public async Task Provider_UsesTheSpeakersOwnHome_WhenBEaconHasOne()
     {
         using var store = new TempStore();
@@ -174,13 +213,19 @@ public sealed class TomTomCommuteTests
     private sealed class FakeRouting : ICommuteRouting
     {
         public (double, double, double, double) Last;
+        public string? LastMode;
+        public int Geocodes;
         public bool IsConfigured => true;
-        public Task<GeocodedAddress?> GeocodeAsync(string address, CancellationToken cancellationToken = default) =>
-            Task.FromResult<GeocodedAddress?>(new GeocodedAddress("Geocoded " + address, 1, 2, "Testville", null, null, null, null));
+        public Task<GeocodedAddress?> GeocodeAsync(string address, CancellationToken cancellationToken = default)
+        {
+            Geocodes++;
+            return Task.FromResult<GeocodedAddress?>(new GeocodedAddress("Geocoded " + address, 1, 2, "Testville", null, null, null, null));
+        }
         public Task<CommuteRoute?> RouteAsync(double fromLat, double fromLng, double toLat, double toLng, string mode,
             CancellationToken cancellationToken = default)
         {
             Last = (fromLat, fromLng, toLat, toLng);
+            LastMode = mode;
             return Task.FromResult<CommuteRoute?>(new CommuteRoute(1530, 420));
         }
     }
