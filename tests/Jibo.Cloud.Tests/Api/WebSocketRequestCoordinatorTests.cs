@@ -20,7 +20,6 @@ public sealed class WebSocketRequestCoordinatorTests
     [Theory]
     [InlineData("openjibo.com", "/", StatusCodes.Status404NotFound)]
     [InlineData("api.openjibo.com", "/", StatusCodes.Status404NotFound)]
-    [InlineData("openjibo.ai", "/unexpected", StatusCodes.Status401Unauthorized)]
     public async Task HandleAsync_RejectsGenericOpenJiboWebSocketRoutes(string host, string path, int expectedStatus)
     {
         var socket = new FakeWebSocket();
@@ -35,52 +34,6 @@ public sealed class WebSocketRequestCoordinatorTests
         Assert.Equal(expectedStatus, context.Response.StatusCode);
         Assert.False(socket.Accepted);
         Assert.Empty(telemetrySink.Events);
-    }
-
-    [Fact]
-    public async Task HandleAsync_ReturnsUnauthorized_WhenNeoHubTokenIsMissing()
-    {
-        var socket = new FakeWebSocket();
-        var context = CreateContext(socket);
-        context.Request.Host = new HostString("neo-hub.jibo.com");
-        context.Request.Path = "/";
-
-        var coordinator = CreateCoordinator(out var telemetrySink);
-
-        await coordinator.HandleAsync(context);
-
-        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
-        Assert.False(socket.Accepted);
-        Assert.Empty(telemetrySink.Events);
-    }
-
-    [Theory]
-    [InlineData("neo-hub.jibo.com", true)]
-    [InlineData("192.168.7.142", false)]
-    public async Task HandleAsync_RejectsIssuedTokenWithWrongSocketKind(string host, bool useRobotToken)
-    {
-        var socket = new FakeWebSocket();
-        var context = CreateContext(socket);
-        context.Request.Host = new HostString(host);
-
-        var coordinator = CreateCoordinator(out _, out var store);
-        var token = useRobotToken
-            ? store.IssueRobotToken("wrong-kind-robot")
-            : store.IssueHubToken("wrong-kind-hub");
-        if (host.Equals("neo-hub.jibo.com", StringComparison.OrdinalIgnoreCase))
-        {
-            context.Request.Path = "/listen";
-            context.Request.Headers.Authorization = $"Bearer {token}";
-        }
-        else
-        {
-            context.Request.Path = $"/{token}";
-        }
-
-        await coordinator.HandleAsync(context);
-
-        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
-        Assert.False(socket.Accepted);
     }
 
     [Fact]

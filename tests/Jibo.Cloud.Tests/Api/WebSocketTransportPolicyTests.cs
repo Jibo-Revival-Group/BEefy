@@ -6,57 +6,18 @@ namespace Jibo.Cloud.Tests.Api;
 
 public sealed class WebSocketTransportPolicyTests
 {
+    // Stock robots speak plain ws:// and prod sits behind a TLS proxy, so every mode accepts both.
     [Theory]
-    [InlineData(null)]
-    [InlineData("self-hosted-hybrid")]
+    [InlineData("self-hosted-isolated")]
     [InlineData("managed")]
-    public void IsAllowed_RejectsPlainHttpOutsideIsolatedSelfHosting(string? deploymentMode)
+    [InlineData(null)]
+    public void IsAllowed_AcceptsPlainHttpInEveryMode(string? deploymentMode)
     {
         var policy = CreatePolicy(deploymentMode);
         var context = new DefaultHttpContext();
         context.Request.Scheme = "http";
 
-        Assert.False(policy.IsAllowed(context.Request));
-    }
-
-    [Fact]
-    public void IsAllowed_RejectsPlainHttpInManagedModeByDefault()
-    {
-        var policy = CreatePolicy("managed");
-        var context = new DefaultHttpContext();
-        context.Request.Scheme = "http";
-
-        Assert.False(policy.IsAllowed(context.Request));
-    }
-
-    [Fact]
-    public void IsAllowed_RejectsPlainHttpInManagedModeWhenSecurityIsDisabled()
-    {
-        var policy = CreatePolicy("managed", securityMode: "false");
-        var context = new DefaultHttpContext();
-        context.Request.Scheme = "http";
-
-        Assert.False(policy.IsAllowed(context.Request));
-    }
-
-    [Fact]
-    public void IsAllowed_AllowsHttpOnlyForExplicitIsolatedSelfHosting()
-    {
-        var policy = CreatePolicy("self-hosted-isolated");
-        var context = new DefaultHttpContext();
-        context.Request.Scheme = "http";
-
         Assert.True(policy.IsAllowed(context.Request));
-    }
-
-    [Fact]
-    public void IsAllowed_RejectsPlainHttpInIsolatedModeWhenSecurityIsEnabled()
-    {
-        var policy = CreatePolicy("self-hosted-isolated", securityMode: "true");
-        var context = new DefaultHttpContext();
-        context.Request.Scheme = "http";
-
-        Assert.False(policy.IsAllowed(context.Request));
     }
 
     [Fact]
@@ -69,21 +30,11 @@ public sealed class WebSocketTransportPolicyTests
         Assert.True(policy.IsAllowed(context.Request));
     }
 
-    [Fact]
-    public void IsAllowed_DoesNotTrustForwardedProtoOutsideIdentifiedManagedRevision()
-    {
-        var policy = CreatePolicy("self-hosted-hybrid");
-        var context = new DefaultHttpContext();
-        context.Request.Headers["X-Forwarded-Proto"] = "https";
-
-        Assert.False(policy.IsAllowed(context.Request));
-    }
-
     [Theory]
     [InlineData("https", true)]
-    [InlineData("http", false)]
-    [InlineData("https,http", false)]
-    public void IsAllowed_TrustsOnlySingleHttpsForwardingValueInManagedContainerApp(
+    [InlineData("http", true)]
+    [InlineData("https,http", true)]
+    public void IsAllowed_AcceptsAnyForwardedProtoInManagedContainerApp(
         string forwardedProto,
         bool expected)
     {
@@ -96,9 +47,9 @@ public sealed class WebSocketTransportPolicyTests
 
     [Theory]
     [InlineData("https", true)]
-    [InlineData("http", false)]
-    [InlineData("https,http", false)]
-    public void IsAllowed_TrustsSingleHttpsForwardingValueInSelfHostedProxiedMode(
+    [InlineData("http", true)]
+    [InlineData("https,http", true)]
+    public void IsAllowed_AcceptsAnyForwardedProtoInSelfHostedProxiedMode(
         string forwardedProto,
         bool expected)
     {

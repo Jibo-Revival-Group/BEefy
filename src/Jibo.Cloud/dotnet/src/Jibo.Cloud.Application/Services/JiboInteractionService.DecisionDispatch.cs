@@ -407,15 +407,6 @@ public sealed partial class JiboInteractionService
         return false;
     }
 
-    private static bool IsUserRequiredLoginEnabled()
-    {
-        var value = Environment.GetEnvironmentVariable("OPENJIBO_USER_REQUIRED_LOGIN");
-        return value is not null &&
-               (value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
-                value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
-                value.Equals("yes", StringComparison.OrdinalIgnoreCase));
-    }
-
     private static JiboInteractionDecision BuildAccountRequiredDecision() =>
         new("account_required",
             "Please pair me with an OpenJibo account in the portal before we continue.");

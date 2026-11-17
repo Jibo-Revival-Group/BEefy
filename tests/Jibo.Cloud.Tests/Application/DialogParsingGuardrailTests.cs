@@ -18,7 +18,7 @@ public sealed class DialogParsingGuardrailTests
     [InlineData("are you good at dancing", "robot_can_dance")]
     [InlineData("can you do a dance", "robot_can_dance")]
     [InlineData("do you like to dance", "dance_question")]
-    [InlineData("what is your favorite dance", "dance_question")]
+    [InlineData("what is your favorite dance", "robot_favorite_dance")]
     [InlineData("which dance do you like", "dance_question")]
     [InlineData("dance", "dance")]
     [InlineData("please dance", "dance")]

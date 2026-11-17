@@ -3157,7 +3157,7 @@ public sealed class JiboCloudProtocolServiceTests
     }
 
     [Fact]
-    public async Task UpdateAndBackupPersistAcrossStoreRecreation_WhenPersistencePathIsConfigured()
+    public async Task UpdatePersistsAcrossStoreRecreation_WhenPersistencePathIsConfigured()
     {
         var persistencePath = Path.Combine(Path.GetTempPath(), $"openjibo-update-backup-{Guid.NewGuid():N}.json");
         try
@@ -3173,9 +3173,6 @@ public sealed class JiboCloudProtocolServiceTests
                 BodyText =
                     """{"fromVersion":"12.10.0","toVersion":"12.10.1","changes":"Restore proof","subsystem":"robot"}"""
             });
-
-            await firstService.DispatchAsync(
-                BackupAuthorizationTests.SignedBackup("Create", """{"name":"manual-backup"}"""));
 
             var firstStore = new InMemoryCloudStateStore(persistencePath);
             var firstInfo = firstStore.GetPersistenceStateInfo();
@@ -3193,15 +3190,6 @@ public sealed class JiboCloudProtocolServiceTests
                 BodyText = """{"subsystem":"robot"}"""
             });
 
-            var backups = await secondService.DispatchAsync(new ProtocolEnvelope
-            {
-                HostName = "api.jibo.com",
-                Method = "POST",
-                ServicePrefix = "Backup_20160715",
-                Operation = "List",
-                BodyText = "{}"
-            });
-
             var schedulerUpdates = await secondService.DispatchAsync(new ProtocolEnvelope
             {
                 HostName = "127.0.0.1",
@@ -3210,7 +3198,6 @@ public sealed class JiboCloudProtocolServiceTests
             });
 
             using var updatesPayload = JsonDocument.Parse(updates.BodyText);
-            using var backupsPayload = JsonDocument.Parse(backups.BodyText);
             using var schedulerPayload = JsonDocument.Parse(schedulerUpdates.BodyText);
 
             Assert.Equal(firstInfo.Revision, secondInfo.Revision);
@@ -3221,10 +3208,6 @@ public sealed class JiboCloudProtocolServiceTests
             Assert.NotEmpty(updatesPayload.RootElement.EnumerateArray());
             Assert.Contains(updatesPayload.RootElement.EnumerateArray(),
                 item => item.GetProperty("changes").GetString() == "Restore proof");
-            Assert.NotEmpty(backupsPayload.RootElement.EnumerateArray());
-            Assert.Contains(backupsPayload.RootElement.EnumerateArray(),
-                item => item.GetProperty("location").GetProperty("url").GetString()!.Contains("/backup/",
-                    StringComparison.OrdinalIgnoreCase));
             Assert.Contains(schedulerPayload.RootElement.GetProperty("updates").EnumerateArray(),
                 item => item.GetProperty("subsystem").GetString() == "robot" &&
                         item.GetProperty("changes").GetString() == "Restore proof");

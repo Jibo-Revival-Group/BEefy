@@ -1297,7 +1297,7 @@ public sealed class JiboInteractionServiceTests
     [InlineData("is Dr. Breazeal your best friend", "robot_best_friends", "best friends with anyone in my Loop")]
     [InlineData("can you sing", "robot_can_sing", "sing")]
     [InlineData("will you sing", "robot_can_sing", "sing")]
-    [InlineData("can you sing a christmas song", "robot_sing_christmas_song", "sing")]
+    [InlineData("can you sing a christmas song", "robot_sing_christmas_song", "Jingle bells")]
     public async Task BuildDecisionAsync_NewLegacyPersonalityMims_UseImportedReplies(
         string transcript,
         string expectedIntent,
@@ -1928,10 +1928,15 @@ public sealed class JiboInteractionServiceTests
     {
         var service = CreateService();
 
+        // The lines depend on the date ("Father's Day is in the past"), so the robot's clock is pinned.
         var decision = await service.BuildDecisionAsync(new TurnContext
         {
             RawTranscript = transcript,
-            NormalizedTranscript = transcript
+            NormalizedTranscript = transcript,
+            Attributes = new Dictionary<string, object?>
+            {
+                ["context"] = """{"runtime":{"location":{"iso":"2026-08-15T12:00:00-04:00"}}}"""
+            }
         });
 
         Assert.Equal(expectedIntent, decision.IntentName);

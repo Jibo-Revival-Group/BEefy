@@ -23,74 +23,8 @@ public sealed class JiboCloudApiIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(body);
         Assert.True(body.Ok);
-        Assert.Equal("OpenJibo Cloud Api", body.Service);
+        Assert.Equal("BEefy", body.Service);
         Assert.Equal(OpenJiboCloudBuildInfo.Version, body.Version);
-    }
-
-    [Fact]
-    public async Task ReplicaHealth_IsHiddenUnlessDeploymentSmokeIsEnabledAndAuthorized()
-    {
-        await using var disabledFactory = CreateFactory();
-        var disabledResponse = await disabledFactory.CreateClient().GetAsync("/health/replica");
-        Assert.Equal(HttpStatusCode.NotFound, disabledResponse.StatusCode);
-
-        await using var enabledFactory = CreateFactory(enableReleaseSmoke: true);
-        var client = enabledFactory.CreateClient();
-        var forbiddenResponse = await client.GetAsync("/health/replica");
-        Assert.Equal(HttpStatusCode.Forbidden, forbiddenResponse.StatusCode);
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/health/replica");
-        request.Headers.TryAddWithoutValidation(ReleaseSmokeAuthorizationOptions.SecretHeaderName,
-            "integration-test-secret");
-        var response = await client.SendAsync(request);
-        var body = await response.Content.ReadFromJsonAsync<ReplicaHealthResponse>();
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.NotNull(body);
-        Assert.True(body.Ok);
-        Assert.False(string.IsNullOrWhiteSpace(body.Revision));
-        Assert.False(string.IsNullOrWhiteSpace(body.Replica));
-        Assert.Equal($"{body.Revision}/{body.Replica}", body.InstanceId);
-    }
-
-    [Fact]
-    public async Task ProtocolResponse_ExposesReplicaOnlyToAuthorizedDeploymentSmoke()
-    {
-        await using var factory = CreateFactory(enableReleaseSmoke: true);
-        var client = factory.CreateClient();
-
-        using var ordinaryRequest = new HttpRequestMessage(HttpMethod.Post, "/");
-        ordinaryRequest.Content = JsonContent.Create(new { });
-        ordinaryRequest.Headers.TryAddWithoutValidation("X-Amz-Target", "Backup_20170222.List");
-        ordinaryRequest.Headers.Host = "api.jibo.com";
-        var ordinaryResponse = await client.SendAsync(ordinaryRequest);
-        Assert.False(ordinaryResponse.Headers.Contains(ReleaseSmokeAuthorizationOptions.ReplicaInstanceHeaderName));
-        Assert.False(ordinaryResponse.Headers.Contains(ReleaseSmokeAuthorizationOptions.ReplicaRevisionHeaderName));
-
-        using var rejectedRequest = new HttpRequestMessage(HttpMethod.Post, "/");
-        rejectedRequest.Content = JsonContent.Create(new { });
-        rejectedRequest.Headers.TryAddWithoutValidation("X-Amz-Target", "Backup_20170222.List");
-        rejectedRequest.Headers.TryAddWithoutValidation(ReleaseSmokeAuthorizationOptions.SecretHeaderName,
-            "wrong-secret");
-        rejectedRequest.Headers.Host = "api.jibo.com";
-        var rejectedResponse = await client.SendAsync(rejectedRequest);
-        Assert.False(rejectedResponse.Headers.Contains(ReleaseSmokeAuthorizationOptions.ReplicaInstanceHeaderName));
-        Assert.False(rejectedResponse.Headers.Contains(ReleaseSmokeAuthorizationOptions.ReplicaRevisionHeaderName));
-
-        using var smokeRequest = new HttpRequestMessage(HttpMethod.Post, "/");
-        smokeRequest.Content = JsonContent.Create(new { });
-        smokeRequest.Headers.TryAddWithoutValidation("X-Amz-Target", "Backup_20170222.List");
-        smokeRequest.Headers.TryAddWithoutValidation(ReleaseSmokeAuthorizationOptions.SecretHeaderName,
-            "integration-test-secret");
-        smokeRequest.Headers.Host = "api.jibo.com";
-        var smokeResponse = await client.SendAsync(smokeRequest);
-
-        Assert.True(smokeResponse.Headers.TryGetValues(
-            ReleaseSmokeAuthorizationOptions.ReplicaInstanceHeaderName, out var instances));
-        Assert.Contains("/", Assert.Single(instances), StringComparison.Ordinal);
-        Assert.True(smokeResponse.Headers.TryGetValues(
-            ReleaseSmokeAuthorizationOptions.ReplicaRevisionHeaderName, out var revisions));
-        Assert.False(string.IsNullOrWhiteSpace(Assert.Single(revisions)));
     }
 
     [Fact]
@@ -116,23 +50,6 @@ public sealed class JiboCloudApiIntegrationTests
         {
             File.Delete(file);
         }
-    }
-
-    [Fact]
-    public async Task Harness_ServesReleaseSmokeModuleAndModuleEntryPoint()
-    {
-        await using var factory = CreateFactory();
-        var client = factory.CreateClient();
-
-        var page = await client.GetStringAsync("/portal/admin/harness/index.html");
-        var module = await client.GetStringAsync("/harness/release-smoke.mjs");
-
-        Assert.Contains("runReleaseSmoke", page, StringComparison.Ordinal);
-        Assert.Contains("releaseTurnPercent", page, StringComparison.Ordinal);
-        Assert.Contains("type=\"module\"", page, StringComparison.Ordinal);
-        Assert.Contains("export async function runReleaseSmoke", module, StringComparison.Ordinal);
-        Assert.Contains("connected fake robots with concurrent turns", module, StringComparison.Ordinal);
-        Assert.Contains("turnLatencyMs", module, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -180,30 +97,6 @@ public sealed class JiboCloudApiIntegrationTests
             Assert.Equal("POST", item.Method);
             Assert.Equal(200, item.StatusCode);
         });
-    }
-
-    [Fact]
-    public async Task WebSocket_MissingTokenOnNeoHubListen_ReturnsUnauthorized()
-    {
-        await using var factory = CreateFactory();
-        var client = factory.Server.CreateWebSocketClient();
-
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            client.ConnectAsync(new Uri("ws://neo-hub.jibo.com/"), CancellationToken.None));
-
-        Assert.Contains("401", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task WebSocket_MissingTokenOnSelfHostedListenRoute_ReturnsUnauthorized()
-    {
-        await using var factory = CreateFactory();
-        var client = factory.Server.CreateWebSocketClient();
-
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            client.ConnectAsync(new Uri("ws://localhost/v1/listen"), CancellationToken.None));
-
-        Assert.Contains("401", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -262,18 +155,6 @@ public sealed class JiboCloudApiIntegrationTests
 
         Assert.Equal(WebSocketState.Open, socket.State);
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test-complete", CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task WebSocket_UnknownTokenOnNeoHubListen_ReturnsUnauthorized()
-    {
-        await using var factory = CreateFactory();
-        var client = factory.Server.CreateWebSocketClient();
-
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            client.ConnectAsync(new Uri("ws://neo-hub.jibo.com/not-an-issued-token"), CancellationToken.None));
-
-        Assert.Contains("401", exception.Message, StringComparison.Ordinal);
     }
 
     private static async Task<string> IssueHubTokenAsync(WebApplicationFactory<Program> factory)

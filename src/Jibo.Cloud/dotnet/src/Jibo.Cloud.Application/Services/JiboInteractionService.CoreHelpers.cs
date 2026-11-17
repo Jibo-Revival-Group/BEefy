@@ -38,7 +38,8 @@ public sealed partial class JiboInteractionService
         {
             var nativeActivity = NativeGrammar.Instance.Parse(loweredTranscript);
             if (nativeActivity?.Skill is not ("@be/circuit-saver" or "@be/exercise" or "@be/radio" or "@be/jibotube" or "@be/jukebox" or "@be/bad-apple") &&
-                TryResolveRadioGenre(loweredTranscript) is null)
+                TryResolveRadioGenre(loweredTranscript) is null &&
+                UtteranceFrameParser.TryParseWordOfTheDay(loweredTranscript) is null) // "play ward of the day"
                 return "music_play";
         }
 
