@@ -16,6 +16,10 @@ public sealed partial class JiboInteractionService
         @"\bsing\b.*\b(?:daisy|bicycle built for two)\b",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    private static readonly Regex CookiesAndMilk = new(@"\bcookies?\b.*\bmilk\b|\bmilk\b.*\bcookies?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex CookieRecipe = new(@"\b(?:recipe|bake|baking|make|making|calories|how many|nutrition|buy|order|shopping)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex SantaCookies = new(@"\b(?:leave|left|leaving|put out|give)\b.*\b(?:santa|saint nick)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     // Songs @be/daisy-bell sings. Url null = the song built into the skill; otherwise an mp3 it streams, so a new song
     // is a line here plus its mp3 in Jibo.Cloud.Api/wwwroot/songs (served at https://api.5x1.com/songs/) - no OTA.
     // Put more specific patterns first: the first match wins.
@@ -65,6 +69,10 @@ public sealed partial class JiboInteractionService
         // "tell me your favorite X" is asked as "what is your favorite X": the original chitchat grammar only knows the question.
         var transcript = System.Text.RegularExpressions.Regex.Replace((turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty).Trim(),
             @"^tell (?:me|us) your (?=(?:least )?favou?rite\b)", "what is your ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // Any "cookies and milk" request shows the original jiboji (RA_JBO_ShowChristmasCookiesMilk, or
+        // RA_JBO_LeaveSantaCookiesAndMilk with Santa): the original grammar only parsed a few exact phrasings.
+        if (!SkillListenOwnership.IsSkillOwnedListen(turn) && CookiesAndMilk.IsMatch(transcript) && !CookieRecipe.IsMatch(transcript))
+            transcript = SantaCookies.IsMatch(transcript) ? "will you leave milk and cookies for santa" : "show us santa's cookies and milk";
         var lowered = transcript.ToLowerInvariant();
         var referenceLocalTime = TryResolveReferenceLocalTime(turn);
         if (sportsScoreProvider is not null && !SkillListenOwnership.IsSkillOwnedListen(turn) && SportsQuestion.IsMatch(lowered) &&

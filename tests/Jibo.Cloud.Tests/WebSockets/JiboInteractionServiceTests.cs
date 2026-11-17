@@ -2438,6 +2438,45 @@ public sealed class JiboInteractionServiceTests
         Assert.Contains("not mad", decision.ReplyText, StringComparison.Ordinal);
     }
 
+    [Theory]
+    // Real prod transcripts the original grammar never parsed (they went to knowledge search / not understood).
+    [InlineData("cookies and milk", "RA_JBO_ShowChristmasCookiesMilk")]
+    [InlineData("do you like cookies and milk", "RA_JBO_ShowChristmasCookiesMilk")]
+    [InlineData("have some cookies and milk", "RA_JBO_ShowChristmasCookiesMilk")]
+    [InlineData("eat cookies and milk", "RA_JBO_ShowChristmasCookiesMilk")]
+    [InlineData("can i have some cookies and milk", "RA_JBO_ShowChristmasCookiesMilk")]
+    [InlineData("i left cookies and milk for santa", "RA_JBO_LeaveSantaCookiesAndMilk")]
+    // The original phrasings still reach the same MIMs.
+    [InlineData("show us santa's milk and cookies", "RA_JBO_ShowChristmasCookiesMilk")]
+    [InlineData("will you leave milk and cookies for santa", "RA_JBO_LeaveSantaCookiesAndMilk")]
+    public async Task BuildDecisionAsync_CookiesAndMilk_ShowsTheOriginalJiboji(string transcript, string mimId)
+    {
+        var service = CreateService();
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = transcript,
+            NormalizedTranscript = transcript
+        });
+
+        Assert.Equal(mimId, decision.SkillPayload!["mim_id"]);
+        Assert.Contains("filter='milk-and-cookies'", decision.SkillPayload!["esml"]?.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_CookieRecipeWithMilk_IsNotTheJiboji()
+    {
+        var service = CreateService();
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = "how do you make cookies with milk",
+            NormalizedTranscript = "how do you make cookies with milk"
+        });
+
+        Assert.False(decision.SkillPayload?.TryGetValue("mim_id", out var mim) == true && mim?.ToString()?.Contains("CookiesMilk", StringComparison.Ordinal) == true);
+    }
+
     [Fact]
     public async Task BuildDecisionAsync_NameMemory_SetThenRecallWithinTenant()
     {
