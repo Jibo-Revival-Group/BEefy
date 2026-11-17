@@ -1817,7 +1817,7 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal("how_are_you", decision.IntentName);
-        Assert.Equal("Actually things are looking mostly sunny.", decision.ReplyText);
+        Assert.StartsWith("Life is good. And I'm not even alive", decision.ReplyText, StringComparison.Ordinal);
     }
 
     [Fact]

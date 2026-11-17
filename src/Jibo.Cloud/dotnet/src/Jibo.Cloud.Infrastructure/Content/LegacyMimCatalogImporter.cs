@@ -1084,6 +1084,8 @@ public static class LegacyMimCatalogImporter
                     _howAreYous.Add(text);
                     return;
                 case LegacyMimBucket.Emotion:
+                    // This pool answers "how are you"; "are you angry/sad" lines ("No I'm not mad...") stay per-MIM.
+                    if (mimId is "RI_JBO_IsAngry" or "RI_JBO_IsSad") return;
                     var normalizedCondition = NormalizeCondition(condition);
                     if (_emotionReplies.Any(value =>
                             string.Equals(NormalizeCondition(value.Condition), normalizedCondition,

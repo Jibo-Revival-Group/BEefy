@@ -334,7 +334,8 @@ public sealed class LegacyMimCatalogImporterTests
             reply.Reply.Contains("I'm feeling pretty good indeed", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(catalog.EmotionReplies, reply =>
             reply.Reply.Contains("I've been better", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(catalog.EmotionReplies, reply =>
+        // "how are you" draws from this pool, so it must not answer "are you angry".
+        Assert.DoesNotContain(catalog.EmotionReplies, reply =>
             reply.Reply.Contains("I'm not mad", StringComparison.OrdinalIgnoreCase));
     }
 
