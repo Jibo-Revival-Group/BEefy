@@ -97,6 +97,7 @@ public sealed partial class JiboInteractionService
             case "example-skill":
                 return new(parsed.Intent, "SLIM: 'Node1' MEMO: 'SomeThing' SLIM: 'Node2' MEMO: 'SomeThing' SLIM: 'Node3' MEMO: 'SomeThing'", "example-skill");
             case "chitchat-skill":
+                entry = WithPastTenseLine(entry, transcript);
                 var scripted = NativeScriptedReplies.Build(entry, parsed, turn, catalog, randomizer,
                     ResolvePreferredGreetingName(turn, ResolveGreetingPresenceProfile(turn)), TryResolveReferenceLocalTime(turn));
                 // A mood MIM with no line for the current mood ("are you pleased") keeps the mood shortcut's answer.
@@ -129,6 +130,41 @@ public sealed partial class JiboInteractionService
         if (parsed.Intent == "repeat") return Repeat();
         return Task.FromResult(result);
         async Task<JiboInteractionDecision?> Repeat() => await BuildRepeatLastCommandDecisionAsync(turn, cancellationToken);
+    }
+
+    // "did you like the Super Bowl": the robot's final chitchat MIMs have past-tense lines (RI_JBO_LikedSuperBowl,
+    // dated for before and after the event) beside the present-tense ones the manifest names.
+    private static NativeCommandRegistration WithPastTenseLine(NativeCommandRegistration entry, string transcript)
+    {
+        if (entry.Intent != "didJiboLikeThing" || entry.Memo.ValueKind != JsonValueKind.Object ||
+            !entry.Memo.TryGetProperty("mim", out var mim) || mim.GetString() is not { } id ||
+            !id.StartsWith("RI_JBO_Likes", StringComparison.Ordinal) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(transcript, @"^\s*did(?:n't| not)? you (?:\w+ )?(?:like|enjoy|love)\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return entry;
+        var liked = "RI_JBO_Liked" + id["RI_JBO_Likes".Length..];
+        if (!NativeConversationResources.Instance.Files.ContainsKey(
+                "packages/skills/resources/mims/chitchat/scripted-responses/" + liked + ".mim")) return entry;
+        using var memo = JsonDocument.Parse(JsonSerializer.Serialize(new { mim = liked, type = "ScriptedResponse" }));
+        return entry with { Memo = memo.RootElement.Clone() };
+    }
+
+    // The mood route ("are you lonely", "you seem worried") speaks the original line for that question, picked by
+    // Jibo's current mood (RI_JBO_IsLonely, OI_JBO_IsAnxious), instead of a general "how am I" answer.
+    private async Task<JiboInteractionDecision> WithOriginalMoodLineAsync(TurnContext turn, JiboInteractionDecision decision,
+        CancellationToken cancellationToken)
+    {
+        var transcript = (turn.NormalizedTranscript ?? turn.RawTranscript ?? "").ToLowerInvariant();
+        var parsed = NativeGrammar.Instance.Parse(transcript, ["launch"], []);
+        var entry = parsed is null ? null : NativeCommandRegistry.Instance.Resolve(parsed);
+        if (entry is not { Skill: "chitchat-skill" } || entry.Memo.ValueKind != JsonValueKind.Object ||
+            !entry.Memo.TryGetProperty("mim", out var mim) || !NativeConversationResources.Instance.Files.ContainsKey(
+                "packages/skills/resources/mims/chitchat/emotion-responses/" + mim.GetString() + ".mim")) return decision;
+        var catalog = await contentCache.GetCatalogAsync(cancellationToken);
+        var line = NativeScriptedReplies.Build(entry, parsed!, turn, catalog, randomizer,
+            ResolvePreferredGreetingName(turn, ResolveGreetingPresenceProfile(turn)), TryResolveReferenceLocalTime(turn));
+        return line.SkillPayload?.TryGetValue("mim_id", out var id) == true && id as string == mim.GetString()
+            ? decision with { ReplyText = line.ReplyText, SkillName = line.SkillName, SkillPayload = line.SkillPayload }
+            : decision;
     }
 
     private static bool IsScriptedChitchatMim(NativeCommandRegistration? entry) =>

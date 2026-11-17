@@ -20,6 +20,32 @@ public sealed partial class JiboInteractionService
     private static readonly Regex CookieRecipe = new(@"\b(?:recipe|bake|baking|make|making|calories|how many|nutrition|buy|order|shopping)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex SantaCookies = new(@"\b(?:leave|left|leaving|put out|give)\b.*\b(?:santa|saint nick)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    // Quick matchers that only stand in for chitchat. Real features (clock, weather, calendar, commute, radio play,
+    // turning, location, favorites, age, birthday) are not here, so they keep their live answers.
+    private static readonly HashSet<string> QuickChitchatIntents = new(StringComparer.Ordinal)
+    {
+        "joke", "radio_genre", "music_play", "time", "calendar", "weather", "introductions", "hello", "snapshot",
+        "robot_identity", "define_word", "robot_can_see", "robot_can_talk", "robot_can_hear", "robot_has_friends",
+        "robot_is_friends_with_user", "robot_desire"
+    };
+
+    private static bool OriginalLineBeatsQuickMatch(string semanticIntent, string lowered)
+    {
+        if (!QuickChitchatIntents.Contains(semanticIntent)) return false;
+        var parsed = NativeGrammar.Instance.Parse(lowered, ["launch"], []);
+        var entry = parsed is null ? null : NativeCommandRegistry.Instance.Resolve(parsed);
+        if (!IsScriptedChitchatMim(entry)) return false;
+        var mim = entry!.Memo.GetProperty("mim").GetString()!;
+        // Generic catch-alls, the @be/joke skill (it has the original jokes) and songs 5x1 can really play stay 5x1's.
+        if (mim is "CC_Fallback" or "KU_AreYouAbleTo" or "KU_DoYouHaveThing" or "KU_DoYouWantThing" or "KU_DoYouLike"
+            or "KU_WhatIsYourFavorite" or "KU_WhoIsYourFavorite" or "RA_JBO_TellAJoke" or "RA_JBO_Calendar"
+            or "RA_JBO_Traffic"
+            // 5x1 already plays these same original lines under its own intent names.
+            or "JBO_WhatDoYouWant" or "RI_JBO_HasFriends" or "RI_JBO_IsFriendsWithUser" or "RI_JBO_CanSee"
+            or "RI_JBO_CanTalk" or "RI_JBO_CanHear" || mim.StartsWith("RA_JBO_Sing", StringComparison.Ordinal)) return false;
+        return true;
+    }
+
     // Songs @be/daisy-bell sings. Url null = the song built into the skill; otherwise an mp3 it streams, so a new song
     // is a line here plus its mp3 in Jibo.Cloud.Api/wwwroot/songs (served at https://api.5x1.com/songs/) - no OTA.
     // Put more specific patterns first: the first match wins.
@@ -156,6 +182,13 @@ public sealed partial class JiboInteractionService
             isTimerValueTurn,
             isAlarmValueTurn,
             isSkillOwnedListen);
+
+        // 5x1's quick matchers catch words like "lonely", "joke", "football" or "meet"; when the original grammar
+        // has its own scripted line for the whole sentence ("are you lonely", "knock knock", "do you like sports",
+        // "meet my cat"), that original line answers instead.
+        if (!isYesNoTurn && !isSkillOwnedListen && !isTimerValueTurn && !isAlarmValueTurn &&
+            OriginalLineBeatsQuickMatch(semanticIntent, lowered))
+            semanticIntent = "chat";
 
         // Phrases Hue also understands go to Home Assistant unless this robot recently answered that it
         // isn't paired; then (or without HA on this server) they stay with the native Hue skill.

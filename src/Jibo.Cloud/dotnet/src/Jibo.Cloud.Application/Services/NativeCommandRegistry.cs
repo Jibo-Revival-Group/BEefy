@@ -39,11 +39,22 @@ public sealed class NativeCommandRegistry
         CloudSkills = commands.Where(c => !c.OnRobot).Select(c => c.Skill).ToHashSet(StringComparer.Ordinal);
     }
 
-    public NativeCommandRegistration? Resolve(NativeParseResult result) => Commands
-        .Where(c => c.Intent == result.Intent && Matches(c.Constraints, result.Entities)
+    public NativeCommandRegistration? Resolve(NativeParseResult result) => ResolveExact(result, result.Intent)
+        // The chitchat manifest lists "don't you love penguins" (jiboLikesThing) and "are you scary" (isThingDescriptor
+        // about Jibo) for only a few things; the same question asked plainly has the full set of original answers.
+        ?? (result.Intent == "jiboLikesThing" ? ResolveExact(result, "doesJiboLikeThing")
+            : result.Intent == "isThingDescriptor" && result.Entities.GetValueOrDefault("Person")?.ToString() == "Jibo"
+                ? ResolveExact(result, "isJiboDescriptor") : null);
+
+    private NativeCommandRegistration? ResolveExact(NativeParseResult result, string intent) => Commands
+        .Where(c => c.Intent == intent && Matches(c.Constraints, result.Entities)
             && (result.Skill is not ("example-skill" or "template-skill") || c.Skill == result.Skill))
         .Where(c => c.Skill is not ("example-skill" or "template-skill") || result.Skill == c.Skill || result.Intent == "template_skill")
-        .OrderByDescending(c => c.Constraints.ValueKind == JsonValueKind.Array ? c.Constraints.GetArrayLength() : 0).FirstOrDefault();
+        .OrderByDescending(c => c.Constraints.ValueKind == JsonValueKind.Array ? c.Constraints.GetArrayLength() : 0)
+        // "do you like trains": the exact GeneralLikes=Train answer beats the GeneralLikes=* one listed before it.
+        .ThenByDescending(c => c.Constraints.ValueKind == JsonValueKind.Array
+            ? c.Constraints.EnumerateArray().Count(e => e.GetProperty("value").ToString() != "*") : 0)
+        .FirstOrDefault();
 
     private static bool Matches(JsonElement constraints, IReadOnlyDictionary<string, object?> entities)
     {

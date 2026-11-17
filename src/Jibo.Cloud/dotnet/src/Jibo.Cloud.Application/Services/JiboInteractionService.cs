@@ -351,6 +351,8 @@ public sealed partial class JiboInteractionService(
         CancellationToken cancellationToken = default)
     {
         var decision = await BuildDecisionCoreAsync(turn, cancellationToken);
+        if (decision.IntentName == "emotion_query")
+            decision = await WithOriginalMoodLineAsync(turn, decision, cancellationToken);
         if (SkillListenOwnership.ReadListenHotphrase(turn) &&
             NativeConversationValue.Read(decision.ContextUpdates, "chitchatNativeState") is not "color")
         {

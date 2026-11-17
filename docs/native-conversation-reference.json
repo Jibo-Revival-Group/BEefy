@@ -4801,6 +4801,24 @@
     "packages/skills/resources/mims/template/template-mim.mim": "cc26195c711b743c376d6d0cd8ab56015635ebe508566d6de5b95964c6570c4f",
     "packages/nlu/src/generatedIntentCatalog.json": "4053e7a83cb03bc2b380ea8cb00128553f08d283d7820bda03280024094d026f",
     "packages/nlu/resources/rule-inventory.json": "f758761b7414265e462f54ca4216c05261d5a0f8ba0277713a72d26663a72605",
-    "packages/nlu/test/fixtures/launch-oracle-89.json": "aa7e8eab150137b6fc2a09633c87659ae17c6ed275ec8545e734408783e5b2bb"
+    "packages/nlu/test/fixtures/launch-oracle-89.json": "aa7e8eab150137b6fc2a09633c87659ae17c6ed275ec8545e734408783e5b2bb",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedAcademyAwards.mim": "9d7bc3490050934ba2afb2637d3105c7b8883b7a27a9979e45440af70c832c53",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedAllStarGameAmbiguous.mim": "5495a24799338ae1ce8438711105ad724f4dd6472f4432a8a096d5c594b14239",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedAllStarGameNBA.mim": "ea27390b12a18a1ccd390b3ec640066fbdb72b5bdef7d6138f054e84dab02fd4",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedAllStarGameNHL.mim": "65e31ae336c6ddef3a4532314e4d7ae9f10a4544301d578d036c5ca3846d735d",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedAustralianOpenTennis.mim": "8e97f6b50d56909e4731aabb857f862bad9f1e55cbeb78760e08cb9ed148d0f0",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedBachelorShow.mim": "27337b8098d0b6ab6b438ab404e8be979aefecf03ca10d871f21127f461001aa",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedBacheloretteShow.mim": "7e12ebfcfef6328a028a1b6a219461360e7fb3fd99ccddee7d6fea709add029d",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedCollegeBowl.mim": "11184e8bb89024d823a55de3c7c25bc29e661f10db0e861727866d9f6444f3a3",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedCollegeFootballChampionship.mim": "2438d34ef7817222d0ed80b95ee17022ceed7b1900040f140d40ea23fec53220",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedDaytona500.mim": "026babbaa28d43873062b0877824677dc747d31c3e4318173700e0b380a7203d",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedGoldenGlobes.mim": "0ac1b26a5a2c72f8a72bd55e3026572e60a85dac1bc042916bded98de0e8982a",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedGrammys.mim": "1436342d99c17a74243c04f500983b3fb2ea6f2df6920a6873e7f431ba972501",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedNASCAR.mim": "5c8644640419254ec4d94609dbc67a7cc72540e715acb71d6d06522972893c4f",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedNFLPlayoffs.mim": "26f8a6e8b8d8db4fae06a92cd0b29e1951dafc3c6b04772ce17978a09df0e5c1",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedSuperBowl.mim": "7d1025f3fed38deb13b36ec52412df4e92ab75a0c85b5b440475a496327f39eb",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedWinterOlympics.mim": "e31d8da7a868449cb0d2cd9afa9d8553e0029b250603190a346d4cea467c396e",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedWinterXGames.mim": "b46696418f214dc7363ec154368e75c621a5678249547a5b430cc4fc37787784",
+    "packages/skills/resources/mims/chitchat/scripted-responses/RI_JBO_LikedWorldSeries.mim": "64266142b0c934314f19e0a69076cefa62e93329ae2efd2885419280424ac571"
   }
 }

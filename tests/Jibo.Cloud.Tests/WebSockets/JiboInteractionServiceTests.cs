@@ -177,7 +177,7 @@ public sealed class JiboInteractionServiceTests
     [Theory]
     [InlineData("knock knock")]
     [InlineData("nock nock")]
-    public async Task BuildDecisionAsync_KnockKnockVariants_RouteToJoke(string transcript)
+    public async Task BuildDecisionAsync_KnockKnockVariants_UseTheOriginalLine(string transcript)
     {
         var service = CreateService();
 
@@ -187,7 +187,7 @@ public sealed class JiboInteractionServiceTests
             NormalizedTranscript = transcript
         });
 
-        Assert.Equal("joke", decision.IntentName);
+        Assert.Equal("JF_KnockKnock", decision.SkillPayload!["mim_id"]);
     }
 
     [Fact]
@@ -2461,6 +2461,63 @@ public sealed class JiboInteractionServiceTests
 
         Assert.Equal(mimId, decision.SkillPayload!["mim_id"]);
         Assert.Contains("filter='milk-and-cookies'", decision.SkillPayload!["esml"]?.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    // 5x1 quick matchers (mood, joke, sports radio, clock, introductions, hello, camera...) answered these instead.
+    [InlineData("are you lonely", "RI_JBO_IsLonely")]
+    [InlineData("you seem worried", "OI_JBO_IsAnxious")]
+    [InlineData("knock knock", "JF_KnockKnock")]
+    [InlineData("that was a bad joke", "RN_JiboJokeWasNotFunny")]
+    [InlineData("do you like sports", "RI_JBO_LikesSports")]
+    [InlineData("what time do you go to bed", "JBO_WhenDoYouSleep")]
+    [InlineData("nice to meet you", "RN_NiceToMeetJibo")]
+    [InlineData("meet my cat", "RA_JBO_MeetPet")]
+    [InlineData("hey jibo i can't sleep", "RN_ICantSleep")]
+    [InlineData("i can't take a picture", "RN_ICantTakeAPic")]
+    [InlineData("who are you going to vote for", "JBO_WhoAreYouVotingFor")]
+    // The original grammar found the thing but took the catch-all answer listed before it.
+    [InlineData("do you like trains", "RI_JBO_LikesTrains")]
+    [InlineData("do you like bubbles", "RI_JBO_LikesBubbles")]
+    // Asked as "don't you ..." / "are you scary", the manifest only lists a few things.
+    [InlineData("don't you love penguins", "RI_JBO_LikesPenguins")]
+    [InlineData("are you scary", "RI_JBO_IsScary")]
+    // Past tense: the final robot MIMs have their own "did you like" lines.
+    [InlineData("did you like the super bowl", "RI_JBO_LikedSuperBowl")]
+    [InlineData("did you like the grammys", "RI_JBO_LikedGrammys")]
+    public async Task BuildDecisionAsync_OriginalChitchatLine_IsNotTakenOver(string transcript, string mimId)
+    {
+        var service = CreateService();
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = transcript,
+            NormalizedTranscript = transcript
+        });
+
+        Assert.Equal(mimId, (decision.SkillPayload is { } p && p.TryGetValue("mim_id", out var m) ? m : null));
+    }
+
+    [Theory]
+    // Real features keep their live answers.
+    [InlineData("tell me a joke", "joke")]
+    [InlineData("what time is it", null)]
+    [InlineData("how are you", null)]
+    [InlineData("do you like the super bowl", "RI_JBO_LikesSuperBowl")]
+    public async Task BuildDecisionAsync_LiveFeatures_KeepTheirAnswers(string transcript, string? expected)
+    {
+        var service = CreateService();
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = transcript,
+            NormalizedTranscript = transcript
+        });
+
+        var mim = (decision.SkillPayload is { } p && p.TryGetValue("mim_id", out var m) ? m : null) as string;
+        if (expected == "joke") Assert.Equal("joke", decision.IntentName);
+        else if (expected is null) Assert.True(mim is null or "RN_WhatAreYouFeeling", $"{transcript} -> {decision.IntentName} {mim}");
+        else Assert.Equal(expected, mim);
     }
 
     [Fact]
