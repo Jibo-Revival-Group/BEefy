@@ -117,8 +117,9 @@ public sealed partial class JiboInteractionService
                         // Spoken with the picture filling the face, on the sports card's display path.
                         ["skillId"] = "report-skill",
                         ["cloudSkill"] = "image",
-                        // The picture stays up while Jibo speaks, so a pause after the words keeps it on screen to look at.
-                        ["esml"] = $"<speak><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeForEsml(spoken)}</es><break size='6.0'/></speak>",
+                        // The picture stays up while Jibo speaks, so a pause keeps it on screen to look at. The robot drops a
+                        // trailing break, so a silent "." follows it.
+                        ["esml"] = $"<speak><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeForEsml(spoken)}<break size='5.0'/>.</es></speak>",
                         ["mim_id"] = "ImageSearch",
                         ["prompt_id"] = "ImageSearch_AN_01",
                         ["web_image_url"] = imageUrl
