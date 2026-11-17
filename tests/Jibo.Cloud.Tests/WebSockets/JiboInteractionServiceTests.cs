@@ -2465,7 +2465,8 @@ public sealed class JiboInteractionServiceTests
         });
 
         Assert.Equal(mimId, decision.SkillPayload!["mim_id"]);
-        Assert.Contains("filter='milk-and-cookies'", decision.SkillPayload!["esml"]?.ToString(), StringComparison.Ordinal);
+        // Self-closing: the robot plays nothing for a fixed-length jiboji wrapped around words.
+        Assert.Contains("<anim cat='jiboji' filter='milk-and-cookies'/>", decision.SkillPayload!["esml"]?.ToString(), StringComparison.Ordinal);
     }
 
     [Theory]

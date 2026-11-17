@@ -13,6 +13,9 @@ internal static class NativeScriptedReplies
             && p.Key.EndsWith(".mim", StringComparison.Ordinal)).ToDictionary(p => Path.GetFileNameWithoutExtension(p.Key), p =>
             { using var json = JsonDocument.Parse(p.Value); return json.RootElement.Clone(); }, StringComparer.Ordinal));
 
+    private static readonly Regex JibojiAroundWords = new(@"<anim(\b[^>]*\bcat=['""]jiboji['""][^>]*?)\s*>(.*?)</anim>",
+        RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
     internal static JiboInteractionDecision Build(NativeCommandRegistration entry, NativeParseResult parsed,
         TurnContext turn, JiboExperienceCatalog catalog, IJiboRandomizer randomizer, string? speaker, DateTimeOffset? localTime)
     {
@@ -72,10 +75,13 @@ internal static class NativeScriptedReplies
         var reply = WebUtility.HtmlDecode(Regex.Replace(selected.Esml, "<[^>]*>", " ")).Trim();
         // Some performances contain animation only. Keep a non-empty speak action so the ESML reaches Nimbus.
         if (reply.Length == 0) reply = " ";
+        // Jibojis have a fixed length, so the robot finds none that fits around the wrapped words and plays nothing:
+        // play the jiboji ("milk-and-cookies": Jibo dips the cookie) and then the words.
+        var playable = JibojiAroundWords.Replace(selected.Esml, "<anim$1/>$2");
         var payload = new Dictionary<string, object?>
         {
             ["skillId"] = "chitchat-skill", ["nativeCloudDialog"] = true, ["mim_id"] = id, ["prompt_id"] = selected.PromptId,
-            ["esml"] = selected.Esml.StartsWith("<speak", StringComparison.Ordinal) ? selected.Esml : "<speak>" + selected.Esml + "</speak>"
+            ["esml"] = playable.StartsWith("<speak", StringComparison.Ordinal) ? playable : "<speak>" + playable + "</speak>"
         };
         var updates = ScriptedResponseDecisionBuilder.BuildScriptedResponseContextUpdates();
         if (document.TryGetProperty("mim_type", out var type) && type.GetString() == "question" && !string.IsNullOrWhiteSpace(selected.Rule))
