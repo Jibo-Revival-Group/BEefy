@@ -137,6 +137,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<INewsBriefingProvider, GoogleNewsBriefingProvider>();
         services.AddHttpClient<IFunFactProvider, UselessFactsFunFactProvider>();
         services.AddHttpClient<ISportsScoreProvider, EspnSportsScoreProvider>();
+        services.AddHttpClient<IImageSearchProvider, BingImageSearchProvider>();
         services.AddHttpClient<IWordDefinitionProvider, FreeDictionaryApiDefinitionProvider>();
         services.AddHttpClient<IWikipediaSummaryProvider, WikipediaSummaryProvider>();
         services.AddHttpClient<WolframAlphaSearchProvider>();

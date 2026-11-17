@@ -1025,7 +1025,7 @@ public sealed class ResponsePlanToSocketMessagesMapper
             AttachHeardTranscriptDisplay(jcpConfig, "portal.5x1.com");
 
         // The sports card rides the weather card's display path.
-        var weatherHiLoView = BuildWeatherHiLoView(skillPayload) ?? BuildSportsScoreView(skillPayload);
+        var weatherHiLoView = BuildWeatherHiLoView(skillPayload) ?? BuildSportsScoreView(skillPayload) ?? BuildWebImageView(skillPayload);
         var weeklyWeatherCards = BuildWeatherHiLoSequenceCards(skillPayload);
         if (weatherHiLoView is null && weeklyWeatherCards.Count > 0) weatherHiLoView = weeklyWeatherCards[0].View;
 
@@ -2029,6 +2029,24 @@ public sealed class ResponsePlanToSocketMessagesMapper
 
     // Away on the left, home on the right: team-color gradients (one PNG), the score in the middle of each half and
     // the logo at the bottom. Asset ids follow the source so the robot's texture cache never shows an old team.
+    /// <summary>"Show me a picture of ___": the 1280x720 search picture filling the face.</summary>
+    private static object? BuildWebImageView(IDictionary<string, object?>? payload)
+    {
+        if (ReadPayloadString(payload, "web_image_url") is not { } url) return null;
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["viewConfig"] = new { type = "View", id = "webImageView", category = "gui" },
+            ["open"] = new { transitionOpen = "trans_in", removeAll = true },
+            ["defaultSelect"] = new { transitionClose = "trans_out", removeAll = true, leaveEmpty = false },
+            ["componentConfigs"] = new object[]
+            {
+                // The asset id is the picture's own, so the robot's texture cache never shows an older one.
+                new { id = "webImageClip", type = "Clip", position = new { x = 0, y = 0 },
+                    assets = new object[] { new { id = "webImage-" + url.GetHashCode(StringComparison.Ordinal).ToString("x", CultureInfo.InvariantCulture), src = url, type = "texture" } } }
+            }
+        };
+    }
+
     private static object? BuildSportsScoreView(IDictionary<string, object?>? payload)
     {
         if (payload is null || !payload.TryGetValue("sports_card", out var raw) || raw is not SportsScoreCard card) return null;

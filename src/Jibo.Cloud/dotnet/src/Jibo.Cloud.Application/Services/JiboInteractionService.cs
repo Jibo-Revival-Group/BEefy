@@ -32,7 +32,8 @@ public sealed partial class JiboInteractionService(
     INluClassifier? nluClassifier = null,
     IConversationHistory? conversationHistory = null,
     ISportsScoreProvider? sportsScoreProvider = null,
-    IUserIntegrationStore? userIntegrationStore = null)
+    IUserIntegrationStore? userIntegrationStore = null,
+    IImageSearchProvider? imageSearchProvider = null)
 {
     private readonly AsrCorrectionOptions _asrCorrectionOptions = asrCorrectionOptions ?? new();
     private readonly ITransportMetrics _asrCorrectionMetrics = transportMetrics ?? NullTransportMetrics.Instance;

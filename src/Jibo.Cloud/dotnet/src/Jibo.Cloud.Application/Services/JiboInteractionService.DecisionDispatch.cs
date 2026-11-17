@@ -16,6 +16,10 @@ public sealed partial class JiboInteractionService
         @"\bsing\b.*\b(?:daisy|bicycle built for two)\b",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // "show me a picture of a golden retriever", "can you show us a photo of the eiffel tower please".
+    private static readonly Regex PictureRequest = new(
+        @"^(?:hey jibo,?\s+)?(?:(?:can|could|would|will) you\s+|please\s+)?show (?:me|us) (?:a |an |some )?(?:picture|photo|photograph|image|pic)s? of (.+?)(?:,?\s+please)?[.?!]*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex CookiesAndMilk = new(@"\bcookies?\b.*\bmilk\b|\bmilk\b.*\bcookies?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex CookieRecipe = new(@"\b(?:recipe|bake|baking|make|making|calories|how many|nutrition|buy|order|shopping)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex SantaCookies = new(@"\b(?:leave|left|leaving|put out|give)\b.*\b(?:santa|saint nick)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -101,6 +105,25 @@ public sealed partial class JiboInteractionService
             transcript = SantaCookies.IsMatch(transcript) ? "will you leave milk and cookies for santa" : "show us santa's cookies and milk";
         var lowered = transcript.ToLowerInvariant();
         var referenceLocalTime = TryResolveReferenceLocalTime(turn);
+        if (imageSearchProvider is not null && !SkillListenOwnership.IsSkillOwnedListen(turn) &&
+            PictureRequest.Match(lowered) is { Success: true } pictureRequest)
+        {
+            var subject = pictureRequest.Groups[1].Value.Trim();
+            var spoken = $"Here's a picture of {subject}.";
+            return await imageSearchProvider.FindAsync(subject, cancellationToken) is { } imageUrl
+                ? new JiboInteractionDecision("image_search", spoken, "chitchat-skill",
+                    new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        // Spoken with the picture filling the face, on the sports card's display path.
+                        ["skillId"] = "report-skill",
+                        ["cloudSkill"] = "image",
+                        ["esml"] = $"<speak><es cat='neutral' filter='!ssa-only, !sfx-only' endNeutral='true'>{EscapeForEsml(spoken)}</es></speak>",
+                        ["mim_id"] = "ImageSearch",
+                        ["prompt_id"] = "ImageSearch_AN_01",
+                        ["web_image_url"] = imageUrl
+                    })
+                : new JiboInteractionDecision("image_search", $"Sorry, I couldn't find a picture of {subject}.");
+        }
         if (sportsScoreProvider is not null && !SkillListenOwnership.IsSkillOwnedListen(turn) && SportsQuestion.IsMatch(lowered) &&
             await sportsScoreProvider.AnswerAsync(lowered, referenceLocalTime ?? DateTimeOffset.Now, cancellationToken) is { } sportsAnswer)
             return sportsAnswer.Card is { } card

@@ -6923,6 +6923,67 @@ public sealed class JiboInteractionServiceTests
         else Assert.NotEqual("sports_score", decision.IntentName);
     }
 
+    private sealed class RecordingImageSearch : IImageSearchProvider
+    {
+        public readonly List<string> Asked = [];
+        public string? Url = "http://ts1.mm.bing.net/th?id=OIP.dog&w=1280&h=720&c=7&pid=1.7";
+        public Task<string?> FindAsync(string query, CancellationToken cancellationToken = default)
+        {
+            Asked.Add(query);
+            return Task.FromResult(Url);
+        }
+    }
+
+    [Theory]
+    [InlineData("show me a picture of a golden retriever", "a golden retriever")]
+    [InlineData("can you show us a photo of the eiffel tower please", "the eiffel tower")]
+    [InlineData("hey jibo show me pictures of penguins", "penguins")]
+    [InlineData("show me an image of a red panda", "a red panda")]
+    [InlineData("show me a cat", null)]
+    [InlineData("show me your football", null)]
+    public async Task BuildDecisionAsync_ShowMeAPictureOf_ShowsTheTopImage(string transcript, string? query)
+    {
+        var images = new RecordingImageSearch();
+        var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), imageSearchProvider: images);
+        var turn = new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript };
+
+        var decision = await service.BuildDecisionAsync(turn);
+
+        if (query is null) { Assert.Empty(images.Asked); Assert.NotEqual("image_search", decision.IntentName); return; }
+        Assert.Equal(query, Assert.Single(images.Asked));
+        Assert.Equal(("image_search", $"Here's a picture of {query}."), (decision.IntentName, decision.ReplyText));
+        var plan = await new DemoConversationBroker(service).HandleTurnAsync(turn);
+        var skillAction = ResponsePlanToSocketMessagesMapper.Map(plan, turn, new CloudSession(), emitSkillActions: true)
+            .Select(m => JsonDocument.Parse(m.Text).RootElement.Clone())
+            .Single(m => m.GetProperty("type").GetString() == "SKILL_ACTION");
+        var view = skillAction.GetProperty("data").GetProperty("action").GetProperty("config").GetProperty("jcp")
+            .GetProperty("config").GetProperty("display").GetProperty("view").GetProperty("context").GetProperty("data");
+        Assert.Equal("webImageView", view.GetProperty("viewConfig").GetProperty("id").GetString());
+        Assert.Equal(images.Url, view.GetProperty("componentConfigs")[0].GetProperty("assets")[0].GetProperty("src").GetString());
+    }
+
+    [Fact]
+    public async Task BuildDecisionAsync_ShowMeAPictureOf_NothingFound_SaysSo()
+    {
+        var service = new JiboInteractionService(new JiboExperienceContentCache(new InMemoryJiboExperienceContentRepository()),
+            new FirstItemRandomizer(), new InMemoryPersonalMemoryStore(), imageSearchProvider: new RecordingImageSearch { Url = null });
+
+        var decision = await service.BuildDecisionAsync(new TurnContext { RawTranscript = "show me a picture of zxqv", NormalizedTranscript = "show me a picture of zxqv" });
+
+        Assert.Equal(("image_search", "Sorry, I couldn't find a picture of zxqv."), (decision.IntentName, decision.ReplyText));
+    }
+
+    [Fact]
+    public void BingImageSearch_PicksTheFirstThumbnail_AtFaceSize()
+    {
+        const string html = "<a class=\"iusc\" m=\"{&quot;murl&quot;:&quot;https://cdn.example/dog.jpg&quot;,&quot;turl&quot;:&quot;https://ts1.mm.bing.net/th?id=OIP.GAJ0MeHJ&amp;pid=15.1&quot;}\"></a>" +
+            "<a class=\"iusc\" m=\"{&quot;turl&quot;:&quot;https://ts2.mm.bing.net/th?id=OIP.second&amp;pid=15.1&quot;}\"></a>";
+
+        Assert.Equal("http://ts1.mm.bing.net/th?id=OIP.GAJ0MeHJ&w=1280&h=720&c=7&pid=1.7", Jibo.Cloud.Infrastructure.Search.BingImageSearchProvider.Pick(html));
+        Assert.Null(Jibo.Cloud.Infrastructure.Search.BingImageSearchProvider.Pick("<html>no results</html>"));
+    }
+
     // 3.1.9 shipped the data: image support the card needs: every robot gets it, beta tag or not.
     [Theory]
     [InlineData("""{"runtime":{"beta":true},"general":{"release":"3.1.8"}}""", "3.1.8", true)]
