@@ -6926,7 +6926,7 @@ public sealed class JiboInteractionServiceTests
     private sealed class RecordingImageSearch : IImageSearchProvider
     {
         public readonly List<string> Asked = [];
-        public string? Url = "http://ts1.mm.bing.net/th?id=OIP.dog&w=1280&h=720&c=7&pid=1.7";
+        public string? Url = "http://ts1.mm.bing.net/th?id=OIP.dog&w=1280&h=720&c=7&rs=1&pid=1.7";
         public Task<string?> FindAsync(string query, CancellationToken cancellationToken = default)
         {
             Asked.Add(query);
@@ -6980,7 +6980,7 @@ public sealed class JiboInteractionServiceTests
         const string html = "<a class=\"iusc\" m=\"{&quot;murl&quot;:&quot;https://cdn.example/dog.jpg&quot;,&quot;turl&quot;:&quot;https://ts1.mm.bing.net/th?id=OIP.GAJ0MeHJ&amp;pid=15.1&quot;}\"></a>" +
             "<a class=\"iusc\" m=\"{&quot;turl&quot;:&quot;https://ts2.mm.bing.net/th?id=OIP.second&amp;pid=15.1&quot;}\"></a>";
 
-        Assert.Equal("http://ts1.mm.bing.net/th?id=OIP.GAJ0MeHJ&w=1280&h=720&c=7&pid=1.7", Jibo.Cloud.Infrastructure.Search.BingImageSearchProvider.Pick(html));
+        Assert.Equal("http://ts1.mm.bing.net/th?id=OIP.GAJ0MeHJ&w=1280&h=720&c=7&rs=1&pid=1.7", Jibo.Cloud.Infrastructure.Search.BingImageSearchProvider.Pick(html));
         Assert.Null(Jibo.Cloud.Infrastructure.Search.BingImageSearchProvider.Pick("<html>no results</html>"));
     }
 

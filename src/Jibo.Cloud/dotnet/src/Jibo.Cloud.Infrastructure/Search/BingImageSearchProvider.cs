@@ -37,6 +37,6 @@ public sealed class BingImageSearchProvider(HttpClient httpClient, ILogger<BingI
     }
 
     internal static string? Pick(string html) => Thumbnail.Match(html) is { Success: true } match
-        ? $"http://{match.Groups[1].Value}/th?id={WebUtility.UrlEncode(match.Groups[2].Value)}&w=1280&h=720&c=7&pid=1.7"
+        ? $"http://{match.Groups[1].Value}/th?id={WebUtility.UrlEncode(match.Groups[2].Value)}&w=1280&h=720&c=7&rs=1&pid=1.7"
         : null;
 }
