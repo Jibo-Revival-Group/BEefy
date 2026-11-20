@@ -250,7 +250,7 @@ public sealed class NativeGrammar
     internal static string[] Tokenize(string text) => Regex.Matches(text.ToLowerInvariant().Replace('’', '\''), @"[\p{L}\p{N}_]+(?:[':.&/-][\p{L}\p{N}_]+)*")
         .Select(m => m.Value).ToArray();
 
-    private static bool ClassMatches(string body, string word)
+    internal static bool ClassMatches(string body, string word)
     {
         // Bracket expressions concatenate characters; ? is a prefix optional operator.
         var index = 0;
@@ -272,7 +272,8 @@ public sealed class NativeGrammar
             }
             return result.ToString();
         }
-        return Regex.IsMatch(word, "^(?:" + Expression() + ")$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+        try { return Regex.IsMatch(word, "^(?:" + Expression() + ")$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50)); }
+        catch (RegexMatchTimeoutException) { return false; } // a CPU stall must not fail the whole turn
     }
 
     private static Dictionary<string, Node> ReadSource(string path, string source)

@@ -78,4 +78,12 @@ public sealed class NativeGrammarTests
         Assert.Equal(intent, result.Intent);
     }
 
+    [Fact]
+    public void ClassMatchTimeoutIsANoMatchNotACrash()
+    {
+        // 30 optional (a|aa) groups backtrack exponentially, so the 50 ms regex timeout always fires.
+        var body = string.Concat(Enumerable.Repeat("?(a|aa)", 30));
+        Assert.False(NativeGrammar.ClassMatches(body, new string('a', 40) + "b"));
+    }
+
 }

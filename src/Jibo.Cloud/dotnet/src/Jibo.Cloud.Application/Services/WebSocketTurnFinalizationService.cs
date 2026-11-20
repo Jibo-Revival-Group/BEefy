@@ -2460,7 +2460,8 @@ public sealed class WebSocketTurnFinalizationService(
             // An active streaming provider owns endpointing; unavailable providers use legacy silence below.
             if (modelEndpointing)
                 closeTrigger = closeTrigger || modelSaysFinalize;
-            if (turnState.IncrementalSttSession!.AllowAudioGapEndpointing)
+            // A concurrent finalize can reset the session to null after IsModelEndpointingActive checked it.
+            if (turnState.IncrementalSttSession is { AllowAudioGapEndpointing: true })
                 closeTrigger = closeTrigger || reachedDeferredAudioGap || reachedContentSilence;
         }
         else
