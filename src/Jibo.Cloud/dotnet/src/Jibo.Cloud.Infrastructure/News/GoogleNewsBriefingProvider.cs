@@ -52,49 +52,17 @@ public sealed class GoogleNewsBriefingProvider(
         var seenTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string? failureStatus = null, failureMessage = null, failureEndpoint = null;
         int? failureStatusCode = null;
-        foreach (var category in categories)
+        // Fetch every category at once: one after another took over 5 s, past the personal report's deadline.
+        var results = await Task.WhenAll(categories.Select(category => ReadCategoryAsync(category, cancellationToken)));
+        foreach (var (stories, failure) in results)   // categories keep their order; the first failure is reported
         {
-            if (_cache.TryGetValue(category, out var cached) && cached.ExpiresUtc > DateTimeOffset.UtcNow)
+            if (stories is not null) headlines.AddRange(stories.Where(story => seenTitles.Add(story.Title)).Take(perCategory));
+            if (failure is { } f)
             {
-                headlines.AddRange(cached.Stories.Where(story => seenTitles.Add(story.Title)).Take(perCategory));
-                continue;
-            }
-
-            var uri = BuildFeedUri(category);
-            try
-            {
-                using var response = await GetAsync(uri, options.UserAgent, cancellationToken);
-                if (!response.IsSuccessStatusCode)
-                {
-                    failureStatus ??= "http_error";
-                    failureMessage ??= $"Category '{category}' returned {(int)response.StatusCode} {response.ReasonPhrase}.";
-                    failureStatusCode ??= (int)response.StatusCode;
-                    failureEndpoint ??= uri.ToString();
-                    logger.LogWarning("Google News feed failed. Category={Category} StatusCode={StatusCode}",
-                        category, (int)response.StatusCode);
-                    continue;
-                }
-
-                var document = XDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-                var feed = ReadHeadlines(document, category);
-                var photos = await ReadPhotoPathsAsync(category, response.RequestMessage?.RequestUri ?? uri, cancellationToken);
-                var withPhotos = feed.Where(headline => photos.ContainsKey(headline.Title)).ToList();
-                var stories = new List<NewsHeadline>();
-                foreach (var headline in (withPhotos.Count > 0 ? withPhotos : feed).Take(3))
-                    stories.Add(photos.TryGetValue(headline.Title, out var path)
-                        ? headline with { Image = await ReadImageAsync(path, cancellationToken) }
-                        : headline);
-                if (stories.Count > 0)
-                    _cache[category] = (stories, HalfHourAlignedCacheExpiry.GetExpiryUtc(DateTimeOffset.UtcNow));
-                headlines.AddRange(stories.Where(story => seenTitles.Add(story.Title)).Take(perCategory));
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException ||
-                                              !cancellationToken.IsCancellationRequested)
-            {
-                failureStatus ??= exception is System.Xml.XmlException ? "schema_error" : "exception";
-                failureMessage ??= exception.Message;
-                failureEndpoint ??= uri.ToString();
-                logger.LogWarning(exception, "Google News feed failed. Category={Category}", category);
+                failureStatus ??= f.Status;
+                failureMessage ??= f.Message;
+                failureStatusCode ??= f.StatusCode;
+                failureEndpoint ??= f.Endpoint;
             }
         }
 
@@ -106,6 +74,45 @@ public sealed class GoogleNewsBriefingProvider(
             "Google News briefing. Categories={Categories} HeadlineCount={HeadlineCount} WithPhotos={WithPhotos}",
             string.Join(",", categories), headlines.Count, headlines.Count(headline => headline.Image is not null));
         return snapshot;
+    }
+
+    private async Task<(IReadOnlyList<NewsHeadline>? Stories, (string Status, string Message, int? StatusCode, string Endpoint)? Failure)>
+        ReadCategoryAsync(string category, CancellationToken cancellationToken)
+    {
+        if (_cache.TryGetValue(category, out var cached) && cached.ExpiresUtc > DateTimeOffset.UtcNow)
+            return (cached.Stories, null);
+
+        var uri = BuildFeedUri(category);
+        try
+        {
+            using var response = await GetAsync(uri, options.UserAgent, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Google News feed failed. Category={Category} StatusCode={StatusCode}",
+                    category, (int)response.StatusCode);
+                return (null, ("http_error", $"Category '{category}' returned {(int)response.StatusCode} {response.ReasonPhrase}.",
+                    (int)response.StatusCode, uri.ToString()));
+            }
+
+            var document = XDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var feed = ReadHeadlines(document, category);
+            var photos = await ReadPhotoPathsAsync(category, response.RequestMessage?.RequestUri ?? uri, cancellationToken);
+            var withPhotos = feed.Where(headline => photos.ContainsKey(headline.Title)).ToList();
+            var stories = await Task.WhenAll((withPhotos.Count > 0 ? withPhotos : feed).Take(3).Select(async headline =>
+                photos.TryGetValue(headline.Title, out var path)
+                    ? headline with { Image = await ReadImageAsync(path, cancellationToken) }
+                    : headline));
+            if (stories.Length > 0)
+                _cache[category] = (stories, HalfHourAlignedCacheExpiry.GetExpiryUtc(DateTimeOffset.UtcNow));
+            return (stories, null);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException ||
+                                          !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Google News feed failed. Category={Category}", category);
+            return (null, (exception is System.Xml.XmlException ? "schema_error" : "exception", exception.Message, null,
+                uri.ToString()));
+        }
     }
 
     private string[] ResolveCategories(IReadOnlyList<string> preferredCategories)

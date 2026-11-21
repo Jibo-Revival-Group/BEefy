@@ -266,6 +266,56 @@ public sealed class ProviderCachingTests
     }
 
     [Fact]
+    public async Task GoogleNewsBriefingProvider_FetchesCategoriesAtTheSameTime()
+    {
+        // One category after another ran past the personal report's 5 s deadline ("I couldn't fetch your news").
+        var handler = new ConcurrencyHandler(path => path.StartsWith("/rss/headlines/section/topic/")
+            ? GoogleNewsFeed($"{path.Split('/').Last()} story is the top one")
+            : "<html></html>");
+        var provider = new GoogleNewsBriefingProvider(new HttpClient(handler),
+            new GoogleNewsOptions { DefaultCategories = ["technology", "science", "sports"] },
+            NullLogger<GoogleNewsBriefingProvider>.Instance);
+
+        var result = await provider.GetBriefingAsync(new NewsBriefingRequest([]));
+
+        Assert.NotNull(result);
+        Assert.Equal(["TECHNOLOGY story is the top one", "SCIENCE story is the top one", "SPORTS story is the top one"],
+            result.Headlines.Select(headline => headline.Title));
+        Assert.Equal(3, handler.MaxFeedsAtOnce);
+    }
+
+    private sealed class ConcurrencyHandler(Func<string, string> bodyForPath) : HttpMessageHandler
+    {
+        private int _feedsNow;
+        public int MaxFeedsAtOnce;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            var isFeed = path.StartsWith("/rss/");
+            if (isFeed)
+            {
+                var now = Interlocked.Increment(ref _feedsNow);
+                InterlockedMax(ref MaxFeedsAtOnce, now);
+                await Task.Delay(200, cancellationToken);   // hold it open so parallel fetches overlap
+                Interlocked.Decrement(ref _feedsNow);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(bodyForPath(path), System.Text.Encoding.UTF8, isFeed ? "application/rss+xml" : "text/html"),
+                RequestMessage = request
+            };
+        }
+
+        private static void InterlockedMax(ref int target, int value)
+        {
+            int seen;
+            while ((seen = Volatile.Read(ref target)) < value && Interlocked.CompareExchange(ref target, value, seen) != seen) { }
+        }
+    }
+
+    [Fact]
     public async Task GoogleNewsBriefingProvider_FillsFromOneAskedCategory_AndSkipsUnsafeHeadlines()
     {
         var (provider, _) = GoogleNews(path => Xml(path == "/rss/headlines/section/topic/SPORTS"
