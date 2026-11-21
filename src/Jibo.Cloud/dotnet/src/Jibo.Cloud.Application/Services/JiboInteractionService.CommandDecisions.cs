@@ -56,6 +56,25 @@ public sealed partial class JiboInteractionService
         return BuildDanceDecision("dance", dance, replyText);
     }
 
+    // "Can you dance?" / "Will you dance?" answers like the original RI_JBO_CanDance: the line and then an actual dance.
+    // The scripted reply text has its <anim> stripped, so play the prompt's original ESML.
+    private JiboInteractionDecision BuildCanDanceDecision(JiboExperienceCatalog catalog)
+    {
+        var decision = BuildScriptedPersonalityDecision(
+            catalog,
+            "robot_can_dance",
+            "dancing is one of the things i know best",
+            "if there's one thing i know how to do. it's dance",
+            "i can dance");
+        if (decision.SkillPayload?.TryGetValue("prompt_id", out var promptId) != true ||
+            !catalog.MimReplies.TryGetValue("RI_JBO_CanDance", out var replies)) return decision;
+        var original = replies.FirstOrDefault(reply => reply.PromptId == promptId as string)?.OriginalEsml;
+        if (original is null || !original.Contains("<anim", StringComparison.Ordinal)) return decision;
+        decision.SkillPayload["esml"] = "<speak>" + original + "</speak>";
+        decision.SkillPayload["mim_type"] = "announcement";
+        return decision;
+    }
+
     private JiboInteractionDecision BuildDanceQuestionDecision(JiboExperienceCatalog catalog)
     {
         return new JiboInteractionDecision("dance_question", randomizer.Choose(catalog.DanceQuestionReplies));

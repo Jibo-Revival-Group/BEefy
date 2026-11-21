@@ -1679,12 +1679,7 @@ public sealed partial class JiboInteractionService
                 "yes, i sleep at night",
                 "i go to sleep at night",
                 "i sleep at night usually"),
-            "robot_can_dance" => BuildScriptedPersonalityDecision(
-                catalog,
-                "robot_can_dance",
-                "dancing is one of the things i know best",
-                "if there's one thing i know how to do. it's dance",
-                "i can dance"),
+            "robot_can_dance" => BuildCanDanceDecision(catalog),
             "robot_has_friends" => BuildScriptedFriendDecision(
                 catalog,
                 "robot_has_friends",

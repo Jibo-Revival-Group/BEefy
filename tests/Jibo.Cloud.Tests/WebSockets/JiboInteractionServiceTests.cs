@@ -1317,6 +1317,25 @@ public sealed class JiboInteractionServiceTests
     }
 
     [Theory]
+    [InlineData("can you dance")]
+    [InlineData("will you dance")]
+    [InlineData("could you please dance")]
+    public async Task BuildDecisionAsync_DanceAbilityQuestion_AnswersAndDances(string transcript)
+    {
+        var service = CreateService();
+
+        var decision = await service.BuildDecisionAsync(new TurnContext
+        {
+            RawTranscript = transcript,
+            NormalizedTranscript = transcript
+        });
+
+        Assert.Equal("robot_can_dance", decision.IntentName);
+        var esml = Assert.IsType<string>(decision.SkillPayload!["esml"]);
+        Assert.Contains("<anim cat='dance'", esml);
+    }
+
+    [Theory]
     [InlineData("sneeze", "request_sneeze", "Robots don't sneeze")]
     [InlineData("are you ready", "robot_is_ready", "ready for anything")]
     [InlineData("are you ready for today", "robot_is_ready_for_day", "ready")]
