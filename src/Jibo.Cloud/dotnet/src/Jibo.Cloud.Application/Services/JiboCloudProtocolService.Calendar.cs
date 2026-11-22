@@ -209,6 +209,22 @@ public sealed partial class JiboCloudProtocolService
         };
     }
 
+    // BEaker asks before it counts a 5x1 Store star from BEacon: has this robot really been talking to 5x1, for a
+    // while? Made-up robots have no turns. (Robots keep their original Jibo keys, whose secrets nobody has, so a
+    // signature can't prove it.) shortcut: turn counts, not distinct days; tighten if stars still get faked.
+    private ProtocolDispatchResult VerifyStoreVoter(ProtocolEnvelope envelope)
+    {
+        var robot = envelope.DeviceId?.Trim();
+        if (string.IsNullOrWhiteSpace(robot) || conversationHistory is null)
+            return CalendarError(403, "Unable to star");
+        var now = DateTimeOffset.UtcNow;
+        var month = conversationHistory.Count(robot, since: now.AddDays(-30));
+        var lastThreeDays = conversationHistory.Count(robot, since: now.AddDays(-3));
+        return month >= 5 && month > lastThreeDays
+            ? ProtocolDispatchResult.Ok(new { verified = true, robot })
+            : CalendarError(403, "Unable to star");
+    }
+
     private static ProtocolDispatchResult CalendarError(int statusCode, string error) =>
         new()
         {

@@ -24,7 +24,8 @@ public sealed partial class JiboCloudProtocolService(
     IUserIntegrationStore? userIntegrationStore = null,
     IMemberCalendarFeedProbe? calendarFeedProbe = null,
     ICommuteRouting? commuteRouting = null,
-    ISpeechTranslator? speechTranslator = null)
+    ISpeechTranslator? speechTranslator = null,
+    IConversationHistory? conversationHistory = null)
 {
     private const int SchedulerBackupDelayMs = 250;
     private const int SchedulerDownloadTickMs = 100;
@@ -178,6 +179,8 @@ public sealed partial class JiboCloudProtocolService(
                 return HandleCommuteAsync(operation, envelope);
             if (operation == "TranslateSpeech")
                 return HandleTranslateSpeechAsync(envelope);
+            if (operation == "StoreVote")
+                return Task.FromResult(VerifyStoreVoter(envelope));
             return Task.FromResult(HandleLoop(operation, envelope));
         }
 
