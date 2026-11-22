@@ -16,7 +16,7 @@ public sealed class AnthropicFreeChatTests
         var handler = new Handler(HttpStatusCode.OK, "{\"content\":[{\"type\":\"text\",\"text\":\" Hi there! \"},{\"type\":\"thinking\",\"thinking\":\"x\"}]}");
         var chat = new AnthropicFreeChat(new HttpClient(handler), new FreeAgentOptions { KeyFile = keyFile.Path });
 
-        var text = await chat.ChatAsync("You are Jibo.", [new("user", "hello")], "claude-sonnet-5-5", CancellationToken.None);
+        var text = await chat.ChatAsync("You are Jibo.", [new("user", "hello")], "claude-sonnet-5-5", null, CancellationToken.None);
 
         Assert.Equal("Hi there!", text);
         Assert.Equal("https://api.anthropic.com/v1/messages", handler.Request!.RequestUri!.ToString());
@@ -27,6 +27,23 @@ public sealed class AnthropicFreeChatTests
         Assert.Equal("You are Jibo.", body.GetProperty("system").GetString());
         Assert.Equal(1024, body.GetProperty("max_tokens").GetInt32());
         Assert.Equal("hello", body.GetProperty("messages")[0].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task APhotoGoesOnTheLastUserMessageOnly()
+    {
+        using var keyFile = new TempFile("sk-test-key\n");
+        var handler = new Handler(HttpStatusCode.OK, "{\"content\":[{\"type\":\"text\",\"text\":\"Three.\"}]}");
+        var chat = new AnthropicFreeChat(new HttpClient(handler), new FreeAgentOptions { KeyFile = keyFile.Path });
+        await chat.ChatAsync("s", [new("user", "hi"), new("assistant", "Hello!"), new("user", "How many fingers?")], "m", "/9j/AA==", CancellationToken.None);
+        var messages = JsonDocument.Parse(handler.Body!).RootElement.GetProperty("messages");
+        Assert.Equal("hi", messages[0].GetProperty("content").GetString());
+        var last = messages[2].GetProperty("content");
+        Assert.Equal("image", last[0].GetProperty("type").GetString());
+        Assert.Equal("base64", last[0].GetProperty("source").GetProperty("type").GetString());
+        Assert.Equal("image/jpeg", last[0].GetProperty("source").GetProperty("media_type").GetString());
+        Assert.Equal("/9j/AA==", last[0].GetProperty("source").GetProperty("data").GetString());
+        Assert.Equal("How many fingers?", last[1].GetProperty("text").GetString());
     }
 
     [Theory]
@@ -40,7 +57,7 @@ public sealed class AnthropicFreeChatTests
     {
         using var keyFile = new TempFile("sk-test-key");
         var chat = new AnthropicFreeChat(new HttpClient(new Handler(status, reply)), new FreeAgentOptions { KeyFile = keyFile.Path });
-        var error = await Assert.ThrowsAsync<FreeAgentRelayException>(() => chat.ChatAsync("s", [new("user", "hi")], "m", CancellationToken.None));
+        var error = await Assert.ThrowsAsync<FreeAgentRelayException>(() => chat.ChatAsync("s", [new("user", "hi")], "m", null, CancellationToken.None));
         Assert.Equal(code, error.Code);
         Assert.Equal(httpStatus, error.Status);
         Assert.DoesNotContain("secret", error.Message);
@@ -51,7 +68,7 @@ public sealed class AnthropicFreeChatTests
     {
         var handler = new Handler(HttpStatusCode.OK, "{}");
         var chat = new AnthropicFreeChat(new HttpClient(handler), new FreeAgentOptions { KeyFile = "/nonexistent/anthropic-key" });
-        var error = await Assert.ThrowsAsync<FreeAgentRelayException>(() => chat.ChatAsync("s", [new("user", "hi")], "m", CancellationToken.None));
+        var error = await Assert.ThrowsAsync<FreeAgentRelayException>(() => chat.ChatAsync("s", [new("user", "hi")], "m", null, CancellationToken.None));
         Assert.Equal(503, error.Status);
         Assert.Null(handler.Request);
     }

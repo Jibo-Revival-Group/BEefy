@@ -95,10 +95,10 @@ public sealed class FreeAgentEndpointTests
     internal sealed class FakeChat : IFreeAgentChat
     {
         public Func<string, string>? Reply;
-        public readonly List<(string System, IReadOnlyList<FreeAgentChatMessage> Messages, string Model)> Calls = [];
-        public Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, CancellationToken token)
+        public readonly List<(string System, IReadOnlyList<FreeAgentChatMessage> Messages, string Model, string? Image)> Calls = [];
+        public Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token)
         {
-            Calls.Add((system, messages, model));
+            Calls.Add((system, messages, model, image));
             return Reply is null ? throw new FreeAgentRelayException("free_unavailable", 503) : Task.FromResult(Reply(model));
         }
     }
@@ -146,6 +146,24 @@ public sealed class FreeAgentEndpointTests
         var response = await Client(factory).SendAsync(Signed(body));
         Assert.Equal(expected, (int)response.StatusCode);
         Assert.Equal("{\"error\":\"invalid_request\"}", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task OnePhotoMayGoAlong_OnlyARealJpegAndOnlyThenABiggerBody()
+    {
+        var chat = new FakeChat { Reply = _ => "Three fingers." };
+        await using var factory = Factory(chat: chat);
+        var client = Client(factory);
+        var jpeg = Convert.ToBase64String([0xFF, 0xD8, 0xFF, .. new byte[60000]]);
+        var response = await client.SendAsync(Signed(Body().TrimEnd('}') + ",\"image\":\"" + jpeg + "\"}"));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(jpeg, chat.Calls.Single().Image);
+        foreach (var bad in new[] { Convert.ToBase64String(new byte[100]), "not base64!", Convert.ToBase64String([0xFF, 0xD8, 0xFF, .. new byte[160000]]) })
+        {
+            var refused = await client.SendAsync(Signed(Body().TrimEnd('}') + ",\"image\":\"" + bad + "\"}"));
+            Assert.True(refused.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge, bad[..10]);
+        }
+        Assert.Single(chat.Calls);
     }
 
     [Fact]

@@ -55,18 +55,19 @@ public static class FreeAgentEndpoints
         deadline.CancelAfter(TimeSpan.FromSeconds(120));
         try
         {
-            if (context.Request.ContentLength > 32000) return Error("invalid_request", 413);
+            if (context.Request.ContentLength > FreeAgentRequest.MaxBody) return Error("invalid_request", 413);
             using var stream = new MemoryStream();
             var buffer = new byte[4096];
             int count;
             while ((count = await context.Request.Body.ReadAsync(buffer, deadline.Token)) != 0)
             {
-                if (stream.Length + count > 32000) return Error("invalid_request", 413);
+                if (stream.Length + count > FreeAgentRequest.MaxBody) return Error("invalid_request", 413);
                 stream.Write(buffer, 0, count);
             }
             var body = new UTF8Encoding(false, true).GetString(stream.GetBuffer(), 0, (int)stream.Length);
             var request = FreeAgentRequest.Parse(body);
-            if (request is null) return Error("invalid_request", 400);
+            // Past the text-only cap without a valid photo, it's simply too large.
+            if (request is null) return Error("invalid_request", stream.Length > FreeAgentRequest.MaxTextBody ? 413 : 400);
             if (context.Connection.RemoteIpAddress is not { } ip) return Error("free_unauthorized", 403);
             if (!limiter.TryAcquire(request.RobotId, ip, out var retryAfter))
             {
@@ -80,7 +81,7 @@ public static class FreeAgentEndpoints
             // The reply names the model that answered; BEacon 3.1.9 and older accept only gemma3:4b, so they stop
             // using Free until they update to 3.2.0.
             var model = options.CurrentModel();
-            var text = await chat.ChatAsync(request.System, request.Messages, model, deadline.Token);
+            var text = await chat.ChatAsync(request.System, request.Messages, model, request.Image, deadline.Token);
             return Results.Json(new { requestId = request.RequestId, text, model });
         }
         catch (Exception ex) when (ex is JsonException or DecoderFallbackException) { return Error("invalid_request", 400); }

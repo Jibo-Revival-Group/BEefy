@@ -6,7 +6,8 @@ namespace Jibo.Cloud.Infrastructure.Agent;
 
 public interface IFreeAgentChat
 {
-    Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, CancellationToken token);
+    /// <param name="image">Base64 JPEG for the last user message (Jibo looked), or null.</param>
+    Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token);
 }
 
 /// <summary>Free mode's replies, from Anthropic's Messages API with 5x1's key. Failures surface only as codes.</summary>
@@ -15,7 +16,7 @@ public sealed class AnthropicFreeChat(HttpClient http, FreeAgentOptions options)
     public const string ClientName = "free-agent-anthropic";
     private const int MaxTokens = 1024; // Jibo answers in a sentence or two; this caps a runaway reply's cost
 
-    public async Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, CancellationToken token)
+    public async Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token)
     {
         var key = options.ApiKey() ?? throw new FreeAgentRelayException("free_unavailable", 503);
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages")
@@ -23,7 +24,13 @@ public sealed class AnthropicFreeChat(HttpClient http, FreeAgentOptions options)
             Content = JsonContent.Create(new
             {
                 model, max_tokens = MaxTokens, system,
-                messages = messages.Select(m => new { role = m.Role, content = m.Content })
+                messages = messages.Select((m, i) => new
+                {
+                    role = m.Role,
+                    content = image is not null && i == messages.Count - 1
+                        ? new object[] { new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = image } }, new { type = "text", text = m.Content } }
+                        : (object)m.Content
+                })
             })
         };
         request.Headers.Add("x-api-key", key);
