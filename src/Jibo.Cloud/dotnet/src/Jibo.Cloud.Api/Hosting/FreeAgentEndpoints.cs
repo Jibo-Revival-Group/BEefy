@@ -13,6 +13,9 @@ public static class FreeAgentEndpoints
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<FreeAgentReplayStore>();
         services.AddSingleton<FreeAgentRateLimiter>();
+        services.AddHttpClient(AnthropicFreeChat.ClientName, client => client.Timeout = TimeSpan.FromSeconds(110));
+        services.AddSingleton<IFreeAgentChat>(provider => new AnthropicFreeChat(
+            provider.GetRequiredService<IHttpClientFactory>().CreateClient(AnthropicFreeChat.ClientName), provider.GetRequiredService<FreeAgentOptions>()));
         return services;
     }
     public static IApplicationBuilder UseFreeAgentTransportGuard(this IApplicationBuilder app) => app.Use(async (context, next) =>
@@ -20,9 +23,11 @@ public static class FreeAgentEndpoints
         if (context.Request.Path.StartsWithSegments("/api/agent/free", StringComparison.OrdinalIgnoreCase))
         {
             // This namespace must never fall through to legacy protocol capture or token auth.
-            if (!context.Request.Path.Value!.TrimEnd('/').Equals("/api/agent/free/chat", StringComparison.OrdinalIgnoreCase))
+            var route = context.Request.Path.Value!.TrimEnd('/');
+            var models = route.Equals("/api/agent/free/models", StringComparison.OrdinalIgnoreCase);
+            if (!models && !route.Equals("/api/agent/free/chat", StringComparison.OrdinalIgnoreCase))
             { await Error("invalid_request", 404).ExecuteAsync(context); return; }
-            if (!HttpMethods.IsPost(context.Request.Method))
+            if (models ? !HttpMethods.IsGet(context.Request.Method) : !HttpMethods.IsPost(context.Request.Method))
             { await Error("invalid_request", 405).ExecuteAsync(context); return; }
             if (context.Connection.RemoteIpAddress is null)
             { await Error("free_unauthorized", 403).ExecuteAsync(context); return; }
@@ -33,10 +38,16 @@ public static class FreeAgentEndpoints
     public static IEndpointRouteBuilder MapFreeAgentEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/agent/free/chat", HandleAsync);
+        // BEacon's Free model list: whatever model Free uses right now (the operator can switch it any time).
+        app.MapGet("/api/agent/free/models", (FreeAgentOptions options) =>
+        {
+            var model = options.CurrentModel();
+            return Results.Json(new { models = new[] { new { id = model, name = model } } });
+        });
         return app;
     }
     private static async Task<IResult> HandleAsync(HttpContext context, FreeAgentOptions options,
-        BeefyErBroker broker, FreeAgentReplayStore replay, FreeAgentRateLimiter limiter)
+        IFreeAgentChat chat, FreeAgentReplayStore replay, FreeAgentRateLimiter limiter)
     {
         if (!options.Enabled) return Error("free_unavailable", 503);
         if (!context.Request.IsHttps) return Error("free_unauthorized", 403);
@@ -56,8 +67,6 @@ public static class FreeAgentEndpoints
             var body = new UTF8Encoding(false, true).GetString(stream.GetBuffer(), 0, (int)stream.Length);
             var request = FreeAgentRequest.Parse(body);
             if (request is null) return Error("invalid_request", 400);
-            if (BeefyErBroker.ChatEnvelope(request.Messages, new string('0', 32), new string('0', 32)).Length > 32000)
-                return Error("invalid_request", 413);
             if (context.Connection.RemoteIpAddress is not { } ip) return Error("free_unauthorized", 403);
             if (!limiter.TryAcquire(request.RobotId, ip, out var retryAfter))
             {
@@ -68,8 +77,11 @@ public static class FreeAgentEndpoints
             // floods cannot fill the bounded global replay table without quota cost.
             if (!replay.TryReserve((ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip).ToString(), request.RequestId, out var duplicate))
                 return duplicate ? Error("invalid_request", 400) : Error("free_busy", 503);
-            var text = await broker.ChatAsync(request.Messages, deadline.Token, TimeSpan.FromSeconds(120));
-            return Results.Json(new { requestId = request.RequestId, text, model = FreeAgentOptions.Model });
+            // The reply names the model that answered; BEacon 3.1.9 and older accept only gemma3:4b, so they stop
+            // using Free until they update to 3.2.0.
+            var model = options.CurrentModel();
+            var text = await chat.ChatAsync(request.System, request.Messages, model, deadline.Token);
+            return Results.Json(new { requestId = request.RequestId, text, model });
         }
         catch (Exception ex) when (ex is JsonException or DecoderFallbackException) { return Error("invalid_request", 400); }
         catch (FreeAgentRelayException ex) { return Error(ex.Code, ex.Status); }

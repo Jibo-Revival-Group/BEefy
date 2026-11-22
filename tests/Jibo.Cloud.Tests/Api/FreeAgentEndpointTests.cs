@@ -60,7 +60,8 @@ public sealed class FreeAgentEndpointTests
     internal const string Key = "test-native-key";
     internal const string Secret = "test-native-secret";
     internal static string Body(string? id = null) => JsonSerializer.Serialize(new { requestId = id ?? Guid.NewGuid().ToString("N"), robotId = "robot-1", messages = new[] { new { role = "user", content = "hello" } } });
-    internal static WebApplicationFactory<Program> Factory(bool enabled = true, bool enrolled = true, bool active = true, bool knownSecret = true)
+    internal static WebApplicationFactory<Program> Factory(bool enabled = true, bool enrolled = true, bool active = true, bool knownSecret = true,
+        FakeChat? chat = null, string? modelFile = null)
     {
         var store = new Mock<ICloudStateStore>();
         store.Setup(s => s.GetAccount()).Returns(new AccountProfile { AccessKeyId = knownSecret ? Key : "other", SecretAccessKey = Secret });
@@ -72,6 +73,7 @@ public sealed class FreeAgentEndpointTests
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["OpenJibo:Agent:Free:Enabled"] = enabled.ToString(),
+                ["OpenJibo:Agent:Free:ModelFile"] = modelFile ?? "/nonexistent/free-agent-model",
                 ["OpenJibo:Agent:Free:Enrollments:" + Key] = enrolled ? "canonical" : "",
                 ["OpenJibo:Agent:Free:Enrollments:key2"] = "canonical2",
                 ["OpenJibo:Agent:Free:Enrollments:alias-key"] = "canonical",
@@ -85,8 +87,20 @@ public sealed class FreeAgentEndpointTests
                 var workerOptions = new BeefyErOptions { Enabled = true, SharedSecret = new string('s', 43) };
                 services.AddSingleton(workerOptions);
                 services.AddSingleton(new BeefyErBroker(workerOptions, NullLogger<BeefyErBroker>.Instance));
+                services.AddSingleton<IFreeAgentChat>(chat ?? new FakeChat());
             });
         });
+    }
+    // Free's model in tests: answers only when given a reply, else "unavailable" like a missing key.
+    internal sealed class FakeChat : IFreeAgentChat
+    {
+        public Func<string, string>? Reply;
+        public readonly List<(string System, IReadOnlyList<FreeAgentChatMessage> Messages, string Model)> Calls = [];
+        public Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, CancellationToken token)
+        {
+            Calls.Add((system, messages, model));
+            return Reply is null ? throw new FreeAgentRelayException("free_unavailable", 503) : Task.FromResult(Reply(model));
+        }
     }
     internal sealed class ConnectionAddress { public IPAddress? Value = IPAddress.Parse("203.0.113.10"); }
     private sealed class TestConnectionFilter(ConnectionAddress address) : IStartupFilter
@@ -139,7 +153,7 @@ public sealed class FreeAgentEndpointTests
     {
         await using var factory = Factory();
         var client = Client(factory);
-        foreach (var body in new[] { Body().Replace("hello", new string('x', 32001)), Body().Replace("hello", new string('x', 31800)) })
+        foreach (var body in new[] { Body().Replace("hello", new string('x', 32001)), Body().Replace("hello", new string('é', 16000)) })
         {
             var response = await client.SendAsync(Signed(body));
             Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
@@ -149,36 +163,61 @@ public sealed class FreeAgentEndpointTests
     [Fact]
     public async Task DuplicateAuthenticatedRequestIdCannotDispatchAgain()
     {
-        await using var factory = Factory();
-        using var worker = await Worker.Connect(factory);
+        var chat = new FakeChat { Reply = _ => "hi" };
+        await using var factory = Factory(chat: chat);
         var client = Client(factory);
         var body = Body();
-        var first = client.SendAsync(Signed(body));
-        var start = await worker.Read("chat_start");
-        await worker.Send(new { version = 1, generation = worker.Generation, type = "chat_result", requestId = start.GetProperty("requestId").GetString(), text = "hi" });
-        Assert.Equal(HttpStatusCode.OK, (await first).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Signed(body))).StatusCode);
         var duplicate = await client.SendAsync(Signed(body)).WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(HttpStatusCode.BadRequest, duplicate.StatusCode);
     }
 
     [Fact]
-    public async Task SignedChatRelaysFixedSystemAndReturnsBoundedReply()
+    public async Task ChatUsesTheCurrentModelAndNamesItInTheReply()
     {
-        await using var factory = Factory();
-        using var worker = await Worker.Connect(factory);
-        var body = Body();
-        var responseTask = Client(factory).SendAsync(Signed(body));
-        var start = await worker.Read("chat_start");
-        Assert.Matches("^[0-9a-f]{32}$", start.GetProperty("requestId").GetString()!);
-        Assert.Equal(2, start.GetProperty("messages").GetArrayLength());
-        Assert.Equal("system", start.GetProperty("messages")[0].GetProperty("role").GetString());
-        await worker.Send(new { version = 1, generation = worker.Generation, type = "chat_result", requestId = start.GetProperty("requestId").GetString(), text = "Hi from Jibo." });
-        var response = await responseTask;
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
-        Assert.Equal("gemma3:4b", result.GetProperty("model").GetString());
-        Assert.Equal("Hi from Jibo.", result.GetProperty("text").GetString());
-        Assert.Equal(JsonDocument.Parse(body).RootElement.GetProperty("requestId").GetString(), result.GetProperty("requestId").GetString());
+        var modelFile = System.IO.Path.GetTempFileName();
+        try
+        {
+            var chat = new FakeChat { Reply = model => "Hi from " + model + "." };
+            await using var factory = Factory(chat: chat, modelFile: modelFile);
+            var client = Client(factory);
+            File.WriteAllText(modelFile, "");
+            var body = Body();
+            var response = await client.SendAsync(Signed(body));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+            Assert.Equal("claude-sonnet-5-5", result.GetProperty("model").GetString());
+            Assert.Equal("Hi from claude-sonnet-5-5.", result.GetProperty("text").GetString());
+            Assert.Equal(JsonDocument.Parse(body).RootElement.GetProperty("requestId").GetString(), result.GetProperty("requestId").GetString());
+            Assert.Equal(FreeAgentRequestSystem, chat.Calls[^1].System);
+            Assert.Equal(new[] { "user" }, chat.Calls[^1].Messages.Select(m => m.Role));
+            // The operator switches the model by editing one file: the next request uses it, no restart.
+            File.WriteAllText(modelFile, "claude-haiku-5-5\n");
+            var switched = JsonDocument.Parse(await (await client.SendAsync(Signed(Body()))).Content.ReadAsStringAsync()).RootElement;
+            Assert.Equal("claude-haiku-5-5", switched.GetProperty("model").GetString());
+            Assert.Equal("claude-haiku-5-5", chat.Calls[^1].Model);
+            var models = JsonDocument.Parse(await client.GetStringAsync("/api/agent/free/models")).RootElement.GetProperty("models");
+            Assert.Equal("claude-haiku-5-5", models[0].GetProperty("id").GetString());
+            File.WriteAllText(modelFile, "bad model; rm -rf");
+            Assert.Equal("claude-sonnet-5-5", JsonDocument.Parse(await client.GetStringAsync("/api/agent/free/models")).RootElement.GetProperty("models")[0].GetProperty("id").GetString());
+        }
+        finally { File.Delete(modelFile); }
+    }
+
+    private const string FreeAgentRequestSystem = "You are Jibo, a friendly social robot. Reply briefly and clearly in plain spoken English.";
+
+    [Fact]
+    public async Task BeaconCanSendItsOwnBoundedSystemPrompt()
+    {
+        var chat = new FakeChat { Reply = _ => "ok" };
+        await using var factory = Factory(chat: chat);
+        var client = Client(factory);
+        string With(string system) => JsonSerializer.Serialize(new { requestId = Guid.NewGuid().ToString("N"), robotId = "robot-1", system, messages = new[] { new { role = "user", content = "dance" } } });
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Signed(With("You are Jibo.\nDO: lines run commands.")))).StatusCode);
+        Assert.Equal("You are Jibo.\nDO: lines run commands.", chat.Calls[^1].System);
+        foreach (var bad in new[] { "", "  ", new string('x', 8001), "bell\u0007" })
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(Signed(With(bad)))).StatusCode);
+        Assert.Single(chat.Calls);
     }
 
     [Fact]
@@ -241,67 +280,6 @@ public sealed class FreeAgentEndpointTests
         Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(request)).StatusCode);
     }
 
-    [Theory]
-    [InlineData("empty")]
-    [InlineData("oversize")]
-    [InlineData("error")]
-    [InlineData("disconnect")]
-    [InlineData("generation")]
-    [InlineData("frame")]
-    public async Task WorkerFailuresAreSanitizedAndNeverReturnRawDetails(string failure)
-    {
-        await using var factory = Factory();
-        using var worker = await Worker.Connect(factory);
-        var pending = Client(factory).SendAsync(Signed(Body()));
-        var start = await worker.Read("chat_start");
-        if (failure == "disconnect") worker.Dispose();
-        else await worker.Send(new { version = 1, generation = failure == "generation" ? "stale-generation" : worker.Generation,
-            type = failure == "error" ? "chat_error" : "chat_result", requestId = start.GetProperty("requestId").GetString(),
-            code = "sensitive worker error", text = failure == "empty" ? " " : failure == "frame" ? new string('x', 70000) : failure == "oversize" ? new string('x', 12001) : "sensitive response" });
-        var response = await pending.WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Equal(failure is "disconnect" or "generation" or "frame" ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.BadGateway, response.StatusCode);
-        var content = await response.Content.ReadAsStringAsync();
-        Assert.DoesNotContain("sensitive", content);
-        Assert.DoesNotContain("Exception", content);
-    }
-
-    [Fact]
-    public async Task OldWorkerWithoutAdvertisedChatIsUnavailable()
-    {
-        await using var factory = Factory();
-        using var worker = await Worker.Connect(factory, chat: false);
-        var response = await Client(factory).SendAsync(Signed(Body()));
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Equal("{\"error\":\"free_unavailable\"}", await response.Content.ReadAsStringAsync());
-    }
-
-    [Fact]
-    public async Task CancellationSendsCancelButHoldsSlotUntilTerminalAndIgnoresLateIds()
-    {
-        await using var factory = Factory();
-        using var worker = await Worker.Connect(factory);
-        var client = Client(factory);
-        using var stop = new CancellationTokenSource();
-        var first = client.SendAsync(Signed(Body()), stop.Token);
-        var start = await worker.Read("chat_start");
-        var busy = await client.SendAsync(Signed(Body()));
-        Assert.Equal("{\"error\":\"free_busy\"}", await busy.Content.ReadAsStringAsync());
-        stop.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
-        var cancel = await worker.Read("chat_cancel");
-        Assert.Equal(start.GetProperty("requestId").GetString(), cancel.GetProperty("requestId").GetString());
-        var stillBusy = await client.SendAsync(Signed(Body()));
-        Assert.Equal("{\"error\":\"free_busy\"}", await stillBusy.Content.ReadAsStringAsync());
-        await worker.Send(new { version = 1, generation = worker.Generation, type = "chat_error", requestId = start.GetProperty("requestId").GetString(), code = "cancelled" });
-        await Task.Delay(20);
-        var next = client.SendAsync(Signed(Body()));
-        var nextStart = await worker.Read("chat_start");
-        await worker.Send(new { version = 1, generation = worker.Generation, type = "chat_result", requestId = start.GetProperty("requestId").GetString(), text = "stale" });
-        Assert.False(next.IsCompleted);
-        await worker.Send(new { version = 1, generation = worker.Generation, type = "chat_result", requestId = nextStart.GetProperty("requestId").GetString(), text = "current" });
-        Assert.Contains("current", await (await next).Content.ReadAsStringAsync());
-    }
-
     [Fact]
     public async Task ExpiredChatQuarantinesOnlyChatUntilMatchingCancellationAck()
     {
@@ -330,31 +308,6 @@ public sealed class FreeAgentEndpointTests
         await worker.Send(new { version = 1, generation = worker.Generation, type = "chat_cancelled", requestId = id });
         await worker.Send(new { version = 1, generation = worker.Generation, type = "chat_result", requestId = nextStart.GetProperty("requestId").GetString(), text = "ok" });
         Assert.Equal("ok", await next!);
-    }
-
-    [Fact]
-    public async Task TotalTimeoutIs120SecondsAndUnacknowledgedSlotIsNotReused()
-    {
-        await using var factory = Factory();
-        using var worker = await Worker.Connect(factory);
-        var client = Client(factory);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        client.Timeout = TimeSpan.FromSeconds(130);
-        var pending = client.SendAsync(Signed(Body()));
-        await worker.Read("chat_start");
-        // Keep the real worker heartbeat alive while allowing its chat to stall.
-        var cancelTask = worker.Read("chat_cancel", 125);
-        await Task.Delay(TimeSpan.FromSeconds(47));
-        Assert.False(pending.IsCompleted);
-        var response = await pending.WaitAsync(TimeSpan.FromSeconds(80));
-        Assert.InRange(stopwatch.Elapsed, TimeSpan.FromSeconds(119), TimeSpan.FromSeconds(125));
-        Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
-        Assert.Equal("{\"error\":\"free_timeout\"}", await response.Content.ReadAsStringAsync());
-        await cancelTask;
-        await Task.Delay(100);
-        var blocked = await client.SendAsync(Signed(Body()));
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, blocked.StatusCode);
-        Assert.Equal("{\"error\":\"free_busy\"}", await blocked.Content.ReadAsStringAsync());
     }
 
     internal sealed class Worker(WebSocket socket, string generation) : IDisposable
