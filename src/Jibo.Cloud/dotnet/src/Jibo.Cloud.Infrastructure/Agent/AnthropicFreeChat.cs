@@ -7,7 +7,8 @@ namespace Jibo.Cloud.Infrastructure.Agent;
 public interface IFreeAgentChat
 {
     /// <param name="image">Base64 JPEG for the last user message (Jibo looked), or null.</param>
-    Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token);
+    /// <param name="context">The part of the instructions that changes (time, memory); then system is prompt-cached.</param>
+    Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token, string? context = null);
 }
 
 /// <summary>Free mode's replies, from Anthropic's Messages API with 5x1's key. Failures surface only as codes.</summary>
@@ -16,14 +17,21 @@ public sealed class AnthropicFreeChat(HttpClient http, FreeAgentOptions options)
     public const string ClientName = "free-agent-anthropic";
     private const int MaxTokens = 1024; // Jibo answers in a sentence or two; this caps a runaway reply's cost
 
-    public async Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token)
+    public async Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token, string? context = null)
     {
+        // With context, system is the same for every robot: cache it (reads cost 5% of input). Without, it holds the
+        // time and changes every minute, so caching would only add write costs.
+        object instructions = context is null ? system : new object[]
+        {
+            new { type = "text", text = system, cache_control = new { type = "ephemeral" } },
+            new { type = "text", text = context },
+        };
         var key = options.ApiKey() ?? throw new FreeAgentRelayException("free_unavailable", 503);
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages")
         {
             Content = JsonContent.Create(new
             {
-                model, max_tokens = MaxTokens, system,
+                model, max_tokens = MaxTokens, system = instructions,
                 messages = messages.Select((m, i) => new
                 {
                     role = m.Role,

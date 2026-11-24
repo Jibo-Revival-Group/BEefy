@@ -81,7 +81,7 @@ public static class FreeAgentEndpoints
             // The reply names the model that answered; BEacon 3.1.9 and older accept only gemma3:4b, so they stop
             // using Free until they update to 3.2.0.
             var model = options.CurrentModel();
-            var text = await chat.ChatAsync(request.System, request.Messages, model, request.Image, deadline.Token);
+            var text = await chat.ChatAsync(request.System, request.Messages, model, request.Image, deadline.Token, request.Context);
             return Results.Json(new { requestId = request.RequestId, text, model });
         }
         catch (Exception ex) when (ex is JsonException or DecoderFallbackException) { return Error("invalid_request", 400); }

@@ -96,9 +96,11 @@ public sealed class FreeAgentEndpointTests
     {
         public Func<string, string>? Reply;
         public readonly List<(string System, IReadOnlyList<FreeAgentChatMessage> Messages, string Model, string? Image)> Calls = [];
-        public Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token)
+        public readonly List<string?> Contexts = [];
+        public Task<string> ChatAsync(string system, IReadOnlyList<FreeAgentChatMessage> messages, string model, string? image, CancellationToken token, string? context = null)
         {
             Calls.Add((system, messages, model, image));
+            Contexts.Add(context);
             return Reply is null ? throw new FreeAgentRelayException("free_unavailable", 503) : Task.FromResult(Reply(model));
         }
     }
@@ -236,6 +238,29 @@ public sealed class FreeAgentEndpointTests
         foreach (var bad in new[] { "", "  ", new string('x', 8001), "bell\u0007" })
             Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(Signed(With(bad)))).StatusCode);
         Assert.Single(chat.Calls);
+    }
+
+    [Fact]
+    public async Task ContextIsPassedOnSeparately_AndBoundedWithTheSystemPrompt()
+    {
+        var chat = new FakeChat { Reply = _ => "ok" };
+        await using var factory = Factory(chat: chat);
+        var client = Client(factory);
+        string Req(string? system, string? context)
+        {
+            var body = new Dictionary<string, object> { ["requestId"] = Guid.NewGuid().ToString("N"), ["robotId"] = "robot-1",
+                ["messages"] = new[] { new { role = "user", content = "hi" } } };
+            if (system is not null) body["system"] = system;
+            if (context is not null) body["context"] = context;
+            return JsonSerializer.Serialize(body);
+        }
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Signed(Req("You are Jibo.", " It is now noon.")))).StatusCode);
+        Assert.Equal(("You are Jibo.", " It is now noon."), (chat.Calls[^1].System, chat.Contexts[^1]));
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Signed(Req("You are Jibo.", null)))).StatusCode);
+        Assert.Null(chat.Contexts[^1]);
+        foreach (var bad in new[] { Req("You are Jibo.", " "), Req("You are Jibo.", "bell\u0007"), Req(new string('x', 4000), new string('y', 4001)), Req(null, "no system") })
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(Signed(bad))).StatusCode);
+        Assert.Equal(2, chat.Calls.Count);
     }
 
     [Fact]

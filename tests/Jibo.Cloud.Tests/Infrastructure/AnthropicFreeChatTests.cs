@@ -30,6 +30,25 @@ public sealed class AnthropicFreeChatTests
     }
 
     [Fact]
+    public async Task WithContext_TheSharedSystemPromptIsCached_AndContextIsNot()
+    {
+        using var keyFile = new TempFile("sk-test-key\n");
+        var handler = new Handler(HttpStatusCode.OK, "{\"content\":[{\"type\":\"text\",\"text\":\"Hi.\"}]}");
+        var chat = new AnthropicFreeChat(new HttpClient(handler), new FreeAgentOptions { KeyFile = keyFile.Path });
+        await chat.ChatAsync("You are Jibo.", [new("user", "hello")], "m", null, CancellationToken.None, " It is now noon.");
+        var system = JsonDocument.Parse(handler.Body!).RootElement.GetProperty("system");
+        Assert.Equal(2, system.GetArrayLength());
+        Assert.Equal("You are Jibo.", system[0].GetProperty("text").GetString());
+        Assert.Equal("ephemeral", system[0].GetProperty("cache_control").GetProperty("type").GetString());
+        Assert.Equal(" It is now noon.", system[1].GetProperty("text").GetString());
+        Assert.False(system[1].TryGetProperty("cache_control", out _));
+        // Without context (BEacon 3.2.0, time inside system) nothing is cached: it would change every minute.
+        await chat.ChatAsync("You are Jibo. It is now noon.", [new("user", "hello")], "m", null, CancellationToken.None);
+        Assert.Equal(JsonValueKind.String, JsonDocument.Parse(handler.Body!).RootElement.GetProperty("system").ValueKind);
+        Assert.DoesNotContain("cache_control", handler.Body!);
+    }
+
+    [Fact]
     public async Task APhotoGoesOnTheLastUserMessageOnly()
     {
         using var keyFile = new TempFile("sk-test-key\n");

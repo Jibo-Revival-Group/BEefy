@@ -5,7 +5,7 @@ using Jibo.Cloud.Infrastructure.Audio;
 
 namespace Jibo.Cloud.Api.Hosting;
 
-internal sealed record FreeAgentRequest(string RequestId, string RobotId, string System, IReadOnlyList<FreeAgentChatMessage> Messages, string? Image = null)
+internal sealed record FreeAgentRequest(string RequestId, string RobotId, string System, IReadOnlyList<FreeAgentChatMessage> Messages, string? Image = null, string? Context = null)
 {
     public const string SystemMessage = "You are Jibo, a friendly social robot. Reply briefly and clearly in plain spoken English.";
     // BEacon 3.2.0+ sends its own instructions (Jibo's persona, the "DO:" actions and installed skills), like paid models get.
@@ -18,7 +18,11 @@ internal sealed record FreeAgentRequest(string RequestId, string RobotId, string
         var root = document.RootElement;
         var hasSystem = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("system", out _);
         var hasImage = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("image", out _);
-        string[] fields = ["requestId", "robotId", "messages", .. hasSystem ? ["system"] : Array.Empty<string>(), .. hasImage ? ["image"] : Array.Empty<string>()];
+        // BEacon 3.2.1+ sends the per-robot, per-minute part (time, nickname, memory) as context, so system stays the
+        // same for every robot and can be prompt-cached.
+        var hasContext = hasSystem && root.TryGetProperty("context", out _);
+        string[] fields = ["requestId", "robotId", "messages", .. hasSystem ? ["system"] : Array.Empty<string>(), .. hasImage ? ["image"] : Array.Empty<string>(),
+            .. hasContext ? ["context"] : Array.Empty<string>()];
         if (!ExactFields(root, fields) ||
             root.GetProperty("requestId").ValueKind != JsonValueKind.String ||
             !Regex.IsMatch(root.GetProperty("requestId").GetString()!, @"\A[0-9a-f]{32}\z", RegexOptions.CultureInvariant)) return null;
@@ -34,6 +38,15 @@ internal sealed record FreeAgentRequest(string RequestId, string RobotId, string
             if (value.ValueKind != JsonValueKind.String) return null;
             system = value.GetString()!;
             if (string.IsNullOrWhiteSpace(system) || system.Length > MaxSystemLength || system.Any(c => char.IsControl(c) && c != '\n')) return null;
+        }
+        string? context = null;
+        if (hasContext)
+        {
+            var value = root.GetProperty("context");
+            if (value.ValueKind != JsonValueKind.String) return null;
+            context = value.GetString()!;
+            // Together no longer than one system prompt could be before.
+            if (string.IsNullOrWhiteSpace(context) || system.Length + context.Length > MaxSystemLength || context.Any(c => char.IsControl(c) && c != '\n')) return null;
         }
         string? image = null;
         if (hasImage)
@@ -58,7 +71,7 @@ internal sealed record FreeAgentRequest(string RequestId, string RobotId, string
             if (role != (index++ % 2 == 0 ? "user" : "assistant") || string.IsNullOrWhiteSpace(content)) return null;
             messages.Add(new(role, content));
         }
-        return new(root.GetProperty("requestId").GetString()!, robotId, system, messages, image);
+        return new(root.GetProperty("requestId").GetString()!, robotId, system, messages, image, context);
     }
     private static bool ExactFields(JsonElement item, params string[] fields) => item.ValueKind == JsonValueKind.Object &&
         item.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).SequenceEqual(fields.Order(StringComparer.Ordinal));
