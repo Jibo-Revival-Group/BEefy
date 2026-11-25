@@ -34,8 +34,9 @@ public sealed class EspnSportsScoreProvider(HttpClient httpClient, ILogger<EspnS
         var text = " " + Regex.Replace(transcript.ToLowerInvariant().Replace("'s", string.Empty), "[^a-z0-9 ]", " ") + " ";
         var teams = await GetTeamsAsync(cancellationToken);
         var matches = teams
-            // People say "the (Detroit) Lions"; without "the" it's "his jazz combo" or "play one stars collapse".
-            .Where(t => Regex.IsMatch(text, " the (?:" + Regex.Escape(t.Location) + " )?" + Regex.Escape(t.Name) + "s? "))
+            // People say "the (last) (Detroit) Lions (game)"; without "the" it's "his jazz combo" or "play one stars collapse".
+            .Where(t => Regex.IsMatch(text, " the (?:(?:last|latest|most recent|previous|next) )?(?:" + Regex.Escape(t.Location) + " )?" +
+                                            Regex.Escape(t.Name) + "s? "))
             .ToList();
         if (matches.Count == 0) return null;
         // Same name in two leagues (Giants, Rangers, Kings...): the sport or city said wins, then in-season.

@@ -74,6 +74,7 @@ public sealed class EspnSportsScoreProviderTests
     [InlineData("did the penguins win", "The Penguins play the Kings tonight at 9 PM.")]
     [InlineData("did the giants win", "The Giants beat the Texans 27 to 21 on Monday, November 2.")]
     [InlineData("did the giants win in baseball", "The Giants lost to the Dodgers 4 to 1 on Monday, September 28.")]
+    [InlineData("what was the score of the last lions game", "The Lions beat the Vikings 19 to 15 on Sunday, November 1.")]
     public async Task AnswerAsync_ProdQuestions(string question, string expected)
     {
         Assert.Equal(expected, (await Create(Espn).AnswerAsync(question, Now))?.Spoken);
