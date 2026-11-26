@@ -5001,6 +5001,30 @@ public sealed class JiboInteractionServiceTests
         Assert.Equal("news", decision.IntentName);
     }
 
+    // Overheard TV ("a nato country") once launched country radio.
+    [Theory]
+    [InlineData("and then let's say they go after turkey or something that's a nato country we have an article five obligation")]
+    [InlineData("the jazz age changed this country forever")]
+    public async Task BuildDecisionAsync_GenreWordInOverheardSpeech_IsNotRadio(string transcript)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
+
+        Assert.NotEqual("radio_genre", decision.IntentName);
+    }
+
+    [Theory]
+    [InlineData("country", "Country")]
+    [InlineData("some jazz please", "Jazz")]
+    [InlineData("can you put on some country for me", "Country")]
+    [InlineData("i want to listen to classical", "Classical")]
+    public async Task BuildDecisionAsync_GenreRequest_StillPlaysTheStation(string transcript, string station)
+    {
+        var decision = await CreateService().BuildDecisionAsync(new TurnContext { RawTranscript = transcript, NormalizedTranscript = transcript });
+
+        Assert.Equal("radio_genre", decision.IntentName);
+        Assert.Equal(station, decision.SkillPayload!["station"]);
+    }
+
     [Theory]
     [InlineData("play sports radio", "Sports")]
     [InlineData("play news radio", "NewsAndTalk")]

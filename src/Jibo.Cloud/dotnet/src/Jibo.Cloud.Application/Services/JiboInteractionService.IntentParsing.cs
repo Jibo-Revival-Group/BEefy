@@ -1280,6 +1280,11 @@ public sealed partial class JiboInteractionService
             !loweredTranscript.Contains("talk", StringComparison.Ordinal))
             return null;
 
+        // A genre word inside overheard speech ("a nato country") isn't a request: need a play cue or a near-bare genre.
+        if (!RadioRequestCue.IsMatch(loweredTranscript) &&
+            loweredTranscript.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length > 3)
+            return null;
+
         foreach (var (phrase, station) in RadioGenreAliases)
             if (loweredTranscript.Contains(phrase, StringComparison.Ordinal))
                 return station;
@@ -1909,6 +1914,10 @@ public sealed partial class JiboInteractionService
     private static readonly Regex OpenSkillPattern = new(
         @"^(?:hey jibo |jibo )?(?:can you |could you |please )?(?:open|launch|start|run|go to|play|use)(?: up)?(?: the| my| your)? (?<name>.+?)(?: skill| app)?(?: please)?$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50));
+
+    private static readonly Regex RadioRequestCue = new(
+        @"\b(?:play|playing|put on|turn on|switch to|change to|listen|hear|radio|station|music)\b",
+        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
 
     // "Pretend to be Pac-Man" opens the Pac-Man pack; ASR spells the name every way (pac man, pack man, pacman, pac-man).
     private static readonly Regex PacManPattern = new(
