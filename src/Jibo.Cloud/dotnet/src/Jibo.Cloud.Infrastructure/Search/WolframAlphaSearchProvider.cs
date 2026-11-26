@@ -20,6 +20,9 @@ public sealed class WolframAlphaSearchProvider(
         "no short answer available"
     ];
 
+    // Its answers came within 3.1 s in a week of prod logs; its "no answer" takes ~5 s.
+    private static readonly TimeSpan TextApiTimeout = TimeSpan.FromSeconds(3.5);
+
     private readonly ConcurrentDictionary<string, CacheEntry> _cache =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -44,12 +47,14 @@ public sealed class WolframAlphaSearchProvider(
         // The text API is the last resort, but its "no answer" takes ~5 s, so start it now instead of after
         // the Spoken attempts. Its answer is still only used when both Spoken attempts find nothing.
         using var textCancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        textCancel.CancelAfter(TextApiTimeout);
         var textTask = AskResultTextAsync(request.BackendSpec.Credential, simplified, request.LatLong, textCancel.Token);
         var result = await AskSpokenAsync(request.BackendSpec.Credential, normalizedQuery, request.LatLong, cancellationToken);
         if (result.Outcome == KnowledgeSearchOutcome.NotFound && simplified != normalizedQuery)
             result = await AskSpokenAsync(request.BackendSpec.Credential, simplified, request.LatLong, cancellationToken);
         if (result.Outcome == KnowledgeSearchOutcome.NotFound)
-            result = await textTask ?? result;
+            try { result = await textTask ?? result; }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }   // capped: stays NotFound
         else
             textCancel.Cancel();
 

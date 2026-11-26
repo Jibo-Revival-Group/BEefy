@@ -212,6 +212,22 @@ public sealed class WolframAlphaSearchProviderTests
     }
 
     [Fact]
+    public async Task SearchAsync_GivesUpOnASlowTextApi()
+    {
+        var handler = new DelayedHttpMessageHandler(TimeSpan.FromMilliseconds(50), request =>
+            request.RequestUri!.AbsolutePath.Contains("llm-api")
+                ? TextResponse("Result:\ntoo late\n")
+                : new HttpResponseMessage(HttpStatusCode.NotImplemented), textApiDelay: TimeSpan.FromSeconds(6));
+        var provider = CreateProvider(handler);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await provider.SearchAsync(CreateRequest("can i pet that dog"));
+
+        Assert.Equal(KnowledgeSearchOutcome.NotFound, result!.Outcome);
+        Assert.True(watch.ElapsedMilliseconds < 4500, $"took {watch.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
     public async Task SearchAsync_PrefersTheSpokenAnswerOverTheTextApi()
     {
         var handler = new DelayedHttpMessageHandler(TimeSpan.FromMilliseconds(50), request =>
@@ -225,12 +241,12 @@ public sealed class WolframAlphaSearchProviderTests
         Assert.Equal("The spoken answer", result!.AnswerText);
     }
 
-    private sealed class DelayedHttpMessageHandler(TimeSpan delay, Func<HttpRequestMessage, HttpResponseMessage> responseFactory)
+    private sealed class DelayedHttpMessageHandler(TimeSpan delay, Func<HttpRequestMessage, HttpResponseMessage> responseFactory, TimeSpan? textApiDelay = null)
         : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            await Task.Delay(delay, cancellationToken);
+            await Task.Delay(request.RequestUri!.AbsolutePath.Contains("llm-api") ? textApiDelay ?? delay : delay, cancellationToken);
             return responseFactory(request);
         }
     }
