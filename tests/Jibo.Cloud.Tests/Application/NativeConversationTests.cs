@@ -73,6 +73,22 @@ public sealed class NativeConversationTests
     }
 
     [Fact]
+    public async Task FirstContactNameAnswer_GoesToTheRobotWithoutCloudSpeech()
+    {
+        // First contact asks "What's your name?" and saves the answer on the robot itself.
+        var turn = Turn("my name is Zane");
+        turn.Attributes["listenRules"] = new[] { "first-contact/your_name" };
+        turn.Attributes["listenHotphrase"] = false;
+        var plan = await new DemoConversationBroker(Service()).HandleTurnAsync(turn);
+        Assert.Equal("skill_listen", plan.IntentName);
+        var messages = ResponsePlanToSocketMessagesMapper.Map(plan, turn, new CloudSession(), true)
+            .Select(m => JsonDocument.Parse(m.Text).RootElement.Clone()).ToArray();
+        var listen = messages.Single(m => m.GetProperty("type").GetString() == "LISTEN");
+        Assert.Equal("my name is Zane", listen.GetProperty("data").GetProperty("asr").GetProperty("text").GetString());
+        Assert.DoesNotContain(messages, m => m.GetProperty("type").GetString() is "SKILL_ACTION" or "SKILL_REDIRECT");
+    }
+
+    [Fact]
     public async Task ColorConversation_AsksAndUsesTheFollowUpAnswer()
     {
         var service = Service();

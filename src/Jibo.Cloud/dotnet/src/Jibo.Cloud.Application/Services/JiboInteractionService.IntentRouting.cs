@@ -84,7 +84,8 @@ public sealed partial class JiboInteractionService
              string.Equals(loweredTranscript, clientIntent, StringComparison.OrdinalIgnoreCase)))
             return clientIntent!.ToLowerInvariant();
 
-        if (IsNameSetStatement(loweredTranscript)) return "memory_set_name";
+        // A skill asking for a name (first contact) saves the answer itself.
+        if (!isSkillOwnedListen && IsNameSetStatement(loweredTranscript)) return "memory_set_name";
 
         if (IsNameRecallQuestion(loweredTranscript)) return "memory_get_name";
 
