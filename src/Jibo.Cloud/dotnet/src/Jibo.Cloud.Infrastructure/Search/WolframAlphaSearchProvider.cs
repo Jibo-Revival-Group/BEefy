@@ -39,13 +39,19 @@ public sealed class WolframAlphaSearchProvider(
         if (TryGetCachedValue(cacheKey, out var cachedResult))
             return cachedResult;
 
-        var result = await AskSpokenAsync(request.BackendSpec.Credential, normalizedQuery, request.LatLong, cancellationToken);
         // Wolfram often has no answer for chatty phrasing ("what's the perfect temperature to cook chicken").
         var simplified = SimplifyQuery(normalizedQuery);
+        // The text API is the last resort, but its "no answer" takes ~5 s, so start it now instead of after
+        // the Spoken attempts. Its answer is still only used when both Spoken attempts find nothing.
+        using var textCancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var textTask = AskResultTextAsync(request.BackendSpec.Credential, simplified, request.LatLong, textCancel.Token);
+        var result = await AskSpokenAsync(request.BackendSpec.Credential, normalizedQuery, request.LatLong, cancellationToken);
         if (result.Outcome == KnowledgeSearchOutcome.NotFound && simplified != normalizedQuery)
             result = await AskSpokenAsync(request.BackendSpec.Credential, simplified, request.LatLong, cancellationToken);
         if (result.Outcome == KnowledgeSearchOutcome.NotFound)
-            result = await AskResultTextAsync(request.BackendSpec.Credential, simplified, request.LatLong, cancellationToken) ?? result;
+            result = await textTask ?? result;
+        else
+            textCancel.Cancel();
 
         SetCachedValue(cacheKey, result,
             result.Outcome == KnowledgeSearchOutcome.Found ? options.CacheTtlSeconds : options.FailureCacheTtlSeconds);

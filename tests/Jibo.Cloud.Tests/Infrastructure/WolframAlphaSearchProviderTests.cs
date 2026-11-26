@@ -133,7 +133,7 @@ public sealed class WolframAlphaSearchProviderTests
         var uris = new List<string>();
         var provider = CreateProvider(new RecordingHttpMessageHandler(r => { uris.Add(r.RequestUri!.ToString()); return TextResponse("About 190 miles"); }));
         await provider.SearchAsync(new KnowledgeSearchRequest("how far is new york city", new SearchBackendSpec(SearchBackendKind.Wolfram, "test-app-id", null), "42.67,-71.42"));
-        Assert.Contains("latlong=42.67%2C-71.42", Assert.Single(uris));
+        Assert.Contains("latlong=42.67%2C-71.42", Assert.Single(uris, u => u.Contains("/v1/spoken")));
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public sealed class WolframAlphaSearchProviderTests
         var provider = CreateProvider(new RecordingHttpMessageHandler(r =>
         {
             var input = Uri.UnescapeDataString(r.RequestUri!.Query);
-            asked.Add(input);
+            if (r.RequestUri.AbsolutePath.Contains("/v1/spoken")) asked.Add(input);
             return input.Contains("perfect") ? new HttpResponseMessage(HttpStatusCode.NotImplemented) : TextResponse("Chicken is cooked at 165 degrees Fahrenheit");
         }));
         var result = await provider.SearchAsync(CreateRequest("what's the perfect temperature to cook chicken"));
@@ -192,6 +192,47 @@ public sealed class WolframAlphaSearchProviderTests
         {
             Content = new StringContent(body, Encoding.UTF8, "text/plain")
         };
+    }
+
+    [Fact]
+    public async Task SearchAsync_AsksTheTextApiAlongsideTheSpokenApi()
+    {
+        // Each Wolfram call takes 400 ms. Asked one after the other, a Spoken miss plus the text API is 800 ms.
+        var handler = new DelayedHttpMessageHandler(TimeSpan.FromMilliseconds(400), request =>
+            request.RequestUri!.AbsolutePath.Contains("llm-api")
+                ? TextResponse("Input interpretation:\nDetroit Lions\n\nResult:\nwon 24 to 6\n")
+                : new HttpResponseMessage(HttpStatusCode.NotImplemented));
+        var provider = CreateProvider(handler);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await provider.SearchAsync(CreateRequest("when did the detroit lions play"));
+
+        Assert.Equal("Detroit Lions is won 24 to 6.", result!.AnswerText);
+        Assert.True(watch.ElapsedMilliseconds < 700, $"took {watch.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task SearchAsync_PrefersTheSpokenAnswerOverTheTextApi()
+    {
+        var handler = new DelayedHttpMessageHandler(TimeSpan.FromMilliseconds(50), request =>
+            TextResponse(request.RequestUri!.AbsolutePath.Contains("llm-api")
+                ? "Result:\ntext api answer\n"
+                : "The spoken answer"));
+        var provider = CreateProvider(handler);
+
+        var result = await provider.SearchAsync(CreateRequest("what is the tallest mountain"));
+
+        Assert.Equal("The spoken answer", result!.AnswerText);
+    }
+
+    private sealed class DelayedHttpMessageHandler(TimeSpan delay, Func<HttpRequestMessage, HttpResponseMessage> responseFactory)
+        : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(delay, cancellationToken);
+            return responseFactory(request);
+        }
     }
 
     private sealed class RecordingHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory)
