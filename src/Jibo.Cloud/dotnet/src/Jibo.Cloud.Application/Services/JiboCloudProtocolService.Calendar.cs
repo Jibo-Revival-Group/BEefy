@@ -61,7 +61,8 @@ public sealed partial class JiboCloudProtocolService
                 // The saved private URL is never returned to Beacon. An omitted URL
                 // updates the enabled setting without replacing the existing feed.
                 var icalUrl = ReadString(body, "icalUrl");
-                if (string.IsNullOrWhiteSpace(icalUrl))
+                var localFirst = ReadBool(body, "localFirst");
+                if (string.IsNullOrWhiteSpace(icalUrl) && !localFirst)
                     icalUrl = userIntegrationStore.FindMemberCalendarFeed(loopId, memberId)?.IcalUrl;
                 if (!calendarFeedProbe.TryValidateHttpsPublicUrl(icalUrl, out var validationError))
                     return CalendarError(400, validationError ?? "iCal URL is required.");
@@ -69,6 +70,12 @@ public sealed partial class JiboCloudProtocolService
                 var isEnabled = body?.TryGetProperty("isEnabled", out _) == true
                     ? ReadBool(body, "isEnabled")
                     : true;
+                // Local-first: BEacon keeps the feed itself once it's accepted here.
+                if (localFirst)
+                    return ProtocolDispatchResult.Ok(CalendarFeedStatus(memberId, new MemberCalendarFeedRecord
+                    {
+                        LoopId = loopId, MemberId = memberId, IcalUrl = icalUrl!.Trim(), IsEnabled = isEnabled
+                    }));
                 var feed = userIntegrationStore.UpsertMemberCalendarFeed(
                     loopId,
                     memberId,

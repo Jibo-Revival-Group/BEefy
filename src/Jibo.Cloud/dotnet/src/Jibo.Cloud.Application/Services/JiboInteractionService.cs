@@ -351,6 +351,7 @@ public sealed partial class JiboInteractionService(
     public async Task<JiboInteractionDecision> BuildDecisionAsync(TurnContext turn,
         CancellationToken cancellationToken = default)
     {
+        UseLocalFirstSettings(turn);
         var decision = await BuildDecisionCoreAsync(turn, cancellationToken);
         if (decision.IntentName == "emotion_query")
             decision = await WithOriginalMoodLineAsync(turn, decision, cancellationToken);

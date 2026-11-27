@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Jibo.Cloud.Application.Abstractions;
 using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
@@ -12,6 +13,10 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
     private List<MemberCalendarFeedRecord> _calendarFeeds;
     private List<CommuteAddressRecord> _commuteAddresses;
     private List<NewsTopicsRecord> _newsTopics;
+    // Robots that stop talking drop out after a day, so the overlay stays bounded by the active fleet.
+    private static readonly TimeSpan LocalFirstLifetime = TimeSpan.FromHours(24);
+    private readonly ConcurrentDictionary<string, (LocalFirstSettings Settings, DateTimeOffset SeenUtc)> _localFirst =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public InMemoryUserIntegrationStore(EncryptedUserDataSnapshotStore snapshotStore)
     {
@@ -164,8 +169,23 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
         }
     }
 
+    public void UseLocalFirstSettings(string scope, LocalFirstSettings settings)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var entry in _localFirst.Where(entry => now - entry.Value.SeenUtc > LocalFirstLifetime))
+            _localFirst.TryRemove(entry);
+        _localFirst[scope.Trim()] = (settings, now);
+    }
+
+    private LocalFirstSettings? LocalFirstFor(string? scope) =>
+        scope is not null && _localFirst.TryGetValue(scope.Trim(), out var entry) &&
+        DateTimeOffset.UtcNow - entry.SeenUtc <= LocalFirstLifetime
+            ? entry.Settings
+            : null;
+
     public IReadOnlyList<CommuteAddressRecord> GetCommuteAddresses(string scope)
     {
+        if (LocalFirstFor(scope) is { } localFirst) return localFirst.CommuteAddresses.ToArray();
         lock (_syncRoot)
         {
             return _commuteAddresses.Where(item => item.Scope.Equals(scope, StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -176,6 +196,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
     {
         if (string.IsNullOrWhiteSpace(address.Scope) || string.IsNullOrWhiteSpace(address.MemberId))
             throw new ArgumentException("Scope and member id are required.", nameof(address));
+        if (LocalFirstFor(address.Scope) is not null) return address;
         lock (_syncRoot)
         {
             _commuteAddresses.RemoveAll(item => SameCommuteAddress(item, address.Scope, address.MemberId));
@@ -187,6 +208,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
 
     public CommuteAddressRecord? ClearCommuteAddress(string scope, string memberId)
     {
+        if (LocalFirstFor(scope) is not null) return null;
         lock (_syncRoot)
         {
             var existing = _commuteAddresses.FirstOrDefault(item => SameCommuteAddress(item, scope, memberId));
@@ -199,6 +221,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
 
     public IReadOnlyList<NewsTopicsRecord> GetNewsTopics(string scope)
     {
+        if (LocalFirstFor(scope) is { } localFirst) return localFirst.NewsTopics.ToArray();
         lock (_syncRoot)
         {
             return _newsTopics.Where(item => item.Scope.Equals(scope, StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -209,6 +232,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
     {
         if (string.IsNullOrWhiteSpace(topics.Scope) || string.IsNullOrWhiteSpace(topics.MemberId))
             throw new ArgumentException("Scope and member id are required.", nameof(topics));
+        if (LocalFirstFor(topics.Scope) is not null) return topics;
         lock (_syncRoot)
         {
             _newsTopics.RemoveAll(item => item.Scope.Equals(topics.Scope, StringComparison.OrdinalIgnoreCase) &&
@@ -225,6 +249,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
 
     public IReadOnlyList<MemberCalendarFeedRecord> GetMemberCalendarFeeds(string? loopId = null)
     {
+        if (LocalFirstFor(loopId) is { } localFirst) return localFirst.CalendarFeeds.ToArray();
         lock (_syncRoot)
         {
             if (string.IsNullOrWhiteSpace(loopId))
@@ -238,6 +263,8 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
 
     public MemberCalendarFeedRecord? FindMemberCalendarFeed(string loopId, string memberId)
     {
+        if (LocalFirstFor(loopId) is { } localFirst)
+            return localFirst.CalendarFeeds.FirstOrDefault(feed => feed.MemberId.Equals(memberId, StringComparison.OrdinalIgnoreCase));
         lock (_syncRoot)
         {
             return FindFeedLocked(loopId, memberId);
@@ -278,6 +305,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
                 TimeZoneId = string.IsNullOrWhiteSpace(timeZoneId) ? existing?.TimeZoneId : timeZoneId.Trim()
             };
 
+            if (LocalFirstFor(loopId) is not null) return record;
             if (existing is null)
                 _calendarFeeds.Add(record);
             else
@@ -292,6 +320,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
 
     public MemberCalendarFeedRecord? ClearMemberCalendarFeed(string loopId, string memberId)
     {
+        if (LocalFirstFor(loopId) is not null) return null;
         lock (_syncRoot)
         {
             var existing = FindFeedLocked(loopId, memberId);
@@ -309,6 +338,7 @@ public sealed class InMemoryUserIntegrationStore : IUserIntegrationStore
         DateTimeOffset? lastSuccessUtc,
         string? lastError)
     {
+        if (LocalFirstFor(loopId) is not null) return null;
         lock (_syncRoot)
         {
             var existing = FindFeedLocked(loopId, memberId);

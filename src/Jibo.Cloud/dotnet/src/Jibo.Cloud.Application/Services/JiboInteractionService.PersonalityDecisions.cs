@@ -352,7 +352,8 @@ public sealed partial class JiboInteractionService
     private GreetingPresenceRecord? ResolveGreetingHistoryRecord(TurnContext turn, GreetingPresenceProfile presence)
     {
         var historyIdentity = ResolveGreetingHistoryIdentity(presence);
-        if (string.IsNullOrWhiteSpace(historyIdentity) || cloudStateStore is null) return null;
+        // Local-first: the cooldown lives in the session only (nothing is stored for these robots).
+        if (string.IsNullOrWhiteSpace(historyIdentity) || cloudStateStore is null || LocalFirst.IsEnabled(turn)) return null;
 
         var loopId = ReadTenantAttribute(turn, "loopId") ?? "openjibo-default-loop";
         return cloudStateStore.GetGreetingPresences(loopId)
@@ -403,7 +404,7 @@ public sealed partial class JiboInteractionService
         string? preferredName,
         bool proactive)
     {
-        if (cloudStateStore is null) return;
+        if (cloudStateStore is null || LocalFirst.IsEnabled(turn)) return;
 
         var identityId = ResolveGreetingHistoryIdentity(presence);
         if (string.IsNullOrWhiteSpace(identityId)) return;
@@ -609,6 +610,8 @@ public sealed partial class JiboInteractionService
         GreetingPresenceProfile presence,
         DateOnly today)
     {
+        // Local-first birthdays come only from the robot's loop (TryClaimBirthdayLine), never cloud memory.
+        if (LocalFirst.IsEnabled(turn)) return null;
         var identityScope = !string.IsNullOrWhiteSpace(presence.PrimaryPersonId)
             ? ResolveTenantScope(turn, presence.PrimaryPersonId)
             : ResolveTenantScope(turn);
@@ -839,6 +842,18 @@ public sealed partial class JiboInteractionService
 
     private IReadOnlyList<PersonRecord> GetLoopPeople(TurnContext turn)
     {
+        if (LocalFirst.IsEnabled(turn))
+            return TryReadLoopUsersFromTurn(turn)
+                .Where(static user => !string.Equals(user.Type, "robot", StringComparison.OrdinalIgnoreCase))
+                .Select(static user => new PersonRecord
+                {
+                    PersonId = user.Id,
+                    DisplayName = user.Nickname is { Length: > 0 } nickname ? nickname
+                        : string.Join(' ', new[] { user.FirstName, user.LastName }.Where(static part => !string.IsNullOrWhiteSpace(part))) is { Length: > 0 } name
+                            ? name : user.Id
+                })
+                .OrderBy(static person => person.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         if (cloudStateStore is null) return [];
 
         var loopId = ReadTenantAttribute(turn, "loopId") ?? "openjibo-default-loop";

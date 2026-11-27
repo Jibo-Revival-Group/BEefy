@@ -6,7 +6,7 @@ namespace Jibo.Cloud.Application.Services;
 /// <summary>
 /// Server changes that need robot code from the beta (e.g. the sports card needs BEam's data: image support). A robot
 /// gets them when its CONTEXT carries <c>runtime.beta: true</c> (BEam's context provider sends it only on
-/// 192.168.7.165; the native jetstream replaces <c>general</c>, so it can't go there) or its release is newer than
+/// 192.168.7.163; the native jetstream replaces <c>general</c>, so it can't go there) or its release is newer than
 /// <see cref="CurrentOtaRelease"/>, so after the next OTA every robot does, tag or not.
 /// </summary>
 public static class BetaFeatures

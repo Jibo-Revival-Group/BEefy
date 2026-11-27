@@ -20,13 +20,15 @@ public sealed partial class JiboCloudProtocolService
         var scope = ResolveCalendarScope(envelope);
         var body = envelope.TryParseBody();
         var memberId = ReadString(body, "memberId") ?? CommuteAddressRecord.HomeMemberId;
+        // Local-first robots keep their addresses and topics: answer without reading or saving the store.
+        var localFirst = ReadBool(body, "localFirst");
         switch (operation)
         {
             case "GetCommuteAddresses":
                 return ProtocolDispatchResult.Ok(new
                 {
                     available = commuteRouting?.IsConfigured == true,
-                    addresses = userIntegrationStore.GetCommuteAddresses(scope)
+                    addresses = (localFirst ? [] : userIntegrationStore.GetCommuteAddresses(scope))
                         .Select(static item => new { memberId = item.MemberId, address = item.Address, mode = item.Mode }).ToArray()
                 });
             case "SetCommuteAddress":
@@ -39,24 +41,25 @@ public sealed partial class JiboCloudProtocolService
                 var mode = ReadString(body, "mode")?.Trim().ToLowerInvariant();
                 if (mode is not null && !CommuteAddressRecord.Modes.Contains(mode))
                     return CalendarError(400, "Mode must be driving, bicycling or walking.");
-                var existing = userIntegrationStore.GetCommuteAddresses(scope).FirstOrDefault(item => item.MemberId == memberId);
+                var existing = localFirst ? null : userIntegrationStore.GetCommuteAddresses(scope).FirstOrDefault(item => item.MemberId == memberId);
                 // Changing only the mode re-sends the saved address: skip the lookup then.
                 var found = mode is not null && existing is not null && string.Equals(existing.Address, address, StringComparison.OrdinalIgnoreCase)
                     ? new GeocodedAddress(existing.Address, existing.Latitude, existing.Longitude, existing.City, null, null, null, null)
                     : await commuteRouting.GeocodeAsync(address);
                 if (found is null) return CalendarError(400, "That address couldn't be found. Check it and try again.");
-                userIntegrationStore.UpsertCommuteAddress(new CommuteAddressRecord
-                {
-                    Scope = scope,
-                    MemberId = memberId,
-                    Address = found.Address,
-                    Latitude = found.Latitude,
-                    Longitude = found.Longitude,
-                    City = found.City,
-                    MemberName = ReadString(body, "memberName"),
-                    TimeZoneId = ReadString(body, "timeZone"),
-                    Mode = mode ?? existing?.Mode
-                });
+                if (!localFirst)
+                    userIntegrationStore.UpsertCommuteAddress(new CommuteAddressRecord
+                    {
+                        Scope = scope,
+                        MemberId = memberId,
+                        Address = found.Address,
+                        Latitude = found.Latitude,
+                        Longitude = found.Longitude,
+                        City = found.City,
+                        MemberName = ReadString(body, "memberName"),
+                        TimeZoneId = ReadString(body, "timeZone"),
+                        Mode = mode ?? existing?.Mode
+                    });
                 return ProtocolDispatchResult.Ok(new
                 {
                     address = found.Address, lat = found.Latitude, lng = found.Longitude, city = found.City,
@@ -68,7 +71,7 @@ public sealed partial class JiboCloudProtocolService
                 return ProtocolDispatchResult.Ok(new
                 {
                     topics = NewsTopics.All,
-                    people = userIntegrationStore.GetNewsTopics(scope)
+                    people = (localFirst ? [] : userIntegrationStore.GetNewsTopics(scope))
                         .Select(static item => new { memberId = item.MemberId, disabledTopics = item.DisabledTopics }).ToArray()
                 });
             case "SetNewsTopics":

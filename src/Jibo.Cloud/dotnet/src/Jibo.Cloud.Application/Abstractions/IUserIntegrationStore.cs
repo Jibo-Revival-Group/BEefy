@@ -1,3 +1,4 @@
+using Jibo.Cloud.Application.Services;
 using Jibo.Cloud.Domain.Models;
 
 namespace Jibo.Cloud.Application.Abstractions;
@@ -26,6 +27,12 @@ public interface IUserIntegrationStore
     /// Ensures the link has a command secret (migrates older links created before per-command auth).
     /// </summary>
     HomeAssistantLinkRecord? EnsureHomeAssistantCommandSecret(string linkId);
+
+    /// <summary>
+    /// A local-first robot's settings from its latest turn: until they expire, reads for <paramref name="scope"/>
+    /// return them and writes for it change nothing. Kept in memory only.
+    /// </summary>
+    void UseLocalFirstSettings(string scope, LocalFirstSettings settings);
 
     IReadOnlyList<CommuteAddressRecord> GetCommuteAddresses(string scope);
     CommuteAddressRecord UpsertCommuteAddress(CommuteAddressRecord address);

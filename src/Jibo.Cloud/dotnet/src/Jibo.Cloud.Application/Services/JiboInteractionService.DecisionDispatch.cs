@@ -94,7 +94,7 @@ public sealed partial class JiboInteractionService
             return new JiboInteractionDecision("sing_daisy_bell", string.Empty, "@be/daisy-bell", payload);
         }
 
-        SyncLoopPeopleFromTurn(turn);
+        if (!LocalFirst.IsEnabled(turn)) SyncLoopPeopleFromTurn(turn);
         var catalog = await contentCache.GetCatalogAsync(cancellationToken);
         // "tell me your favorite X" is asked as "what is your favorite X": the original chitchat grammar only knows the question.
         var transcript = System.Text.RegularExpressions.Regex.Replace((turn.NormalizedTranscript ?? turn.RawTranscript ?? string.Empty).Trim(),

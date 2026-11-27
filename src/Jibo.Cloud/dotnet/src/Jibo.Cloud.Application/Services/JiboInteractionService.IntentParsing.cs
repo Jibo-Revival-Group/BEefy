@@ -486,6 +486,16 @@ public sealed partial class JiboInteractionService
         }
     }
 
+    /// <summary>A local-first robot's report settings serve this turn's reports from memory (same robot scope as BEacon's).</summary>
+    private void UseLocalFirstSettings(TurnContext turn)
+    {
+        var robot = (string.IsNullOrWhiteSpace(turn.DeviceId) ? null : turn.DeviceId.Trim()) ??
+                    ReadTenantAttribute(turn, "deviceId") ?? ReadTenantAttribute(turn, "robotId");
+        if (userIntegrationStore is null || string.IsNullOrWhiteSpace(robot)) return;
+        var scope = Domain.Models.MemberCalendarFeedRecord.RobotScope(robot);
+        if (LocalFirst.ReadSettings(turn, scope) is { } settings) userIntegrationStore.UseLocalFirstSettings(scope, settings);
+    }
+
     private void SyncLoopPeopleFromTurn(TurnContext turn)
     {
         if (cloudStateStore is null) return;
