@@ -28,8 +28,15 @@ public sealed partial class JiboCloudProtocolService
                 return ProtocolDispatchResult.Ok(new
                 {
                     available = commuteRouting?.IsConfigured == true,
-                    addresses = (localFirst ? [] : userIntegrationStore.GetCommuteAddresses(scope))
-                        .Select(static item => new { memberId = item.MemberId, address = item.Address, mode = item.Mode }).ToArray()
+                    // includeDetails: the robot's one-time copy into its local-first settings file.
+                    addresses = ReadBool(body, "includeDetails") == true
+                        ? userIntegrationStore.GetCommuteAddresses(scope).Select(static item => (object)new
+                        {
+                            memberId = item.MemberId, address = item.Address, mode = item.Mode, lat = item.Latitude,
+                            lng = item.Longitude, city = item.City, memberName = item.MemberName, timeZone = item.TimeZoneId
+                        }).ToArray()
+                        : (localFirst ? [] : userIntegrationStore.GetCommuteAddresses(scope))
+                            .Select(static item => (object)new { memberId = item.MemberId, address = item.Address, mode = item.Mode }).ToArray()
                 });
             case "SetCommuteAddress":
             {
@@ -72,7 +79,7 @@ public sealed partial class JiboCloudProtocolService
                 {
                     topics = NewsTopics.All,
                     people = (localFirst ? [] : userIntegrationStore.GetNewsTopics(scope))
-                        .Select(static item => new { memberId = item.MemberId, disabledTopics = item.DisabledTopics }).ToArray()
+                        .Select(static item => new { memberId = item.MemberId, memberName = item.MemberName, disabledTopics = item.DisabledTopics }).ToArray()
                 });
             case "SetNewsTopics":
             {

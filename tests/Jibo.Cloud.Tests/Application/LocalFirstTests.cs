@@ -203,6 +203,15 @@ public sealed class LocalFirstTests : IDisposable
         // Without the flag (every other robot): unchanged.
         Assert.Contains("Old Cloud St", (await service.DispatchAsync(Signed(cloud, "GetCommuteAddresses", new { }))).BodyText);
         Assert.Contains("\"world\"", (await service.DispatchAsync(Signed(cloud, "GetNewsTopics", new { }))).BodyText);
+
+        // The robot's one-time import into its settings file gets everything it needs to keep using them.
+        store.UpsertCommuteAddress(new CommuteAddressRecord { Scope = Scope, MemberId = "p-ada", Address = "9 Elm St",
+            Latitude = 42.5, Longitude = -71.4, City = "Elmton", MemberName = "Ada", TimeZoneId = "America/New_York" });
+        var details = (await service.DispatchAsync(Signed(cloud, "GetCommuteAddresses", new { includeDetails = true }))).BodyText;
+        Assert.Contains("\"lat\":42.5", details);
+        Assert.Contains("\"city\":\"Elmton\"", details);
+        Assert.Contains("\"timeZone\":\"America/New_York\"", details);
+        Assert.DoesNotContain("\"lat\"", (await service.DispatchAsync(Signed(cloud, "GetCommuteAddresses", new { }))).BodyText);
     }
 
     [Fact]

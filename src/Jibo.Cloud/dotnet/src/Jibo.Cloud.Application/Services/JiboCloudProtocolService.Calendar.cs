@@ -41,7 +41,7 @@ public sealed partial class JiboCloudProtocolService
                     return ProtocolDispatchResult.Ok(new
                     {
                         loopId,
-                        members = feeds.Select(feed => new { memberId = feed.MemberId, icalUrl = feed.IcalUrl, isEnabled = feed.IsEnabled }).ToArray()
+                        members = feeds.Select(feed => new { memberId = feed.MemberId, icalUrl = feed.IcalUrl, isEnabled = feed.IsEnabled, memberName = feed.MemberName, timeZone = feed.TimeZoneId }).ToArray()
                     });
                 return ProtocolDispatchResult.Ok(new
                 {
