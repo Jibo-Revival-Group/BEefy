@@ -5,7 +5,10 @@ using Jibo.Cloud.Domain.Models;
 using Jibo.Cloud.Infrastructure.Calendar;
 using Jibo.Cloud.Infrastructure.Content;
 using Jibo.Cloud.Infrastructure.Persistence;
+using Jibo.Cloud.Infrastructure.Telemetry;
 using Jibo.Runtime.Abstractions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Jibo.Cloud.Tests.Application;
 
@@ -200,6 +203,35 @@ public sealed class LocalFirstTests : IDisposable
         // Without the flag (every other robot): unchanged.
         Assert.Contains("Old Cloud St", (await service.DispatchAsync(Signed(cloud, "GetCommuteAddresses", new { }))).BodyText);
         Assert.Contains("\"world\"", (await service.DispatchAsync(Signed(cloud, "GetNewsTopics", new { }))).BodyText);
+    }
+
+    [Fact]
+    public async Task Captures_RedactLocalFirstContextAndRequests()
+    {
+        var wsSink = new FileWebSocketTelemetrySink(NullLogger<FileWebSocketTelemetrySink>.Instance,
+            Options.Create(new WebSocketTelemetryOptions { Enabled = true, DirectoryPath = Path.Combine(_dir, "ws") }));
+        var session = new CloudSession { Token = "t", HostName = "neo-hub.jibo.com", Path = "/listen" };
+        WebSocketMessageEnvelope Message(bool localFirst) => new()
+        {
+            ConnectionId = "c", HostName = "neo-hub.jibo.com", Path = "/listen", Token = "t",
+            Text = "{\"type\":\"CONTEXT\",\"transID\":\"x\",\"data\":" + Context(localFirst) + "}"
+        };
+        await wsSink.RecordInboundAsync(Message(true), session, "CONTEXT");
+        await wsSink.RecordInboundAsync(Message(false), session, "CONTEXT");
+        var ws = await File.ReadAllTextAsync(Directory.GetFiles(Path.Combine(_dir, "ws"), "*.events.ndjson").Single());
+        Assert.Contains("[local-first: redacted]", ws);
+        Assert.DoesNotContain("1 Local St", ws);
+        Assert.Contains("Lovelace", ws); // the ordinary robot's CONTEXT is still captured
+
+        var httpSink = new FileProtocolTelemetrySink(NullLogger<FileProtocolTelemetrySink>.Instance,
+            Options.Create(new ProtocolTelemetryOptions { Enabled = true, DirectoryPath = Path.Combine(_dir, "http") }));
+        await httpSink.RecordAsync(new ProtocolEnvelope { Operation = "SetCommuteAddress", BodyText = """{"address":"9 Secret Rd","localFirst":true}""" },
+            ProtocolDispatchResult.Ok(new { address = "9 Secret Rd, Town" }));
+        await httpSink.RecordAsync(new ProtocolEnvelope { Operation = "SetCommuteAddress", BodyText = """{"address":"5 Plain Rd"}""" },
+            ProtocolDispatchResult.Ok(new { address = "5 Plain Rd, Town" }));
+        var http = await File.ReadAllTextAsync(Directory.GetFiles(Path.Combine(_dir, "http"), "*.events.ndjson").Single());
+        Assert.DoesNotContain("Secret", http);
+        Assert.Contains("5 Plain Rd", http);
     }
 
     private static ProtocolEnvelope Signed(InMemoryCloudStateStore cloud, string operation, object body)

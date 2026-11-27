@@ -114,7 +114,7 @@ public sealed class FileWebSocketTelemetrySink(
             if (_fixtures.TryGetValue(session.SessionId, out var fixture))
                 fixture.Steps.Add(new CapturedWebSocketFixtureStep
                 {
-                    Text = ParseJsonElement(envelope.Text),
+                    Text = ParseJsonElement(Redact(envelope.Text)),
                     Binary = envelope.Binary?.Select(value => (int)value).ToArray(),
                     ExpectedReplyTypes = replyTypes
                 });
@@ -245,7 +245,7 @@ public sealed class FileWebSocketTelemetrySink(
             TransId = session.TurnState.TransId ?? session.LastTransId,
             MessageType = messageType,
             Direction = direction,
-            Text = envelope.Text,
+            Text = Redact(envelope.Text),
             BinaryLength = envelope.Binary?.Length,
             ReplyTypes = replyTypes ?? [],
             BufferedAudioBytes = session.TurnState.BufferedAudioBytes,
@@ -275,6 +275,12 @@ public sealed class FileWebSocketTelemetrySink(
             return null;
         }
     }
+
+    // A local-first robot's CONTEXT holds its people and report settings, which must not reach disk here.
+    private static string? Redact(string? text) =>
+        text?.Contains("localFirst", StringComparison.Ordinal) == true && LocalFirst.IsInContext(text) ? LocalFirstRedacted : text;
+
+    private const string LocalFirstRedacted = "[local-first: redacted]";
 
     private static JsonElement? ParseJsonElement(string? text)
     {

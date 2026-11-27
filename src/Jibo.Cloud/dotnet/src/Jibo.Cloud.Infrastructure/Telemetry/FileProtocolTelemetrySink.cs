@@ -10,6 +10,7 @@ public sealed class FileProtocolTelemetrySink(
     ILogger<FileProtocolTelemetrySink> logger,
     IOptions<ProtocolTelemetryOptions> options) : IProtocolTelemetrySink
 {
+    private const string Redacted = "[local-first: redacted]";
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     public async Task RecordAsync(ProtocolEnvelope envelope, ProtocolDispatchResult result,
@@ -27,6 +28,9 @@ public sealed class FileProtocolTelemetrySink(
             CaptureRetention.Enforce(directory, options.Value.RetentionDays, options.Value.MaxDirectoryBytes);
             var filePath = Path.Combine(directory, $"{DateTimeOffset.UtcNow:yyyyMMdd}.events.ndjson");
 
+            // Local-first requests carry settings the robot keeps to itself (feed URLs, addresses): don't capture them.
+            var redact = envelope.TryParseBody() is { ValueKind: JsonValueKind.Object } body &&
+                         body.TryGetProperty("localFirst", out var localFirst) && localFirst.ValueKind == JsonValueKind.True;
             var payload = new
             {
                 capturedUtc = DateTimeOffset.UtcNow,
@@ -44,14 +48,14 @@ public sealed class FileProtocolTelemetrySink(
                     envelope.FirmwareVersion,
                     envelope.ApplicationVersion,
                     envelope.Headers,
-                    envelope.BodyText
+                    BodyText = redact ? Redacted : envelope.BodyText
                 },
                 response = new
                 {
                     result.StatusCode,
                     result.ContentType,
                     result.Headers,
-                    result.BodyText
+                    BodyText = redact ? Redacted : result.BodyText
                 }
             };
 
